@@ -183,7 +183,11 @@ int Launcher::launchHeadless(const Config& cfg, Library& lib, UserData& user, co
         } else {
             WaitForSingleObject(p.process, INFINITE);
         }
-        st.seconds += static_cast<int64_t>((GetTickCount64() - start) / 1000);
+        // A front end (the Tauri window) writes settings while the game runs: add the time to what is
+        // on disk now instead of writing back the copy read at launch.
+        int64_t played = static_cast<int64_t>((GetTickCount64() - start) / 1000);
+        user = loadUserData(userPath);
+        user.stats(game.id).seconds += played;
         saveUserData(user, userPath);
     }
     CloseHandle(p.process);

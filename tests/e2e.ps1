@@ -149,6 +149,16 @@ $env:FL_FAKE_MS = '1500'
 $sw = [Diagnostics.Stopwatch]::StartNew()
 $r = Run @('--launch', 'demo', '--wait', '--config', "`"$work\launcher.json`"")
 Check ($r.Code -eq 0 -and $sw.ElapsedMilliseconds -ge 1400) "--launch --wait returns when the game exits ($($sw.ElapsedMilliseconds) ms)"
+# A front end saves settings while the game runs; the time played is added to them, not written over them.
+$env:FL_FAKE_MS = '2500'
+$p = Start-Process -FilePath $Launcher -ArgumentList @('--launch', 'demo', '--wait', '--config', "`"$work\launcher.json`"") -PassThru -WindowStyle Hidden
+Check (WaitFor { (Get-Content "$work\data\settings.json" -Raw -ErrorAction SilentlyContinue) -match '"demo"' }) 'the launch is recorded'
+$s = Get-Content "$work\data\settings.json" -Raw | ConvertFrom-Json
+$s | Add-Member -NotePropertyName playerName -NotePropertyValue 'Changed While Playing' -Force
+$s | ConvertTo-Json -Depth 20 | Set-Content "$work\data\settings.json" -Encoding UTF8
+$p.WaitForExit(20000) | Out-Null
+$after = Get-Content "$work\data\settings.json" -Raw | ConvertFrom-Json
+Check ($after.playerName -eq 'Changed While Playing' -and $after.games.demo.seconds -ge 2) "a game's exit keeps settings changed while it ran ($($after.playerName), $($after.games.demo.seconds) s)"
 
 $env:FL_FAKE_MS = '0'
 Remove-Item "$work\args.txt" -ErrorAction SilentlyContinue
@@ -537,7 +547,8 @@ $gameDir = Join-Path $work 'FakeGame'
 New-Item -ItemType Directory -Force "$gameDir\Data" | Out-Null
 Set-Content "$gameDir\Game.exe" 'game binary' -NoNewline
 Set-Content "$gameDir\Data\original.dat" 'ORIGINAL' -NoNewline
-function Snapshot() { (Get-ChildItem $gameDir -Recurse -File | Sort-Object FullName | ForEach-Object { "$($_.FullName.Substring($gameDir.Length)) $((Get-FileHash $_.FullName -Algorithm SHA256).Hash)" }) -join "`n" }
+# Polled while the window removes files: a folder gone mid-listing just makes this try not match yet.
+function Snapshot() { (Get-ChildItem $gameDir -Recurse -File -ErrorAction SilentlyContinue | Sort-Object FullName | ForEach-Object { "$($_.FullName.Substring($gameDir.Length)) $((Get-FileHash $_.FullName -Algorithm SHA256 -ErrorAction SilentlyContinue).Hash)" }) -join "`n" }
 $modBefore = Snapshot
 
 @"
