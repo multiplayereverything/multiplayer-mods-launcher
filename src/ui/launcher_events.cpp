@@ -259,6 +259,10 @@ LRESULT Launcher::handle(UINT m, WPARAM w, LPARAM l) {
                     if (roomsPage()) openNav(libraryKey_.empty() || libraryKey_ == "rooms" ? navItems_.front().key : libraryKey_);
                 } else if (id == kIdTabRoomsTop) {
                     if (!roomsPage()) openNav("rooms");
+                } else if (id == kIdCatChip) {
+                    dropList(catBtn_, navCombo_, kIdNavCombo);
+                } else if (id == kIdSortChip) {
+                    dropList(sortBtn_, sortCombo_, kIdSort);
                 } else if (id == kIdSize) {
                     user_.compactCards = !user_.compactCards;
                     save();

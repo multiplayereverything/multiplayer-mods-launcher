@@ -35,23 +35,24 @@ static Color rgb(uint32_t v) { return {uint8_t(v >> 16), uint8_t(v >> 8), uint8_
 
 ThemeColors darkPalette() {
     ThemeColors c;
-    c.background = rgb(0x15171C);
-    c.surface = rgb(0x1E2128);
-    c.surfaceHover = rgb(0x272B34);
-    c.sidebar = rgb(0x0E1014);
+    // Deep navy rather than neutral gray: the night-sky look of the launchers players compare us with.
+    c.background = rgb(0x0B1119);
+    c.surface = rgb(0x141B26);
+    c.surfaceHover = rgb(0x1F2835);
+    c.sidebar = rgb(0x070C13);
     c.sidebarText = rgb(0xF2F4F7);
-    c.sidebarTextMuted = rgb(0x8B93A1);
+    c.sidebarTextMuted = rgb(0x8E9BAE);
     c.primary = rgb(0xC8313A);  // the arcade start button; white on it is 5.3:1
     c.primaryHover = rgb(0xB42A33);
     c.onPrimary = rgb(0xFFFFFF);
-    c.text = rgb(0xE8EAED);
-    c.textMuted = rgb(0x9AA1AC);
-    c.border = rgb(0x323743);
-    c.focus = rgb(0x8FB0FF);
+    c.text = rgb(0xE6EBF2);
+    c.textMuted = rgb(0x93A0B3);
+    c.border = rgb(0x253041);
+    c.focus = rgb(0x38BDF8);
     c.success = rgb(0x3CCB7F);
     c.warning = rgb(0xF2B544);
     c.error = rgb(0xFF6464);
-    c.online = rgb(0x8FB0FF);
+    c.online = rgb(0x38BDF8);
     return c;
 }
 

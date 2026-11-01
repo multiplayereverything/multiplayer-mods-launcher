@@ -50,9 +50,11 @@ void Launcher::relayout() {
     // The game page takes the whole library area: no banner, no toolbar.
     bool page = guidePage();
     ShowWindow(nav_, SW_HIDE);
-    ShowWindow(navCombo_, page ? SW_HIDE : SW_SHOW);
+    ShowWindow(navCombo_, SW_HIDE);
+    ShowWindow(sortCombo_, SW_HIDE);
+    ShowWindow(catBtn_, page ? SW_HIDE : SW_SHOW);
     ShowWindow(search_, page ? SW_HIDE : SW_SHOW);
-    ShowWindow(sortCombo_, narrowMode || page ? SW_HIDE : SW_SHOW);
+    ShowWindow(sortBtn_, narrowMode || page ? SW_HIDE : SW_SHOW);
     ShowWindow(sizeBtn_, narrowMode || page ? SW_HIDE : SW_SHOW);
 
     HDC dc = GetDC(hwnd_);
@@ -79,7 +81,7 @@ void Launcher::relayout() {
     heroGame_ = heroWanted() ? heroCandidate() : -1;
     hero_ = {};
     if (heroGame_ >= 0) {
-        hero_ = {left + t.s(kPad), y0, right - t.s(kPad), y0 + t.s(150)};
+        hero_ = {left + t.s(kPad), y0, right - t.s(kPad), y0 + t.s(164)};
         int bh = t.s(34);
         MoveWindow(heroBtn_, hero_.left + t.s(24), hero_.bottom - t.s(16) - bh, t.s(104), bh, TRUE);
         SetWindowTextW(heroBtn_, cfg_.t("hero.open").c_str());
@@ -90,15 +92,15 @@ void Launcher::relayout() {
 
     int x = top_.left + t.s(kPad), boxH = t.s(36), y = top_.top + (height(top_) - boxH) / 2;
     int searchRight = top_.right - t.s(kPad);
-    int cw = t.s(narrowMode ? 150 : 170);
-    MoveWindow(navCombo_, x, y + (boxH - t.s(28)) / 2, cw, t.s(300), TRUE);
+    int cw = std::min<int>(t.s(narrowMode ? 170 : 200), textWidth(dc, t.button, windowText(catBtn_)) + t.s(58));
+    MoveWindow(catBtn_, x, y, cw, boxH, TRUE);
     x += cw + t.s(8);
     if (!narrowMode) {  // the toolbar to the right of the search box: order, then card size
         int sizeW = std::max<int>(t.s(96), textWidth(dc, t.button, windowText(sizeBtn_)) + t.s(54));
         MoveWindow(sizeBtn_, searchRight - sizeW, y, sizeW, boxH, TRUE);
         searchRight -= sizeW + t.s(8);
-        int sortW = t.s(148);
-        MoveWindow(sortCombo_, searchRight - sortW, y + (boxH - t.s(28)) / 2, sortW, t.s(300), TRUE);
+        int sortW = std::min<int>(t.s(180), textWidth(dc, t.button, windowText(sortBtn_)) + t.s(58));
+        MoveWindow(sortBtn_, searchRight - sortW, y, sortW, boxH, TRUE);
         searchRight -= sortW + t.s(8);
     }
     searchBox_ = {x, y, std::max<LONG>(x + t.s(120), static_cast<LONG>(searchRight)), y + boxH};
@@ -130,7 +132,8 @@ void Launcher::layoutGrid() {
     int cols = std::max(1, avail / std::max(minTile, 1));
     int tw = std::max(minTile, avail / cols);
     int cardW = tw - theme_.s(kGap);
-    int th = static_cast<int>(cardW * 0.5625) + theme_.s(94) + theme_.s(kGap);
+    // The picture is the whole card (names over its foot), cropped to 4:3 from the usual wide banner.
+    int th = static_cast<int>(cardW * 0.75) + theme_.s(kGap);
     if (tw == tileW_ && th == tileH_) return;
     tileW_ = tw;
     tileH_ = th;

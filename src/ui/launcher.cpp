@@ -354,6 +354,9 @@ void Launcher::createControls() {
     libTab_ = makeButton(kIdTabLibrary, BtnStyle::Tab);
     roomsTopTab_ = makeButton(kIdTabRoomsTop, BtnStyle::Tab);
     btnInfo_[sizeBtn_].icon = kIconCards;
+    catBtn_ = makeButton(kIdCatChip, BtnStyle::Secondary);
+    sortBtn_ = makeButton(kIdSortChip, BtnStyle::Secondary);
+    btnInfo_[catBtn_].menu = btnInfo_[sortBtn_].menu = true;
     guideBack_ = makeButton(kIdGuideBack, BtnStyle::Secondary);
     for (int i = 0; i < static_cast<int>(kGuideMaxLinks); ++i) guideLinkBtns_.push_back(makeButton(kIdGuideLink0 + i, BtnStyle::Secondary));
     locateBtn_ = makeButton(kIdLocate, BtnStyle::Secondary);
@@ -422,6 +425,14 @@ void Launcher::createControls() {
         for (HWND h : {nav_, grid_}) SetWindowTheme(h, L"DarkMode_Explorer", nullptr);
         for (HWND h : {navCombo_, sortCombo_, playerCombo_, saveCombo_, pageGameCombo_}) SetWindowTheme(h, L"DarkMode_CFD", nullptr);
         for (HWND h : settingCombos_) SetWindowTheme(h, L"DarkMode_CFD", nullptr);
+        // Dark popup menus for the toolbar's lists. uxtheme exports this only by ordinal (135, then 136 to apply it);
+        // where it is missing the menus stay light, which still works.
+        if (HMODULE ux = LoadLibraryExW(L"uxtheme.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32)) {
+            using SetMode = int(WINAPI*)(int);
+            using Flush = void(WINAPI*)();
+            if (auto set = reinterpret_cast<SetMode>(reinterpret_cast<void*>(GetProcAddress(ux, MAKEINTRESOURCEA(135))))) set(2);  // force dark
+            if (auto flush = reinterpret_cast<Flush>(reinterpret_cast<void*>(GetProcAddress(ux, MAKEINTRESOURCEA(136))))) flush();
+        }
     }
     applyFonts();
 }
@@ -523,6 +534,47 @@ void Launcher::syncTopTabs() {
         InvalidateRect(libTab_, nullptr, FALSE);
         InvalidateRect(roomsTopTab_, nullptr, FALSE);
     }
+    syncChips();
+}
+
+// Each chip says the choice its combo holds.
+void Launcher::syncChips() {
+    bool changed = false;
+    for (auto [chip, combo] : {std::pair{catBtn_, navCombo_}, std::pair{sortBtn_, sortCombo_}}) {
+        int sel = static_cast<int>(SendMessageW(combo, CB_GETCURSEL, 0, 0));
+        int len = sel >= 0 ? static_cast<int>(SendMessageW(combo, CB_GETLBTEXTLEN, sel, 0)) : 0;
+        std::wstring text(static_cast<size_t>(std::max(len, 0)) + 1, L'\0');
+        if (len > 0) SendMessageW(combo, CB_GETLBTEXT, sel, reinterpret_cast<LPARAM>(text.data()));
+        text.resize(static_cast<size_t>(std::max(len, 0)));
+        if (windowText(chip) != text) {
+            SetWindowTextW(chip, text.c_str());
+            InvalidateRect(chip, nullptr, FALSE);
+            changed = true;
+        }
+    }
+    if (changed && !intro_) relayout();  // a chip is as wide as its text
+}
+
+// The combo's items as a menu under the chip; a choice goes through the combo's own CBN_SELCHANGE handling.
+void Launcher::dropList(HWND chip, HWND combo, int comboId) {
+    HMENU menu = CreatePopupMenu();
+    int count = static_cast<int>(SendMessageW(combo, CB_GETCOUNT, 0, 0));
+    int sel = static_cast<int>(SendMessageW(combo, CB_GETCURSEL, 0, 0));
+    for (int i = 0; i < count; ++i) {
+        int len = static_cast<int>(SendMessageW(combo, CB_GETLBTEXTLEN, i, 0));
+        std::wstring text(static_cast<size_t>(std::max(len, 0)) + 1, L'\0');
+        SendMessageW(combo, CB_GETLBTEXT, i, reinterpret_cast<LPARAM>(text.data()));
+        AppendMenuW(menu, MF_STRING | (i == sel ? MF_CHECKED : 0), static_cast<UINT_PTR>(i + 1), text.c_str());
+    }
+    RECT r;
+    GetWindowRect(chip, &r);
+    int pick = static_cast<int>(TrackPopupMenu(menu, TPM_RETURNCMD | TPM_LEFTALIGN | TPM_TOPALIGN | TPM_NONOTIFY,
+                                               r.left, r.bottom + theme_.s(4), 0, hwnd_, nullptr));
+    DestroyMenu(menu);
+    if (pick <= 0 || pick - 1 == sel) return;
+    SendMessageW(combo, CB_SETCURSEL, pick - 1, 0);
+    SendMessageW(hwnd_, WM_COMMAND, MAKEWPARAM(comboId, CBN_SELCHANGE), reinterpret_cast<LPARAM>(combo));
+    syncChips();
 }
 
 void Launcher::openNav(const std::string& key) {

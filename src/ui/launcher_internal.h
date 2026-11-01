@@ -89,6 +89,8 @@ enum : int {
     kIdFolder,
     kIdAbout,
     kIdHero,
+    kIdCatChip,
+    kIdSortChip,
     kIdGuideBack,
     kIdGuideLink0,
     kIdGuideLink1,

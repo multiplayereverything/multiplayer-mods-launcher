@@ -95,6 +95,7 @@ private:
         bool selected = false;  // Tab: the open tab
         bool busy = false;      // a light runs around the border while its work runs
         bool progress = false;  // ...and a line along the bottom shows how far a mod job is
+        bool menu = false;      // opens a list: label at the left, a chevron at the right
     };
     struct DetailLayout {
         RECT art{}, title{}, meta{}, slots{}, status{}, desc{}, controlsHead{}, controls{}, stats{}, playerLabel{}, host{}, saveLabel{}, saveNote{};
@@ -380,6 +381,10 @@ private:
     HWND aboutBtn_ = nullptr;
     HWND heroBtn_ = nullptr;
     HWND sortCombo_ = nullptr, sizeBtn_ = nullptr;  // the toolbar beside the search box
+    // The toolbar's chips that open the category and order lists; the hidden combos keep the choice.
+    HWND catBtn_ = nullptr, sortBtn_ = nullptr;
+    void syncChips();
+    void dropList(HWND chip, HWND combo, int comboId);
     HWND libTab_ = nullptr, roomsTopTab_ = nullptr;  // the top bar's pages
     RECT topBar_{};
     std::string libraryKey_;  // the last library view, for the Library tab to go back to

@@ -62,6 +62,7 @@ void Launcher::refreshRoomsNav() {
         SendMessageW(navCombo_, CB_INSERTSTRING, i, reinterpret_cast<LPARAM>(text.c_str()));
         SendMessageW(navCombo_, CB_SETCURSEL, sel, 0);
     }
+    syncChips();
 }
 
 std::wstring Launcher::serverText(Color& color) const {

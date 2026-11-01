@@ -237,11 +237,11 @@ void Launcher::paintSidebar(Graphics& g, HDC) {
 
 void Launcher::paintDetail(Graphics& g, HDC dc) {
     const Theme& t = theme_;
-    SolidBrush panel(gc(t.c.surface));
-    g.FillRectangle(&panel, rf(detail_));
-    Pen edge(gc(t.c.border), 1);
-    g.DrawLine(&edge, static_cast<REAL>(detail_.left), static_cast<REAL>(detail_.top), static_cast<REAL>(detail_.left),
-               static_cast<REAL>(detail_.bottom));
+    // A card floating on the page, not a column ruled off from it; the controls sit kPad in, inside its edge.
+    if (width(detail_) <= 0) return;
+    RECT card{detail_.left + t.s(4), detail_.top + t.s(10), detail_.right - t.s(10), detail_.bottom - t.s(10)};
+    fillRound(g, rf(card), t.sf(12), t.c.surface);
+    strokeRound(g, rf(card), t.sf(12), t.c.border, t.sf(1));
     if (selected_ < 0) {
         RECT r = detail_;
         r.top += t.s(80);
@@ -392,9 +392,25 @@ void Launcher::drawCard(HDC dc, int gi, RECT tile, bool selected, bool focused) 
     OffsetRect(&c, 0, -static_cast<int>(t.s(3) * lift + 0.5f));
     float radius = t.sf(12);
     fillRound(g, rf(c), radius, hover || selected ? t.c.surfaceHover : t.c.surface);
-    int artH = static_cast<int>(width(c) * 0.5625);
-    RECT artR{c.left, c.top, c.right, c.top + artH};
-    if (Bitmap* a = art(gi, width(artR), height(artR), false)) drawCover(g, *a, rf(artR), radius, false);
+    RECT artR = c;
+    if (Bitmap* a = art(gi, width(artR), height(artR), false)) drawCover(g, *a, rf(artR), radius, true);
+    // The foot of the picture darkens so the names over it keep their contrast on any art.
+    {
+        const Color& sb = t.c.sidebar;
+        RectF foot(static_cast<REAL>(c.left), static_cast<REAL>(c.bottom - height(c) * 6 / 10), static_cast<REAL>(width(c)),
+                   static_cast<REAL>(height(c) * 6 / 10));
+        GraphicsPath clip;
+        roundRectPath(clip, rf(c), radius);
+        GraphicsState saved = g.Save();
+        g.SetClip(&clip, CombineModeIntersect);
+        LinearGradientBrush shade(PointF(0, foot.Y - 1), PointF(0, foot.Y + foot.Height), gc(Color{sb.r, sb.g, sb.b, 0}),
+                                  gc(Color{sb.r, sb.g, sb.b, 250}));
+        // Nearly opaque by the lower half of the foot, where the names are, then solid to the edge.
+        REAL factors[] = {0.0f, 0.55f, 0.92f, 1.0f}, positions[] = {0.0f, 0.3f, 0.6f, 1.0f};
+        shade.SetBlend(factors, positions, 4);
+        g.FillRectangle(&shade, foot);
+        g.Restore(saved);
+    }
 
     // Badges on the art.
     auto badge = [&](const std::wstring& text, const Color& textColor, bool right, int dx = 0) {
@@ -423,9 +439,10 @@ void Launcher::drawCard(HDC dc, int gi, RECT tile, bool selected, bool focused) 
     }
     if (st && st->favorite) badge(L"\u2605", t.c.warning, true, chipW);
 
-    int x = c.left + t.s(14), w = width(c) - t.s(28), y = artR.bottom + t.s(10);
+    // Names over the foot of the picture, on the shade (light text whatever the theme, as the shade is dark).
+    int x = c.left + t.s(14), w = width(c) - t.s(28), y = c.bottom - t.s(64);
     RECT nameR{x, y, x + w, y + t.s(26)};
-    drawText(g, displayName(game), nameR, t.name, t.c.text, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
+    drawText(g, displayName(game), nameR, t.name, t.c.sidebarText, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
     y += t.s(28);
     // One block per player slot, in the players' own colors.
     int pip = t.s(10), pipGap = t.s(3), px = x;
@@ -437,23 +454,22 @@ void Launcher::drawCard(HDC dc, int gi, RECT tile, bool selected, bool focused) 
         px += pip + pipGap;
     }
     RECT mr{px + (game.maxPlayers ? t.s(6) : 0), y, x + w, y + t.s(20)};
-    drawText(g, game.playerCount, mr, t.caption, t.c.textMuted, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
-    y += t.s(24);
+    // The right of the line: what wants doing (an update, a missing player...) before live rooms; nothing when ready.
     Color sc;
     std::wstring status = stateText(gi, sc);
-    RECT sr{x, y, x + w, y + t.s(20)};
-    // Live rooms on the central server, shown only when there are some.
-    std::wstring roomsText = notOnServer(game) ? cfg_.t("status.notOnServer") : roomCountText(game.id);
-    if (!roomsText.empty()) {
+    bool ready = status == cfg_.t("status.ready");
+    std::wstring right = !ready ? status : notOnServer(game) ? L"" : roomCountText(game.id);
+    const Color& rc = !ready ? sc : t.c.online;
+    if (!right.empty()) {
         HDC mdc = g.GetHDC();
-        int rw = textWidth(mdc, t.caption, roomsText);
+        int rw = std::min<int>(textWidth(mdc, t.caption, right) + t.s(14), w / 2);
         g.ReleaseHDC(mdc);
-        RECT rr{std::max<LONG>(x, x + w - rw), y, x + w, y + t.s(20)};
-        drawText(g, roomsText, rr, t.caption, notOnServer(game) ? t.c.textMuted : t.c.online,
-                 DT_SINGLELINE | DT_VCENTER | DT_RIGHT);
-        sr.right = rr.left - t.s(8);
+        RECT rr{x + w - rw, y, x + w, y + t.s(20)};
+        fillRound(g, rf(rr), t.sf(10), Color{t.c.sidebar.r, t.c.sidebar.g, t.c.sidebar.b, 225});
+        drawText(g, right, rr, t.caption, rc, DT_SINGLELINE | DT_VCENTER | DT_CENTER | DT_END_ELLIPSIS);
+        mr.right = rr.left - t.s(6);
     }
-    drawText(g, status, sr, t.caption, sc, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
+    drawText(g, game.playerCount, mr, t.caption, t.c.sidebarTextMuted, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
 
     // Selection is a neutral outline: red means "start", blue means keyboard focus.
     if (!selected && lift > 0.01f) strokeRound(g, rf(c), radius, mix(t.c.surface, game.color, 0.85f * lift), t.sf(1.5));
@@ -604,6 +620,14 @@ void Launcher::drawButton(HWND button, HDC hdc, RECT r, UINT state) {
                 RECT arrow{tr.right - t.s(20), 0, tr.right, height(r)};
                 drawText(g, L"\u25B6", arrow, t.body, text, DT_SINGLELINE | DT_VCENTER | DT_RIGHT);
             }
+        } else if (info.menu) {
+            // A chip that opens a list: its choice at the left, a chevron at the right.
+            RECT lr{tr.left - t.s(2), tr.top, tr.right - t.s(20), tr.bottom};
+            lr.left += iconAt(lr);
+            drawText(g, label, lr, t.button, text, DT_SINGLELINE | DT_VCENTER | DT_LEFT | DT_END_ELLIPSIS);
+            RECT cr{tr.right - t.s(18), tr.top, tr.right + t.s(4), tr.bottom};
+            drawText(g, t.icon ? L"" : L"▾", cr, t.icon ? t.icon : t.body, t.c.textMuted,
+                     DT_SINGLELINE | DT_VCENTER | DT_RIGHT);
         } else if (!info.icon.empty() && t.icon) {
             // Icon and label centered together.
             HDC mdc = g.GetHDC();
