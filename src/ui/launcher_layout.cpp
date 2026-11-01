@@ -93,9 +93,11 @@ void Launcher::relayout() {
             btnInfo_[heroPlayBtn_].icon = kIconPlay;
             int pw = std::max<int>(t.s(120), textWidth(dc, t.button, windowText(heroPlayBtn_)) + t.s(64));
             MoveWindow(heroPlayBtn_, bx, by, pw, bh, TRUE);
+            roundCorners(heroPlayBtn_);
             bx += pw + t.s(10);
         }
         MoveWindow(heroBtn_, bx, by, t.s(104), bh, TRUE);
+        roundCorners(heroBtn_);
         SetWindowTextW(heroBtn_, cfg_.t("hero.open").c_str());
         y0 = hero_.bottom + t.s(4);
     } else {

@@ -37,7 +37,7 @@ void Launcher::wake() {
 
 void Launcher::onFrame() {
     if (intro_) {
-        if (since(intro_->from) < kIntroMs) {
+        if (since(intro_->from) < (intro_->page ? kPageMs : kIntroMs)) {
             InvalidateRect(hwnd_, nullptr, FALSE);
             return;
         }
@@ -87,12 +87,14 @@ void Launcher::onFrame() {
     }
 }
 
-void Launcher::startIntro() {
+void Launcher::startIntro(int page) {
+    if (!motion_ || intro_) return;
     RECT cr;
     GetClientRect(hwnd_, &cr);
     if (cr.right <= 0 || cr.bottom <= 0) return;
     // The title decodes once the panel has arrived, not inside the picture.
     titleFrom_ = 0;
+    HWND focus = GetFocus();
     HDC screen = GetDC(hwnd_);
     Buffer buf(screen, cr.right, cr.bottom);
     ReleaseDC(hwnd_, screen);
@@ -139,6 +141,8 @@ void Launcher::startIntro() {
     buf.old = SelectObject(buf.dc, buf.bmp);
 
     for (HWND h : children) ShowWindow(h, SW_HIDE);
+    intro->page = page;
+    intro->focus = focus;
     intro->from = GetTickCount64();
     intro_ = std::move(intro);
     InvalidateRect(hwnd_, nullptr, FALSE);
@@ -149,7 +153,8 @@ void Launcher::endIntro() {
     if (!intro_) return;
     std::unique_ptr<Intro> intro = std::move(intro_);
     for (HWND h : intro->hidden) ShowWindow(h, SW_SHOWNA);
-    if (!GetFocus() || GetFocus() == hwnd_) SetFocus(grid_);
+    if (intro->focus && IsWindowVisible(intro->focus)) SetFocus(intro->focus);
+    else if (!GetFocus() || GetFocus() == hwnd_) SetFocus(grid_);
     if (intro->layoutLater) layoutDetail();
     if (motion_ && selected_ >= 0) titleFrom_ = GetTickCount64();
     InvalidateRect(hwnd_, nullptr, FALSE);
@@ -176,6 +181,17 @@ void Launcher::paintIntro(Graphics& g) {
     };
     SolidBrush bg(gc(t.c.background));
     g.FillRectangle(&bg, 0, 0, static_cast<INT>(shot.GetWidth()), static_cast<INT>(shot.GetHeight()));
+
+    if (intro_->page) {
+        // A page change: the top bar and the status bar stay; what is between them slides in a little from the
+        // side it comes from (a game's page from the right, the library back from the left) as it fades in.
+        RECT body{0, topBar_.bottom, static_cast<LONG>(shot.GetWidth()), status_.top};
+        float p = motion::easeOutCubic(std::min(1.0f, static_cast<float>(e) / kPageMs));
+        piece(topBar_, 0, 0, 1);
+        piece(status_, 0, 0, 1);
+        piece(body, t.sf(28) * intro_->page * (1 - p), 0, p);
+        return;
+    }
 
     // The details panel slides in from the right edge.
     float d = at(90, 480);

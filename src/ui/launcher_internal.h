@@ -60,7 +60,7 @@ constexpr UINT_PTR kPadTimer = 3;  // reads a connected game controller, 20 time
 // About 30 frames a second: enough for a slow breath and a short decode, and
 // half the repaints of 60.
 constexpr UINT kFrameMs = 33;
-constexpr ULONGLONG kTitleMs = 380, kCodeMs = 500, kJoinMs = 450, kIntroMs = 830;
+constexpr ULONGLONG kTitleMs = 380, kCodeMs = 500, kJoinMs = 450, kIntroMs = 830, kPageMs = 260;
 
 // Milliseconds since `from`, or "long ago" when it never started or is done.
 inline ULONGLONG since(ULONGLONG from) { return from ? GetTickCount64() - from : ~0ull; }

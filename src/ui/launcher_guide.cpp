@@ -38,6 +38,7 @@ void Launcher::openGuide(int gi) {
     relayout();
     InvalidateRect(hwnd_, &gridRc_, FALSE);
     if (guideBack_) SetFocus(guideBack_);
+    startIntro(1);  // the page slides in from the right
 }
 
 void Launcher::closeGuide() {
@@ -48,6 +49,7 @@ void Launcher::closeGuide() {
     relayout();
     ShowWindow(grid_, visible_.empty() || roomsPage() ? SW_HIDE : SW_SHOW);
     InvalidateRect(hwnd_, &gridRc_, FALSE);
+    startIntro(-1);  // and the library comes back from the left
 }
 
 // What the game page's details card lists: who made it, players, where it comes from, the pinned version, its state.
@@ -280,11 +282,14 @@ void Launcher::paintGuidePage(Graphics& g, HDC dc) {
     }
     RectF head = rf(guideHeader_);
     g.DrawImage(pageBmp_.get(), head.X, head.Y, head.Width, head.Height);
-    LinearGradientBrush down(PointF(0, head.Y - 1), PointF(0, head.Y + head.Height + 1), gc(Color{bg.r, bg.g, bg.b, 120}),
+    // Mirrored past their ends, so no edge picks up the far end's color (a light line down the left side).
+    LinearGradientBrush down(PointF(0, head.Y - 2), PointF(0, head.Y + head.Height + 2), gc(Color{bg.r, bg.g, bg.b, 120}),
                              gc(Color{bg.r, bg.g, bg.b, 255}));
+    down.SetWrapMode(WrapModeTileFlipXY);
     g.FillRectangle(&down, head);
-    LinearGradientBrush across(PointF(head.X - 1, 0), PointF(head.X + head.Width + 1, 0), gc(Color{bg.r, bg.g, bg.b, 200}),
+    LinearGradientBrush across(PointF(head.X - 2, 0), PointF(head.X + head.Width + 2, 0), gc(Color{bg.r, bg.g, bg.b, 200}),
                                gc(Color{bg.r, bg.g, bg.b, 0}));
+    across.SetWrapMode(WrapModeTileFlipXY);
     g.FillRectangle(&across, head);
 
     // Icon: the same art, square, in a rounded frame.

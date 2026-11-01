@@ -102,6 +102,14 @@ int Launcher::heroLead(int gi) const {
     return -1;
 }
 
+// A button over a picture is clipped to its rounded face: its square corners would show the page color, not the art.
+void Launcher::roundCorners(HWND b) {
+    RECT r;
+    GetClientRect(b, &r);
+    int d = theme_.s(12) + 1;
+    SetWindowRgn(b, CreateRoundRectRgn(0, 0, r.right + 1, r.bottom + 1, d, d), TRUE);  // the window owns the region
+}
+
 void Launcher::placeTilePlay() {
     if (!tilePlayBtn_) return;
     POINT cur;
@@ -142,6 +150,7 @@ void Launcher::placeTilePlay() {
     tilePlayGame_ = gi;
     tilePlayAction_ = ai;
     SetWindowPos(tilePlayBtn_, HWND_TOP, bx, by, bw, bh, SWP_SHOWWINDOW | SWP_NOACTIVATE);
+    roundCorners(tilePlayBtn_);
     InvalidateRect(tilePlayBtn_, nullptr, FALSE);
 }
 
@@ -170,8 +179,11 @@ void Launcher::paintHero(Graphics& g) {
     g.DrawImage(heroBmp_.get(), box.X, box.Y, box.Width, box.Height);
     // The left side darkens so the title keeps its contrast over any picture.
     const Color& sb = t.c.sidebar;
-    LinearGradientBrush shade(PointF(box.X, 0), PointF(box.X + box.Width, 0), gc(Color{sb.r, sb.g, sb.b, 238}),
+    // From just outside the box, mirrored at its ends: a gradient that starts on the edge wraps its last color
+    // onto the first column, which drew a light seam down the left side.
+    LinearGradientBrush shade(PointF(box.X - 2, 0), PointF(box.X + box.Width + 2, 0), gc(Color{sb.r, sb.g, sb.b, 238}),
                               gc(Color{sb.r, sb.g, sb.b, 0}));
+    shade.SetWrapMode(WrapModeTileFlipXY);
     g.FillRectangle(&shade, box);
     g.Restore(saved);
     strokeRound(g, box, radius, t.c.border, t.sf(1));
@@ -480,8 +492,9 @@ void Launcher::drawCard(HDC dc, int gi, RECT tile, bool selected, bool focused) 
         roundRectPath(clip, rf(c), radius);
         GraphicsState saved = g.Save();
         g.SetClip(&clip, CombineModeIntersect);
-        LinearGradientBrush shade(PointF(0, foot.Y - 1), PointF(0, foot.Y + foot.Height), gc(Color{sb.r, sb.g, sb.b, 0}),
+        LinearGradientBrush shade(PointF(0, foot.Y - 2), PointF(0, foot.Y + foot.Height + 2), gc(Color{sb.r, sb.g, sb.b, 0}),
                                   gc(Color{sb.r, sb.g, sb.b, 250}));
+        shade.SetWrapMode(WrapModeTileFlipXY);  // no wrapped seam along the card's bottom edge
         // Nearly opaque by the lower half of the foot, where the names are, then solid to the edge.
         REAL factors[] = {0.0f, 0.55f, 0.92f, 1.0f}, positions[] = {0.0f, 0.3f, 0.6f, 1.0f};
         shade.SetBlend(factors, positions, 4);

@@ -249,6 +249,7 @@ private:
     HWND tilePlayBtn_ = nullptr;
     int tilePlayGame_ = -1, tilePlayAction_ = -1;
     void placeTilePlay();
+    void roundCorners(HWND button);
     HWND heroPlayBtn_ = nullptr;
     int heroAction_ = -1;
     int heroLead(int gameIndex) const;
@@ -295,8 +296,11 @@ private:
         RECT gridBar{};           // the grid's scroll bar
         std::vector<HWND> hidden;
         bool layoutLater = false;  // something changed while it ran
+        // The same picture moves a game's page in (1) or the library back (-1); 0 is the opening entrance.
+        int page = 0;
+        HWND focus = nullptr;  // what had the keyboard as the picture was taken
     };
-    void startIntro();
+    void startIntro(int page = 0);
     void endIntro();
     void paintIntro(Gdiplus::Graphics& g);
     std::unique_ptr<Intro> intro_;
