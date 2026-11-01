@@ -392,13 +392,13 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
 
     if (a.list && a.json) {
         // As the window lists them: the website's copy from the last run adds its games and fills gaps.
+        std::vector<SiteGame> siteList;
         if (!cfg.downloads.site.empty() && !getenv("FL_NO_SITE")) {
-            std::vector<SiteGame> siteList;
             SiteCache cached;
             if (loadSiteCache(fs::join(lib.dataDir(), L"site.json"), cached) && parseSite(cached.raw, siteList))
                 mergeSite(lr.config, siteList, fs::join(lib.dataDir(), L"covers"));
         }
-        out(widen(libraryJson(cfg, lib, user)) + L"\n");
+        out(widen(libraryJson(cfg, lib, user, &siteList)) + L"\n");
         return 0;
     }
     if (a.list) {

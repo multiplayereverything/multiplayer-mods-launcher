@@ -8,12 +8,15 @@
 #include "core/library.h"
 #include "core/rooms.h"
 #include "core/settings.h"
+#include "core/site.h"
 
 namespace fl {
 
 // The players found, the categories, every game with each action's state, the UI texts and the user's stats.
-// Covers built into the exe are written under the data folder so the caller can show them.
-std::string libraryJson(const Config& cfg, const Library& lib, const UserData& user);
+// Covers built into the exe are written under the data folder so the caller can show them. With `site`, each game
+// also carries the website's grade, version and what stays in sync.
+std::string libraryJson(const Config& cfg, const Library& lib, const UserData& user,
+                        const std::vector<SiteGame>* site = nullptr);
 
 struct ModReport {
     std::string id;

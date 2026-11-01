@@ -6,6 +6,7 @@
 #include "core/fs.h"
 #include "core/json.h"
 #include "core/mod/spec.h"
+#include "core/site.h"
 #include "core/strings.h"
 
 namespace fl {
@@ -72,7 +73,7 @@ void coopFlags(const ActionSpec& a, json::Value& o) {
 
 }  // namespace
 
-std::string libraryJson(const Config& cfg, const Library& lib, const UserData& user) {
+std::string libraryJson(const Config& cfg, const Library& lib, const UserData& user, const std::vector<SiteGame>* site) {
     json::Value root = json::Value::object();
     root.set("version", 1);
     root.set("configDir", str(cfg.configDir));
@@ -181,6 +182,19 @@ std::string libraryJson(const Config& cfg, const Library& lib, const UserData& u
             acts.push(std::move(ao));
         }
         o.set("actions", std::move(acts));
+        // What the website says: the grade chip, the facts line and the "in sync" dots of the details panel.
+        if (const SiteGame* sg = site ? findSite(*site, g.siteId, g.id, g.onlineId) : nullptr) {
+            json::Value so = json::Value::object();
+            so.set("status", sg->status);
+            so.set("quality", sg->quality);
+            so.set("version", str(sg->version));
+            so.set("updated", str(sg->updated));
+            so.set("connect", str(sg->connect));
+            json::Value synced = json::Value::object();
+            for (const auto& [k, v] : sg->synced) synced.set(k, v);
+            so.set("synced", std::move(synced));
+            o.set("site", std::move(so));
+        }
         games.push(std::move(o));
     }
     root.set("games", std::move(games));
