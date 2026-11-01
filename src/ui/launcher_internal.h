@@ -84,6 +84,7 @@ enum : int {
     kIdLocate,
     kIdFolder,
     kIdAbout,
+    kIdHero,
     kIdGuideBack,
     kIdGuideLink0,
     kIdGuideLink1,
@@ -129,7 +130,7 @@ constexpr wchar_t kToastClass[] = L"MultiplayerEverythingLauncherToast";
 constexpr ULONGLONG kToastMs = 4000;
 
 // 96-DPI layout units.
-constexpr int kSidebarW = 228, kDetailW = 360, kDetailNarrowW = 300, kTopH = 68, kStatusH = 32, kPad = 20;
+constexpr int kSidebarW = 244, kDetailW = 360, kDetailNarrowW = 300, kTopH = 68, kStatusH = 32, kPad = 20;
 constexpr int kCardMinW = 196, kGap = 16, kNarrowBelow = 900;
 
 class Buffer {

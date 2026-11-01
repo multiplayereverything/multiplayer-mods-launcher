@@ -55,6 +55,87 @@ std::wstring Launcher::stateText(int gi, Color& color) const {
     return cfg_.t("status.noSwf");
 }
 
+void Launcher::ensureImage(int gi) {
+    if (imageTried_[gi]) return;
+    imageTried_[gi] = true;
+    const GameSpec& g = cfg_.games[gi];
+    if (g.image.empty()) return;
+    std::wstring rel = lib_.vars().expand(g.image);
+    std::wstring path = fs::isAbsolute(rel) ? rel : fs::join(cfg_.configDir, rel);
+    std::string bytes;
+    if (!fs::isFile(path) && !fs::isAbsolute(rel) && readEmbedded(rel, bytes)) images_[gi] = loadImageBytes(bytes);
+    else images_[gi] = loadImageFile(path);
+}
+
+int Launcher::heroCandidate() const {
+    int best = -1;
+    int64_t when = 0;
+    for (size_t i = 0; i < cfg_.games.size(); ++i) {
+        if (cfg_.games[i].comingSoon) continue;
+        const GameStats* st = user_.find(cfg_.games[i].id);
+        if (st && st->lastPlayed > when) {
+            when = st->lastPlayed;
+            best = static_cast<int>(i);
+        }
+    }
+    return best;
+}
+
+// Shown over the plain grid only: not on the Rooms or Guide pages, not while searching, not in the narrow layout.
+bool Launcher::heroWanted() const {
+    return !isNarrow() && !roomsPage() && !guidePage() && GetWindowTextLengthW(search_) == 0 && heroCandidate() >= 0;
+}
+
+void Launcher::paintHero(Graphics& g) {
+    if (IsRectEmpty(&hero_) || heroGame_ < 0 || roomsPage() || guidePage()) return;
+    const Theme& t = theme_;
+    const GameSpec& game = cfg_.games[heroGame_];
+    int w = width(hero_), h = height(hero_);
+    RectF box = rf(hero_);
+    float radius = t.sf(14);
+    if (!heroBmp_ || heroBmpGame_ != heroGame_ || heroBmpW_ != w || heroBmpH_ != h) {
+        ensureImage(heroGame_);
+        if (images_[heroGame_]) {
+            heroBmp_ = std::make_unique<Bitmap>(w, h, PixelFormat32bppPARGB);
+            Graphics gg(heroBmp_.get());
+            gg.SetInterpolationMode(InterpolationModeHighQualityBicubic);
+            drawCover(gg, *images_[heroGame_], RectF(0, 0, static_cast<REAL>(w), static_cast<REAL>(h)), 0, true, game.imageFocus);
+        } else {
+            heroBmp_ = coverArt(displayName(game), game.color, game.colorEnd, w, h);
+        }
+        heroBmpGame_ = heroGame_;
+        heroBmpW_ = w;
+        heroBmpH_ = h;
+    }
+    GraphicsPath path;
+    roundRectPath(path, box, radius);
+    GraphicsState saved = g.Save();
+    g.SetClip(&path, CombineModeIntersect);
+    g.DrawImage(heroBmp_.get(), box.X, box.Y, box.Width, box.Height);
+    // The left side darkens so the title keeps its contrast over any picture.
+    const Color& sb = t.c.sidebar;
+    LinearGradientBrush shade(PointF(box.X, 0), PointF(box.X + box.Width, 0), gc(Color{sb.r, sb.g, sb.b, 238}),
+                              gc(Color{sb.r, sb.g, sb.b, 0}));
+    g.FillRectangle(&shade, box);
+    g.Restore(saved);
+    strokeRound(g, box, radius, t.c.border, t.sf(1));
+
+    int x = hero_.left + t.s(24);
+    HDC mdc = g.GetHDC();
+    std::wstring chip = cfg_.t("hero.continue");
+    int cw = textWidth(mdc, t.tiny, chip) + t.s(16);
+    g.ReleaseHDC(mdc);
+    RECT chipR{x, hero_.top + t.s(16), x + cw, hero_.top + t.s(16) + t.s(20)};
+    fillRound(g, rf(chipR), t.sf(10), Color{sb.r, sb.g, sb.b, 225});
+    drawText(g, chip, chipR, t.tiny, t.c.sidebarText, DT_SINGLELINE | DT_CENTER | DT_VCENTER);
+    const GameStats* st = user_.find(game.id);
+    RECT whenR{chipR.right + t.s(10), chipR.top, hero_.right - t.s(24), chipR.bottom};
+    drawText(g, cfg_.t("hero.played", {{L"WHEN", formatAgo(st ? st->lastPlayed : 0)}}), whenR, t.caption, t.c.text,
+             DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
+    RECT nameR{x, chipR.bottom + t.s(8), hero_.left + w * 6 / 10, chipR.bottom + t.s(8) + t.s(40)};
+    drawText(g, displayName(game), nameR, t.title, t.c.text, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
+}
+
 Bitmap* Launcher::art(int gi, int w, int h, bool detail) {
     auto key = std::make_pair(gi, detail);
     auto it = artCache_.find(key);
@@ -62,16 +143,7 @@ Bitmap* Launcher::art(int gi, int w, int h, bool detail) {
         static_cast<int>(it->second->GetHeight()) == h)
         return it->second.get();
     const GameSpec& g = cfg_.games[gi];
-    if (!imageTried_[gi]) {
-        imageTried_[gi] = true;
-        if (!g.image.empty()) {
-            std::wstring rel = lib_.vars().expand(g.image);
-            std::wstring path = fs::isAbsolute(rel) ? rel : fs::join(cfg_.configDir, rel);
-            std::string bytes;
-            if (!fs::isFile(path) && !fs::isAbsolute(rel) && readEmbedded(rel, bytes)) images_[gi] = loadImageBytes(bytes);
-            else images_[gi] = loadImageFile(path);
-        }
-    }
+    ensureImage(gi);
     std::unique_ptr<Bitmap> bmp;
     if (images_[gi]) {
         // Pre-scale once so painting is a 1:1 blit (smooth scrolling).
@@ -115,6 +187,7 @@ void Launcher::paint(HDC dc, const RECT& dirty) {
         RECT icon{searchBox_.left + t.s(10), searchBox_.top, searchBox_.left + t.s(30), searchBox_.bottom};
         drawText(g, L"\u2315", icon, t.body, t.c.textMuted, DT_SINGLELINE | DT_VCENTER | DT_LEFT);
 
+        paintHero(g);
         if (roomsPage()) {
             paintRoomsPage(g);
         } else if (guidePage()) {
@@ -299,7 +372,7 @@ void Launcher::drawCard(HDC dc, int gi, RECT tile, bool selected, bool focused) 
     // Under the mouse the card rises a little and takes its game's color on the edge.
     float lift = motion_ ? (lift_.count(gi) ? lift_[gi] : 0.0f) : (hover ? 1.0f : 0.0f);
     OffsetRect(&c, 0, -static_cast<int>(t.s(3) * lift + 0.5f));
-    float radius = t.sf(8);
+    float radius = t.sf(12);
     fillRound(g, rf(c), radius, hover || selected ? t.c.surfaceHover : t.c.surface);
     int artH = static_cast<int>(width(c) * 0.5625);
     RECT artR{c.left, c.top, c.right, c.top + artH};

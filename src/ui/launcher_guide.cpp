@@ -31,6 +31,7 @@ void Launcher::openGuide(int gi) {
     guide_ = buildGuide(cfg_, cfg_.games[gi], siteOf(gi));
     guideScroll_ = 0;
     ShowWindow(grid_, SW_HIDE);
+    layoutHero();
     layoutGuidePage();
     InvalidateRect(hwnd_, &gridRc_, FALSE);
     if (guideBack_) SetFocus(guideBack_);
@@ -41,6 +42,8 @@ void Launcher::closeGuide() {
     guideGame_ = -1;
     guide_ = {};
     guideRows_.clear();
+    layoutHero();
+    layoutGrid();
     layoutGuidePage();
     ShowWindow(grid_, visible_.empty() || roomsPage() ? SW_HIDE : SW_SHOW);
     InvalidateRect(hwnd_, &gridRc_, FALSE);

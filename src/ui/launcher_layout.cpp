@@ -76,14 +76,31 @@ void Launcher::relayout() {
     ReleaseDC(hwnd_, dc);
     MoveWindow(search_, searchBox_.left + t.s(30), searchBox_.top + (boxH - lineH) / 2, width(searchBox_) - t.s(40),
                lineH, TRUE);
-    MoveWindow(grid_, gridRc_.left + t.s(kPad) - t.s(kGap) / 2, gridRc_.top,
-               width(gridRc_) - t.s(kPad) * 2 + t.s(kGap), height(gridRc_), TRUE);
+    layoutHero();
     layoutGrid();
     layoutRoomsPage();
     layoutGuidePage();
     layoutDetail();
     layoutToast();
     InvalidateRect(hwnd_, nullptr, FALSE);
+}
+
+// The banner takes the top of the grid's area when it is wanted; the grid takes what is left.
+void Launcher::layoutHero() {
+    const Theme& t = theme_;
+    gridRc_ = {top_.left, top_.bottom, top_.right, status_.top};
+    heroGame_ = heroWanted() ? heroCandidate() : -1;
+    hero_ = {};
+    if (heroGame_ >= 0) {
+        hero_ = {gridRc_.left + t.s(kPad), gridRc_.top, gridRc_.right - t.s(kPad), gridRc_.top + t.s(150)};
+        gridRc_.top = hero_.bottom + t.s(12);
+        int bh = t.s(34);
+        MoveWindow(heroBtn_, hero_.left + t.s(24), hero_.bottom - t.s(16) - bh, t.s(104), bh, TRUE);
+        SetWindowTextW(heroBtn_, cfg_.t("hero.open").c_str());
+    }
+    ShowWindow(heroBtn_, heroGame_ >= 0 ? SW_SHOW : SW_HIDE);
+    MoveWindow(grid_, gridRc_.left + t.s(kPad) - t.s(kGap) / 2, gridRc_.top, width(gridRc_) - t.s(kPad) * 2 + t.s(kGap),
+               height(gridRc_), TRUE);
 }
 
 void Launcher::layoutGrid() {

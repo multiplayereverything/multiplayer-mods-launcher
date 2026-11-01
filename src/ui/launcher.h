@@ -148,6 +148,12 @@ private:
     std::wstring categoryText(const GameSpec& game) const;
     std::wstring statsText(const GameStats* st) const;
     Gdiplus::Bitmap* art(int gameIndex, int w, int h, bool detail);
+    void ensureImage(int gameIndex);
+    void layoutHero();
+    // The banner above the grid: the game played last, with a button that opens it (Quiver's "Continue playing").
+    int heroCandidate() const;
+    bool heroWanted() const;
+    void paintHero(Gdiplus::Graphics& g);
 
     // `flashvars` are handed to the game when the player supports it (flashvarArg).
     bool runAction(int gameIndex, size_t actionIndex,
@@ -364,6 +370,11 @@ private:
          playerCombo_ = nullptr, saveCombo_ = nullptr;
     std::map<std::string, int> coopSaveChoice_;  // game id -> 0 continue, 1 solo save, 2 new game
     HWND aboutBtn_ = nullptr;
+    HWND heroBtn_ = nullptr;
+    RECT hero_{};  // empty when the banner is not shown
+    int heroGame_ = -1;
+    std::unique_ptr<Gdiplus::Bitmap> heroBmp_;
+    int heroBmpGame_ = -1, heroBmpW_ = 0, heroBmpH_ = 0;
     HWND favBtn_ = nullptr, locateBtn_ = nullptr, folderBtn_ = nullptr, getPlayerBtn_ = nullptr,
          stopHostBtn_ = nullptr, copyBtn_ = nullptr;
     std::vector<HWND> actionBtns_;

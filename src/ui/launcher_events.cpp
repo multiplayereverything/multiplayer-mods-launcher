@@ -251,7 +251,13 @@ LRESULT Launcher::handle(UINT m, WPARAM w, LPARAM l) {
                 else if (id == kIdFav) toggleFavorite();
                 else if (id == kIdLocate) locateFile();
                 else if (id == kIdFolder) openFolder();
-                else if (id == kIdAbout) {
+                else if (id == kIdHero) {
+                    if (heroGame_ >= 0) {
+                        select(heroGame_);
+                        auto at = std::find(visible_.begin(), visible_.end(), heroGame_);
+                        if (at != visible_.end()) ListView_EnsureVisible(grid_, static_cast<int>(at - visible_.begin()), FALSE);
+                    }
+                } else if (id == kIdAbout) {
                     if (guidePage() && guideGame_ == selected_) closeGuide();
                     else openGuide(selected_);
                 } else if (id == kIdGuideBack) closeGuide();

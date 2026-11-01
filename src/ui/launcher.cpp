@@ -348,6 +348,7 @@ void Launcher::createControls() {
     favBtn_ = makeButton(kIdFav, BtnStyle::Secondary);
     folderBtn_ = makeButton(kIdFolder, BtnStyle::Secondary);
     aboutBtn_ = makeButton(kIdAbout, BtnStyle::Secondary);
+    heroBtn_ = makeButton(kIdHero, BtnStyle::Secondary);
     guideBack_ = makeButton(kIdGuideBack, BtnStyle::Secondary);
     for (int i = 0; i < static_cast<int>(kGuideMaxLinks); ++i) guideLinkBtns_.push_back(makeButton(kIdGuideLink0 + i, BtnStyle::Secondary));
     locateBtn_ = makeButton(kIdLocate, BtnStyle::Secondary);
@@ -557,6 +558,14 @@ void Launcher::rebuildGrid() {
     SendMessageW(grid_, WM_SETREDRAW, TRUE, 0);
     suppressSelect_ = false;
     ShowWindow(grid_, visible_.empty() || roomsPage() || guidePage() ? SW_HIDE : SW_SHOW);
+    // The banner comes and goes with the page, the search and the last game played.
+    if ((heroWanted() ? heroCandidate() : -1) != heroGame_) {
+        layoutHero();
+        layoutGrid();
+        layoutRoomsPage();
+        layoutGuidePage();
+        InvalidateRect(hwnd_, nullptr, FALSE);
+    }
     hoverItem_ = -1;
     pageScroll_ = 0;
     layoutRoomsPage();
