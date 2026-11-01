@@ -220,6 +220,13 @@ int Launcher::run(const LauncherOptions& opt) {
                 else joinByCode(pageCodeEdit_, -1);
                 continue;
             }
+            // Enter on a card opens its page, where its buttons are (the library itself is only the cards).
+            if (msg.wParam == VK_RETURN && msg.hwnd == grid_) {
+                int item = ListView_GetNextItem(grid_, -1, LVNI_SELECTED);
+                if (item >= 0 && item < static_cast<int>(visible_.size())) openGuide(visible_[item]);
+                else if (selected_ >= 0) openGuide(selected_);
+                continue;
+            }
             if (msg.wParam == VK_RETURN && msg.hwnd == search_) {
                 if (!visible_.empty()) {
                     SetFocus(grid_);

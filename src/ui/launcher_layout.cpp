@@ -39,7 +39,8 @@ void Launcher::relayout() {
     const Theme& t = theme_;
     bool narrowMode = isNarrow();
     int barH = t.s(kTopBarH);
-    int dw = std::min<int>(t.s(narrowMode ? kDetailNarrowW : kDetailW), cr.right / 2);
+    // The details panel belongs to a game's page; the library and Rooms pages are full width.
+    int dw = guidePage() ? std::min<int>(t.s(narrowMode ? kDetailNarrowW : kDetailW), cr.right / 2) : 0;
     // A bar across the top (brand, Library and Rooms, Settings); under it the library on the left and the
     // details panel on the right. The categories moved from the sidebar into the toolbar's dropdown.
     topBar_ = {0, 0, cr.right, barH};
@@ -304,20 +305,13 @@ void Launcher::layoutDetail() {
         SetWindowTextW(favBtn_, cfg_.t(st && st->favorite ? "button.unfavorite" : "button.favorite").c_str());
         SetWindowTextW(folderBtn_, cfg_.t("button.folder").c_str());
         int half = (w - gap) / 2;
-        // Three small buttons share the row: Favorite, About (the whole description), Open folder.
-        // Each is as wide as its own label needs; what is left over is shared out evenly.
-        SetWindowTextW(aboutBtn_, cfg_.t("button.guide").c_str());
-        int want[3];
-        HWND row[3] = {favBtn_, aboutBtn_, folderBtn_};
-        for (int i = 0; i < 3; ++i) want[i] = textWidth(dc, t.button, windowText(row[i])) + t.s(36);
-        int spare = std::max(0, w - 2 * gap - (want[0] + want[1] + want[2])) / 3;
+        // Favorite and Open folder share the row (the guide is the page the panel sits on, so no Guide button).
         int bx = x;
-        for (int i = 0; i < 3; ++i) {
-            int bw = i == 2 ? x + w - bx : want[i] + spare;
-            MoveWindow(row[i], bx, bottom - rowH, bw, rowH, TRUE);
+        for (HWND b : {favBtn_, folderBtn_}) {
+            int bw = b == folderBtn_ ? x + w - bx : half;
+            MoveWindow(b, bx, bottom - rowH, bw, rowH, TRUE);
             bx += bw + gap;
         }
-        shown.insert(aboutBtn_);
         (void)half;
         shown.insert(favBtn_);
         shown.insert(folderBtn_);
@@ -505,7 +499,8 @@ void Launcher::layoutDetail() {
     int siteH = siteBlockHeight(dc, w, siteInfo, g.comingSoon);
     int headerH = titleH + t.s(4) + metaH + t.s(10) + (slotsH ? slotsH + t.s(12) : 0) + t.s(24) + t.s(12) +
                   (tabs ? tabsH + t.s(12) : 0) + descMin + (siteH > 0 ? siteH + t.s(12) : 0);  // the art shrinks first
-    int artH = std::min(static_cast<int>(w * 0.5625), t.s(200));
+    // On the game's page its header shows the art, so the panel leaves it out.
+    int artH = guidePage() ? 0 : std::min(static_cast<int>(w * 0.5625), t.s(200));
     int room = headerBottom - t.s(8) - y - headerH - t.s(16);
     if (room < artH) artH = room >= t.s(72) ? room : 0;
     if (artH > 0) {

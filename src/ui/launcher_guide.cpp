@@ -27,6 +27,8 @@ bool Launcher::guidePage() const { return guideGame_ >= 0 && guideGame_ < static
 
 void Launcher::openGuide(int gi) {
     if (gi < 0 || gi >= static_cast<int>(cfg_.games.size())) return;
+    if (guideGame_ == gi) return;
+    if (selected_ != gi) select(gi);  // the page's details panel is the selected game's
     guideGame_ = gi;
     overview_ = buildGuide(cfg_, cfg_.games[gi], siteOf(gi));
     guide_ = overview_;

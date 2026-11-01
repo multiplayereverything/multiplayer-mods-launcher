@@ -206,9 +206,13 @@ LRESULT Launcher::handle(UINT m, WPARAM w, LPARAM l) {
                 auto* nm = reinterpret_cast<NMLISTVIEW*>(l);
                 if ((nm->uChanged & LVIF_STATE) && (nm->uNewState & LVIS_SELECTED) && !(nm->uOldState & LVIS_SELECTED))
                     select(static_cast<int>(nm->lParam));
-            } else if (hdr->code == LVN_ITEMACTIVATE) {
+            } else if (hdr->code == NM_CLICK || hdr->code == LVN_ITEMACTIVATE) {
+                // A click on a card opens its page: Play, Host and the rest live there.
                 auto* nm = reinterpret_cast<NMITEMACTIVATE*>(l);
-                if (nm->iItem >= 0 && nm->iItem < static_cast<int>(visible_.size())) runAction(visible_[nm->iItem], 0);
+                if (nm->iItem >= 0 && nm->iItem < static_cast<int>(visible_.size())) {
+                    select(visible_[nm->iItem]);
+                    openGuide(visible_[nm->iItem]);
+                }
             }
             break;
         }

@@ -86,6 +86,15 @@ public static class Acc {
 }
 '@
 
+# The library is only the cards; a game's buttons live on its page, which Enter on the selected card opens.
+function OpenPage([IntPtr]$top) {
+  $script:pageGrid = $null
+  WaitFor { $script:pageGrid = [Acc]::Controls($top) | Where-Object { $_.Class -eq 'SysListView32' } | Select-Object -First 1; $null -ne $script:pageGrid } 10000 | Out-Null
+  if (-not $script:pageGrid) { Check $false 'the game grid is found'; return }
+  [Acc]::PostMessage($script:pageGrid.Hwnd, 0x0100, [IntPtr]0x0D, [IntPtr]::Zero) | Out-Null  # WM_KEYDOWN, VK_RETURN
+  Check (WaitFor { $null -ne ([Acc]::Controls($top) | Where-Object { $_.Name -eq 'Back to games' } | Select-Object -First 1) }) 'Enter on a card opens its page'
+}
+
 $fake = Join-Path (Split-Path $Launcher) 'launcher_tests.exe'
 $work = Join-Path $env:TEMP "fl-e2e-$PID"
 Remove-Item -Recurse -Force $work -ErrorAction SilentlyContinue
@@ -314,6 +323,7 @@ $dlHwnd = [IntPtr]::Zero
 WaitFor { $dlwin.Refresh(); $dlwin.MainWindowHandle -ne 0 } 10000 | Out-Null
 $btn = $null
 if ($dlwin.MainWindowHandle -ne 0) {
+  OpenPage $dlwin.MainWindowHandle
   WaitFor { $script:btn = [Acc]::Controls($dlwin.MainWindowHandle) | Where-Object { $_.Name -like 'Download game files*' } | Select-Object -First 1; $null -ne $script:btn } 10000 | Out-Null
 }
 Check ($null -ne $btn) "window offers Download game files ($($btn.Name))"
@@ -374,6 +384,7 @@ try {
   $h = $rw.MainWindowHandle
   $join = $null; $full = $null; $roomsTab = $null
   $upd = $null
+  OpenPage $h
   WaitFor { $script:upd = [Acc]::Controls($h) | Where-Object { $_.Name -like 'Update game files*' } | Select-Object -First 1; $null -ne $script:upd } 10000 | Out-Null
   Check ($null -ne $upd) 'a newer build in the catalog shows Update game files'
   # Rooms live under the details panel's Rooms tab, named with their count.
@@ -577,6 +588,7 @@ $mwin = Start-Process -FilePath $Launcher -ArgumentList @('--config', "`"$work\m
 try {
   WaitFor { $mwin.Refresh(); $mwin.MainWindowHandle -ne 0 } 10000 | Out-Null
   $mh = $mwin.MainWindowHandle
+  OpenPage $mh
   $btn = $null
   WaitFor { $script:btn = [Acc]::Controls($mh) | Where-Object { $_.Name -eq 'Install Fake Game' } | Select-Object -First 1; $null -ne $script:btn } 10000 | Out-Null
   Check ($null -ne $btn) 'the window offers Install for a mod whose game it found'
@@ -625,6 +637,7 @@ WaitFor { $gui.Refresh(); $gui.MainWindowHandle -ne 0 } 10000 | Out-Null
 $win = $gui.MainWindowHandle
 Check ($win -ne [IntPtr]::Zero) 'window opens'
 if ($win -ne [IntPtr]::Zero) {
+  OpenPage $win
   $play = Ctl $win 'Play'
   Check ($null -ne $play) 'Play button has an accessible name'
   if ($play) {
@@ -644,7 +657,10 @@ if ($win -ne [IntPtr]::Zero) {
     }
   } else { Check $false 'Host online button found' }
 
-  Check ((GridCount $win) -eq 2) 'grid lists both games'
+  $back = Ctl $win 'Back to games'
+  if ($back) { [Acc]::Do($back.Hwnd) }
+  Check (WaitFor { $null -eq (Ctl $win 'Back to games') }) 'Back to games returns to the library'
+  Check (WaitFor { (GridCount $win) -eq 2 }) 'grid lists both games'
   $search = OfClass $win 'Edit'
   if ($search) {
     [Acc]::SendMessage($search.Hwnd, 0x000C, [IntPtr]::Zero, 'missing') | Out-Null  # WM_SETTEXT
@@ -729,6 +745,7 @@ try {
   }
   WaitFor { $lw.Refresh(); $lw.MainWindowHandle -ne 0 } 10000 | Out-Null
   $lh = $lw.MainWindowHandle
+  OpenPage $lh
   $playOnline = $null
   WaitFor { $script:playOnline = Ctl $lh 'Play online'; $null -ne $script:playOnline } | Out-Null
   if ($playOnline) { [Acc]::Do($playOnline.Hwnd) }
@@ -868,6 +885,7 @@ $ww = Start-Process -FilePath $Launcher -ArgumentList @('--config', "`"$work\web
 try {
   WaitFor { $ww.Refresh(); $ww.MainWindowHandle -ne 0 } 10000 | Out-Null
   $wh = $ww.MainWindowHandle
+  OpenPage $wh
   $hostCoop = $null
   WaitFor { $script:hostCoop = Ctl $wh 'Host co-op'; $null -ne $script:hostCoop } | Out-Null
   if ($hostCoop) {
