@@ -16,6 +16,7 @@
 
 #include "core/config.h"
 #include "core/discord.h"
+#include "core/game_options.h"
 #include "core/guide.h"
 #include "core/install.h"
 #include "core/library.h"
@@ -54,6 +55,8 @@ public:
     struct HeadlessOptions {
         // ${CODE} / ${ADDRESS} (--join, --address); a code also picks the action's joinArgs.
         std::wstring joinCode, address;
+        int coopSave = 0;  // the host's co-op save: 0 continue, 1 from the solo save, 2 new game
+        bool wait = false;  // stay until the game exits (counts its time), not only while hosting
         std::vector<std::pair<std::wstring, std::wstring>> flashVars;  // more values for the game (the lobby's room)
         // While a host action keeps the relay up: a JSON line each time who is connected changes.
         std::function<void(const std::string&)> report;
@@ -272,6 +275,7 @@ private:
     // player's choices are kept per game in settings.json.
     bool playerAtLeast(const std::wstring& version) const;
     const std::vector<Setting>& settingsFor(const GameSpec& g) const;
+    GameOptions gameOptions() const { return {cfg_, lib_, user_, catalogSettings_}; }
     std::string settingValue(const GameSpec& g, const Setting& s) const;  // "1"/"0" or the choice id
     std::vector<std::wstring> settingArgs(const GameSpec& g, const std::vector<std::wstring>& actionArgs) const;
     void onSettingChanged(int index, bool combo);

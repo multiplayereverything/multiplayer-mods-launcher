@@ -6,6 +6,7 @@
 #include "core/fs.h"
 #include "core/json.h"
 #include "core/mod/spec.h"
+#include "core/game_options.h"
 #include "core/site.h"
 #include "core/strings.h"
 
@@ -101,9 +102,14 @@ std::string libraryJson(const Config& cfg, const Library& lib, const UserData& u
         o.set("found", p.found());
         o.set("exe", str(p.exe));
         o.set("installable", p.spec->install.enabled());
+        o.set("version", str(installedPlayerVersion(p.exe)));  // the release the launcher installed, if it did
+        o.set("website", str(p.spec->website));
         players.push(std::move(o));
     }
     root.set("players", std::move(players));
+    root.set("theme", str(cfg.branding.theme));
+    root.set("roomsServer", str(cfg.rooms.server));  // where the status bar measures its ping
+    root.set("discord", !cfg.discord.clientId.empty());
 
     json::Value cats = json::Value::array();
     for (const auto& c : cfg.categories) {
@@ -116,6 +122,8 @@ std::string libraryJson(const Config& cfg, const Library& lib, const UserData& u
     }
     root.set("categories", std::move(cats));
 
+    auto catalogSettings = cachedCatalogSettings(lib.dataDir());
+    GameOptions options(cfg, lib, user, catalogSettings);
     json::Value games = json::Value::array();
     for (const auto& g : cfg.games) {
         json::Value o = json::Value::object();
@@ -132,6 +140,40 @@ std::string libraryJson(const Config& cfg, const Library& lib, const UserData& u
         o.set("joinAction", g.joinAction);
         o.set("comingSoon", g.comingSoon);
         o.set("lobby", g.lobby.enabled && !g.mod);  // played online through the launcher's lobby (--lobby-session)
+        // The game's own settings and, for Ruffle Together co-op, which save the host starts from.
+        json::Value sets = json::Value::array();
+        if (!g.mod && !g.comingSoon) {
+            for (const auto& st : options.settingsFor(g)) {
+                json::Value so = json::Value::object();
+                so.set("id", st.id);
+                so.set("type", st.type);
+                so.set("scope", st.scope);
+                so.set("label", str(st.label));
+                so.set("since", str(st.since));
+                so.set("enabled", options.playerAtLeast(st.since));
+                so.set("value", options.settingValue(g, st));
+                json::Value ch = json::Value::array();
+                for (const auto& c : st.choices) {
+                    json::Value co = json::Value::object();
+                    co.set("id", c.id);
+                    co.set("label", str(c.label));
+                    ch.push(std::move(co));
+                }
+                so.set("choices", std::move(ch));
+                sets.push(std::move(so));
+            }
+        }
+        o.set("settings", std::move(sets));
+        if (!g.mod && coopSaveGame(g) && options.coopSavePlayer()) {
+            json::Value cs = json::Value::object();
+            cs.set("supported", options.coopSaveSupported());
+            cs.set("since", str(options.coopSavePlayer()->coopSaveSince));
+            std::wstring f = options.coopSaveFile(g);
+            cs.set("progress", !f.empty() && fs::isFile(f));
+            o.set("coopSave", std::move(cs));
+        }
+        const GameStats* gs = user.find(g.id);
+        o.set("player", gs ? gs->player : std::string());  // the player picked for this game, empty = automatic
         json::Value gc = json::Value::array();
         for (const auto& c : g.categories) gc.push(c);
         o.set("categories", std::move(gc));
@@ -190,6 +232,12 @@ std::string libraryJson(const Config& cfg, const Library& lib, const UserData& u
             so.set("version", str(sg->version));
             so.set("updated", str(sg->updated));
             so.set("connect", str(sg->connect));
+            so.set("community", sg->community);
+            so.set("reviewed", sg->reviewed);
+            so.set("author", str(sg->author));
+            so.set("authorUrl", str(sg->authorUrl));
+            so.set("repo", str(sg->repo));
+            so.set("maintainer", str(sg->maintainer));
             json::Value synced = json::Value::object();
             for (const auto& [k, v] : sg->synced) synced.set(k, v);
             so.set("synced", std::move(synced));

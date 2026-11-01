@@ -100,20 +100,8 @@ bool Launcher::runAction(int gi, size_t ai, const std::vector<std::pair<std::wst
             return false;
         }
     }
-    // The host's own choices: which co-op save to start from, and the game's host options. "Continue" needs no
-    // option, and a player that doesn't know an option would refuse to start, so those wait for their release.
-    if (coopSaveGame(g)) {
-        bool hosting = std::any_of(r.args.begin(), r.args.end(), [](const std::wstring& s) { return s.rfind(L"--coop-host", 0) == 0; });
-        int choice = coopSaveChoiceFor(g);
-        if (hosting && choice > 0 && coopSaveSupported()) {
-            r.args.push_back(coopSavePlayer()->coopSaveArg);
-            r.args.push_back(choice == 1 ? L"solo" : L"new");
-        }
-    }
-    {
-        std::vector<std::wstring> more = settingArgs(g, r.args);
-        r.args.insert(r.args.end(), more.begin(), more.end());
-    }
+    // The host's own choices: which co-op save to start from, and the game's host options.
+    gameOptions().addHostOptions(g, r.args, coopSaveChoiceFor(g));
     addFlashVars(r, flashvars);
     bool startedRelay = false;
     std::wstring warning;
@@ -904,69 +892,27 @@ void Launcher::onPlayerChoice() {
 }
 
 const PlayerSpec* Launcher::coopSavePlayer() const {
-    for (const auto& p : cfg_.players)
-        if (!p.coopSaveArg.empty()) return &p;
-    return nullptr;
+    return gameOptions().coopSavePlayer();
 }
 
 bool Launcher::coopSaveSupported() const {
-    const PlayerSpec* p = coopSavePlayer();
-    return p && playerAtLeast(p->coopSaveSince);
+    return gameOptions().coopSaveSupported();
 }
 
 bool Launcher::playerAtLeast(const std::wstring& version) const {
-    const PlayerSpec* p = coopSavePlayer();
-    const PlayerStatus* ps = p ? lib_.player(p->id) : nullptr;
-    if (!ps || !ps->found()) return false;
-    if (version.empty()) return true;
-    // The release tag the launcher wrote when it installed the player. A copy it didn't install has none.
-    std::string tag;
-    fs::readText(fs::join(fs::parent(ps->exe), kPlayerVersionFile), tag);
-    std::wstring have = widen(tag);
-    while (!have.empty() && (have.back() == L'\r' || have.back() == L'\n' || have.back() == L' ')) have.pop_back();
-    if (!have.empty() && (have[0] == L'v' || have[0] == L'V')) have.erase(0, 1);
-    return !have.empty() && compareVersions(have, version) >= 0;
+    return gameOptions().playerAtLeast(version);
 }
 
 const std::vector<Setting>& Launcher::settingsFor(const GameSpec& g) const {
-    auto it = catalogSettings_.find(g.id);
-    return it != catalogSettings_.end() && !it->second.empty() ? it->second : g.settings;
+    return gameOptions().settingsFor(g);
 }
 
 std::string Launcher::settingValue(const GameSpec& g, const Setting& s) const {
-    if (const GameStats* st = user_.find(g.id)) {
-        if (auto it = st->settings.find(s.id); it != st->settings.end()) {
-            if (s.type == "checkbox" && (it->second == "1" || it->second == "0")) return it->second;
-            // A choice the catalog has since removed falls back to the default.
-            if (s.type == "choice")
-                for (const auto& c : s.choices)
-                    if (c.id == it->second) return it->second;
-        }
-    }
-    if (s.type == "checkbox") return s.def == "on" ? "1" : "0";
-    for (const auto& c : s.choices)
-        if (c.id == s.def) return c.id;
-    return s.choices.empty() ? std::string() : s.choices.front().id;
+    return gameOptions().settingValue(g, s);
 }
 
 std::vector<std::wstring> Launcher::settingArgs(const GameSpec& g, const std::vector<std::wstring>& actionArgs) const {
-    auto starts = [&](const wchar_t* prefix) {
-        return std::any_of(actionArgs.begin(), actionArgs.end(), [&](const std::wstring& a) { return a.rfind(prefix, 0) == 0; });
-    };
-    bool hosting = starts(L"--coop-host"), joining = starts(L"--coop-join");
-    std::vector<std::wstring> out;
-    for (const auto& s : settingsFor(g)) {
-        if (!(s.scope == "all" || (s.scope == "host" && hosting) || (s.scope == "join" && joining))) continue;
-        if (!playerAtLeast(s.since)) continue;
-        std::string v = settingValue(g, s);
-        if (s.type == "checkbox") {
-            if (v == "1") out.insert(out.end(), s.args.begin(), s.args.end());
-        } else {
-            for (const auto& c : s.choices)
-                if (c.id == v) out.insert(out.end(), c.args.begin(), c.args.end());
-        }
-    }
-    return out;
+    return gameOptions().settingArgs(g, actionArgs);
 }
 
 void Launcher::onSettingChanged(int index, bool combo) {
@@ -988,14 +934,7 @@ void Launcher::onSettingChanged(int index, bool combo) {
 }
 
 std::wstring Launcher::coopSaveFile(const GameSpec& g) const {
-    // Ruffle Together keeps one co-op save per game file name.
-    for (const auto& a : g.actions) {
-        if (a.swf.empty()) continue;
-        std::wstring name = fs::fileName(fs::normalize(lib_.vars().expand(a.swf.front())));
-        if (name.empty()) continue;
-        return fs::join(lib_.vars().expand(L"${folder:LocalAppData}\\ruffle\\SharedObjects\\coop"), name + L".save");
-    }
-    return {};
+    return gameOptions().coopSaveFile(g);
 }
 
 int Launcher::coopSaveChoiceFor(const GameSpec& g) const {

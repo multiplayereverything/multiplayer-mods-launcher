@@ -21,6 +21,9 @@ struct Args {
     std::wstring lobby;  // --lobby setup|room: snapshot the lobby window
     bool json = false;   // --json: --list, --mods and --rooms print JSON for programs (the Tauri front end)
     std::wstring join, address;  // --join <code> / --address <ip:port> for --launch
+    std::wstring coopSave;       // --coop-save continue|solo|new for --launch: the host's co-op save
+    bool wait = false;           // --wait for --launch: stay until the game exits
+    bool updatePlayers = false;  // --update-players: bring installed players up to their newest release
     std::string lobbySession;    // --lobby-session <game>: the lobby over standard input and output (lobby_cli.h)
     std::wstring error;
 };

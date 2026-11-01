@@ -63,6 +63,9 @@ Args parseArgs(int argc, wchar_t** argv) {
         else if (k == L"--json") a.json = true;
         else if (k == L"--join") value(a.join);
         else if (k == L"--address") value(a.address);
+        else if (k == L"--coop-save") value(a.coopSave);
+        else if (k == L"--update-players") a.updatePlayers = true;
+        else if (k == L"--wait") a.wait = true;
         else if (k == L"--lobby-session") {
             value(tmp);
             a.lobbySession = narrow(tmp);
@@ -91,7 +94,10 @@ launcher.json next to the exe.
                          Host actions keep the relay running until the game exits.
     --join <code>        ...joining this room (the action's joinArgs, ${CODE})
     --address <ip:port>  ...connecting to this address (${ADDRESS})
-  --json                 With --list, --mods or --rooms: print JSON for programs
+    --wait               ...and stay until the game exits (counts its play time)
+    --coop-save <continue|solo|new>
+                         ...hosting a co-op game from this save (Ruffle Together)
+  --json                 With --list, --mods, --rooms or --update-players: print JSON
   --lobby-session <game> Run a game's lobby over standard input and output in JSON lines
                          (for a front end that draws its own lobby window)
   --relay <port>         Run only the netplay relay (a dedicated relay PC); Ctrl+C stops
@@ -105,8 +111,10 @@ launcher.json next to the exe.
     --select <game>      ...with this game selected
     --size <WxH>         ...at this window size in pixels
     --demo-host          ...with the selected game's relay running
-  --rooms <game>         List the open rooms for a game on the central server
+  --rooms <game|all>     List the open rooms for a game on the central server (all: every
+                         online game, with --json)
   --update               Install the newest launcher release now, if there is one
+  --update-players       Bring the players the launcher installed up to their newest release
   --mods                 List the PC game mods: game found, installed version, newest version
   --install-mod <id>     Install (or update) a PC game mod into its game's folder
   --repair-mod <id>      Put back missing or damaged files of an installed mod

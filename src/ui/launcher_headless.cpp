@@ -5,6 +5,7 @@
 #include <cwctype>
 #include <regex>
 
+#include "core/discord.h"
 #include "core/embedded.h"
 #include "core/fs.h"
 #include "core/json.h"
@@ -115,6 +116,9 @@ int Launcher::launchHeadless(const Config& cfg, Library& lib, UserData& user, co
                       L" and needs the launcher window.";
             return 3;
         }
+        // The host's save choice and the game's settings, as the window adds them.
+        auto catalogSettings = cachedCatalogSettings(lib.dataDir());
+        GameOptions(cfg, lib, user, catalogSettings).addHostOptions(game, r.args, opt.coopSave);
         FlashVars given = opt.flashVars;
         if (!joinCode.empty()) given.push_back({L"join", joinCode});
         addFlashVars(r, gameValues(action, user.playerName, given));
@@ -135,8 +139,18 @@ int Launcher::launchHeadless(const Config& cfg, Library& lib, UserData& user, co
         *opt.process = p.process;
         return 0;
     }
-    if (relay.running() || r.web) {  // the relay or the game's server must outlive the game
+    if (relay.running() || r.web || opt.wait) {  // the relay or the game's server must outlive the game
         ULONGLONG start = GetTickCount64();
+        // "Playing <game>" on the player's Discord profile while it runs, as the window shows it.
+        std::unique_ptr<DiscordPresence> presence;
+        if (!cfg.discord.clientId.empty() && !getenv("FL_NO_DISCORD")) {
+            presence = std::make_unique<DiscordPresence>(cfg.discord.clientId);
+            Presence pr;
+            pr.details = cfg.t("discord.playing", {{L"GAME", game.name}});
+            pr.state = !joinCode.empty() ? cfg.t("discord.room", {{L"CODE", joinCode}}) : action.label;
+            pr.start = unixNow();
+            presence->set(pr);
+        }
         if (opt.report && relay.running()) {
             // The hosting box's view: where friends connect, and who has.
             std::string last;

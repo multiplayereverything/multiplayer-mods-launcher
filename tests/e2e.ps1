@@ -140,7 +140,15 @@ if ($lj) {
   Check ((($demo.actions | Where-Object id -eq 'play').state -eq 'ready') -and (($miss.actions | Where-Object id -eq 'play').state -eq 'noFile')) '--list --json gives each action its state'
   Check (($demo.actions | Where-Object id -eq 'host').relayPort -eq $port) '--list --json tells a host action from its relay'
   Check ($lj.text.'status.ready' -eq 'Ready' -and $null -ne $lj.user -and $lj.players[0].id -eq 'fake') '--list --json carries the texts, the user and the players'
+  Check ($null -ne $demo.settings -and $demo.player -eq '' -and $null -ne $lj.roomsServer) '--list --json carries each game''s settings, its player and the rooms server'
 }
+$r = Run @('--launch', 'demo', '--coop-save', 'sideways', '--config', "`"$work\launcher.json`"")
+Check ($r.Code -eq 3 -and $r.Out -match 'coop-save') '--coop-save refuses a choice it does not know'
+# --wait: the launcher stays until the game exits, so a front end knows it runs and its time is counted.
+$env:FL_FAKE_MS = '1500'
+$sw = [Diagnostics.Stopwatch]::StartNew()
+$r = Run @('--launch', 'demo', '--wait', '--config', "`"$work\launcher.json`"")
+Check ($r.Code -eq 0 -and $sw.ElapsedMilliseconds -ge 1400) "--launch --wait returns when the game exits ($($sw.ElapsedMilliseconds) ms)"
 
 $env:FL_FAKE_MS = '0'
 Remove-Item "$work\args.txt" -ErrorAction SilentlyContinue
@@ -385,6 +393,9 @@ Check ($r.Code -eq 0 -and $r.Out -match '2 open' -and $r.Out -match 'ABCDE\s+1/4
 $r = Run @('--rooms', 'demo2', '--json', '--config', "`"$work\rooms.json`"")
 $rj = try { $r.Out | ConvertFrom-Json } catch { $null }
 Check ($null -ne $rj -and @($rj.rooms).Count -eq 2 -and $rj.rooms[0].code -eq 'ABCDE' -and $rj.rooms[0].max -eq 4) '--rooms --json lists the rooms for programs'
+$r = Run @('--rooms', 'all', '--json', '--config', "`"$work\rooms.json`"")
+$ra = try { $r.Out | ConvertFrom-Json } catch { $null }
+Check ($null -ne $ra -and @($ra.games.demo2.rooms).Count -eq 2) '--rooms all --json lists every online game''s rooms in one call'
 # --join: a room code without the window (lower case is tidied the way the Join box does).
 Remove-Item "$work\args.txt" -ErrorAction SilentlyContinue
 $env:FL_FAKE_MS = '0'

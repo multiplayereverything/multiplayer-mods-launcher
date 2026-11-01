@@ -20,6 +20,7 @@ add_library(launcher_core STATIC
   src/core/discord.cpp
   src/core/embedded.cpp
   src/core/fs.cpp
+  src/core/game_options.cpp
   src/core/install.cpp
   src/core/json.cpp
   src/core/library.cpp

@@ -4,10 +4,14 @@
 #include "app/cli.h"
 #include "app/cli_json.h"
 #include "app/lobby_cli.h"
+
+#include <map>
+
 #include "core/config.h"
 #include "core/embedded.h"
 #include "core/fs.h"
 #include "core/install.h"
+#include "core/json.h"
 #include "core/library.h"
 #include "core/log.h"
 #include "core/mod/manager.h"
@@ -229,7 +233,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     Args a = parseArgs(argc, argv);
     LocalFree(argv);
     bool cliMode = a.help || a.version || a.list || a.validate || !a.launch.empty() || a.relayPort || !a.installPlayer.empty() ||
-                   !a.downloadGame.empty() || !a.rooms.empty() || a.update || a.mods || !a.installMod.empty() ||
+                   !a.downloadGame.empty() || !a.rooms.empty() || a.update || a.updatePlayers || a.mods || !a.installMod.empty() ||
                    !a.repairMod.empty() || !a.uninstallMod.empty() || !a.lobbySession.empty() || !a.error.empty();
     if (cliMode) setupConsole();
     if (!a.error.empty()) {
@@ -286,6 +290,32 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     fs::ensureDir(lib.vars().get(L"GAMES_DIR"), nullptr, nullptr);
     fs::ensureDir(lib.vars().get(L"PLAYERS_DIR"), nullptr, nullptr);
 
+    if (a.rooms == "all" && a.json) {
+        // Every online game's rooms in one call, as the window keeps its cards' room counts: each distinct online
+        // id is asked once.
+        std::wstring err;
+        std::wstring server = resolveRoomServer(cfg.rooms.servers, cfg.rooms.server, &err);
+        json::Value root = json::Value::object();
+        root.set("server", narrow(server));
+        json::Value games = json::Value::object();
+        std::map<std::string, std::string> asked;  // online id -> its answer as JSON
+        for (const auto& g : cfg.games) {
+            if (g.onlineId.empty() || g.comingSoon) continue;
+            auto it = asked.find(g.onlineId);
+            if (it == asked.end()) {
+                std::vector<RoomInfo> rooms;
+                std::wstring e;
+                bool rejected = false;
+                bool listed = !server.empty() && listRooms(server, g.onlineId, rooms, e, 4000, &rejected);
+                it = asked.emplace(g.onlineId, roomsJson(server, !rejected, rooms, listed ? std::wstring() : (e.empty() ? err : e))).first;
+            }
+            std::string parseError;
+            games.set(g.id, json::parse(it->second, &parseError));
+        }
+        root.set("games", std::move(games));
+        out(widen(json::serialize(root, false)) + L"\n");
+        return 0;
+    }
     if (!a.rooms.empty()) {
         const GameSpec* g = cfg.findGame(a.rooms);
         if (!g || g->onlineId.empty()) {
@@ -317,6 +347,37 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
 
     if (a.mods || !a.installMod.empty() || !a.repairMod.empty() || !a.uninstallMod.empty()) return runModCommand(a, cfg, lib, user, userPath);
 
+    if (a.updatePlayers) {
+        // What the window does at startup: a player installed from a GitHub release (Ruffle Together) is kept on
+        // the newest one, because everyone in a co-op session has to run the same build.
+        json::Value list = json::Value::array();
+        int failed = 0;
+        for (const auto& p : cfg.players) {
+            PlayerUpdate u = updateInstalledPlayer(p, lib.vars(), nullptr);
+            if (!u.error.empty()) failed++;
+            if (a.json) {
+                json::Value o = json::Value::object();
+                o.set("id", p.id);
+                o.set("checked", u.checked);
+                o.set("updated", u.updated);
+                o.set("version", narrow(u.version));
+                o.set("error", narrow(u.error));
+                list.push(std::move(o));
+            } else if (u.updated) {
+                out(p.name + L" updated to " + u.version + L"\n");
+            } else if (u.checked) {
+                out(p.name + L" is up to date (" + u.version + L")\n");
+            } else if (!u.error.empty()) {
+                out(p.name + L": " + u.error + L"\n");
+            }
+        }
+        if (a.json) {
+            json::Value root = json::Value::object();
+            root.set("players", std::move(list));
+            out(widen(json::serialize(root, false)) + L"\n");
+        }
+        return failed ? 1 : 0;
+    }
     if (a.update) {
         if (!cfg.updates.enabled()) {
             fail(L"launcher.json has no \"updates\" source");
@@ -446,6 +507,12 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         for (wchar_t ch : a.join)
             if (iswalnum(ch)) ho.joinCode += static_cast<wchar_t>(towupper(ch));
         ho.address = a.address;
+        ho.wait = a.wait;
+        if (!a.coopSave.empty() && a.coopSave != L"continue" && a.coopSave != L"solo" && a.coopSave != L"new") {
+            fail(L"--coop-save takes continue, solo or new");
+            return 3;
+        }
+        ho.coopSave = a.coopSave == L"solo" ? 1 : a.coopSave == L"new" ? 2 : 0;
         if (a.json) ho.report = [](const std::string& line) { out(widen(line) + L"\n"); };  // the hosting box's updates
         int code = ui::Launcher::launchHeadless(cfg, lib, user, userPath, *g, *act, message, ho);
         if (code) fail(message);
