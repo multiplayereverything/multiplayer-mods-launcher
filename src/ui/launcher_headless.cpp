@@ -7,6 +7,7 @@
 
 #include "core/embedded.h"
 #include "core/fs.h"
+#include "core/json.h"
 #include "core/log.h"
 #include "core/motion.h"
 #include "core/rooms.h"
@@ -28,7 +29,9 @@ using namespace detail;
 
 int Launcher::launchHeadless(const Config& cfg, Library& lib, UserData& user, const std::wstring& userPath,
                              const GameSpec& game, const ActionSpec& action, std::wstring& message,
-                             const std::wstring& joinCode, const std::wstring& address) {
+                             const HeadlessOptions& opt) {
+    const std::wstring& joinCode = opt.joinCode;
+    const std::wstring& address = opt.address;
     if (game.mod) {
         mod::Spec spec = *game.mod;
         spec.text = &cfg.text;
@@ -112,7 +115,7 @@ int Launcher::launchHeadless(const Config& cfg, Library& lib, UserData& user, co
                       L" and needs the launcher window.";
             return 3;
         }
-        FlashVars given;
+        FlashVars given = opt.flashVars;
         if (!joinCode.empty()) given.push_back({L"join", joinCode});
         addFlashVars(r, gameValues(action, user.playerName, given));
     }
@@ -128,9 +131,44 @@ int Launcher::launchHeadless(const Config& cfg, Library& lib, UserData& user, co
     saveUserData(user, userPath);
     message = action.hint.empty() ? cfg.t("notice.launched", {{L"GAME", game.name}, {L"PLAYER", r.player->name}})
                                   : action.hint;
+    if (opt.process) {  // the caller watches the game (and counts its time)
+        *opt.process = p.process;
+        return 0;
+    }
     if (relay.running() || r.web) {  // the relay or the game's server must outlive the game
         ULONGLONG start = GetTickCount64();
-        WaitForSingleObject(p.process, INFINITE);
+        if (opt.report && relay.running()) {
+            // The hosting box's view: where friends connect, and who has.
+            std::string last;
+            do {
+                json::Value o = json::Value::object();
+                json::Value rel = json::Value::object();
+                rel.set("port", relay.port());
+                json::Value addrs = json::Value::array();
+                for (const auto& a : sys::localAddresses()) {
+                    json::Value ao = json::Value::object();
+                    ao.set("address", narrow(a.address));
+                    ao.set("adapter", narrow(a.adapter));
+                    addrs.push(std::move(ao));
+                }
+                rel.set("addresses", std::move(addrs));
+                json::Value peers = json::Value::array();
+                for (const auto& peer : relay.snapshot().peers) {
+                    json::Value po = json::Value::object();
+                    po.set("name", narrow(peer.name));
+                    po.set("address", narrow(peer.address));
+                    po.set("host", peer.host);
+                    peers.push(std::move(po));
+                }
+                rel.set("peers", std::move(peers));
+                o.set("relay", std::move(rel));
+                std::string line = json::serialize(o, false);
+                if (line != last) opt.report(line);
+                last = std::move(line);
+            } while (WaitForSingleObject(p.process, 1000) == WAIT_TIMEOUT);
+        } else {
+            WaitForSingleObject(p.process, INFINITE);
+        }
         st.seconds += static_cast<int64_t>((GetTickCount64() - start) / 1000);
         saveUserData(user, userPath);
     }

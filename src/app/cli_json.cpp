@@ -79,6 +79,10 @@ std::string libraryJson(const Config& cfg, const Library& lib, const UserData& u
     root.set("dataDir", str(lib.dataDir()));
     root.set("gamesDir", str(lib.vars().get(L"GAMES_DIR")));
     root.set("flashpoint", str(lib.flashpointDir()));
+    root.set("launcherVersion", narrow(LAUNCHER_VERSION));
+    root.set("website", str(cfg.branding.website));
+    root.set("logFile", str(fs::join(lib.dataDir(), L"launcher.log")));
+    root.set("defaultGamesDir", str(fs::normalize(lib.vars().expand(cfg.paths.games))));
 
     json::Value branding = json::Value::object();
     branding.set("title", str(cfg.branding.title));
@@ -126,6 +130,7 @@ std::string libraryJson(const Config& cfg, const Library& lib, const UserData& u
         o.set("onlineId", g.onlineId);
         o.set("joinAction", g.joinAction);
         o.set("comingSoon", g.comingSoon);
+        o.set("lobby", g.lobby.enabled && !g.mod);  // played online through the launcher's lobby (--lobby-session)
         json::Value gc = json::Value::array();
         for (const auto& c : g.categories) gc.push(c);
         o.set("categories", std::move(gc));
@@ -182,6 +187,14 @@ std::string libraryJson(const Config& cfg, const Library& lib, const UserData& u
 
     json::Value u = json::Value::object();
     u.set("playerName", str(user.playerName));
+    // Settings, as the C++ Settings window shows them.
+    u.set("minimize", user.minimize != 0);
+    u.set("online", user.online);
+    u.set("defaultPlayer", user.defaultPlayer);
+    u.set("gamesDir", str(user.gamesDir));
+    u.set("showOffline", user.showOffline);
+    u.set("showOriginals", user.showOriginals);
+    u.set("autoUpdate", user.autoUpdate);
     json::Value stats = json::Value::object();
     for (const auto& [id, s] : user.games) {
         json::Value so = json::Value::object();

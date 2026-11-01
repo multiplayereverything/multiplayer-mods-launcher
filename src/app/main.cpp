@@ -3,6 +3,7 @@
 // --launch, --relay, --validate, --snapshot).
 #include "app/cli.h"
 #include "app/cli_json.h"
+#include "app/lobby_cli.h"
 #include "core/config.h"
 #include "core/embedded.h"
 #include "core/fs.h"
@@ -229,7 +230,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     LocalFree(argv);
     bool cliMode = a.help || a.version || a.list || a.validate || !a.launch.empty() || a.relayPort || !a.installPlayer.empty() ||
                    !a.downloadGame.empty() || !a.rooms.empty() || a.update || a.mods || !a.installMod.empty() ||
-                   !a.repairMod.empty() || !a.uninstallMod.empty() || !a.error.empty();
+                   !a.repairMod.empty() || !a.uninstallMod.empty() || !a.lobbySession.empty() || !a.error.empty();
     if (cliMode) setupConsole();
     if (!a.error.empty()) {
         fail(a.error + L"\n\n" + usageText());
@@ -380,6 +381,15 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         return 0;
     }
 
+    if (!a.lobbySession.empty()) {
+        const GameSpec* g = cfg.findGame(a.lobbySession);
+        if (!g) {
+            fail(L"No game with id \"" + widen(a.lobbySession) + L"\" (see --list)");
+            return 3;
+        }
+        return runLobbySession(cfg, lib, user, userPath, *g);
+    }
+
     if (a.list && a.json) {
         // As the window lists them: the website's copy from the last run adds its games and fills gaps.
         if (!cfg.downloads.site.empty() && !getenv("FL_NO_SITE")) {
@@ -432,10 +442,12 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
             return 3;
         }
         std::wstring message;
-        std::wstring joinCode;
+        ui::Launcher::HeadlessOptions ho;
         for (wchar_t ch : a.join)
-            if (iswalnum(ch)) joinCode += static_cast<wchar_t>(towupper(ch));
-        int code = ui::Launcher::launchHeadless(cfg, lib, user, userPath, *g, *act, message, joinCode, a.address);
+            if (iswalnum(ch)) ho.joinCode += static_cast<wchar_t>(towupper(ch));
+        ho.address = a.address;
+        if (a.json) ho.report = [](const std::string& line) { out(widen(line) + L"\n"); };  // the hosting box's updates
+        int code = ui::Launcher::launchHeadless(cfg, lib, user, userPath, *g, *act, message, ho);
         if (code) fail(message);
         else out(message + L"\n");
         return code;

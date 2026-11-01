@@ -63,6 +63,10 @@ Args parseArgs(int argc, wchar_t** argv) {
         else if (k == L"--json") a.json = true;
         else if (k == L"--join") value(a.join);
         else if (k == L"--address") value(a.address);
+        else if (k == L"--lobby-session") {
+            value(tmp);
+            a.lobbySession = narrow(tmp);
+        }
         else if (k == L"--version") a.version = true;
         else if (k == L"--update") a.update = true;
         else if (k == L"--mods") a.mods = true;
@@ -88,6 +92,8 @@ launcher.json next to the exe.
     --join <code>        ...joining this room (the action's joinArgs, ${CODE})
     --address <ip:port>  ...connecting to this address (${ADDRESS})
   --json                 With --list, --mods or --rooms: print JSON for programs
+  --lobby-session <game> Run a game's lobby over standard input and output in JSON lines
+                         (for a front end that draws its own lobby window)
   --relay <port>         Run only the netplay relay (a dedicated relay PC); Ctrl+C stops
   --install-player <id>  Download and install a player that has an "install" entry
                          (e.g. ruffle) into its folder, then exit

@@ -51,10 +51,18 @@ public:
 
     // Starts an action without the window (command line --launch). Blocks until
     // the game exits when it hosts, so the relay stays up for the session.
-    // joinCode / address fill ${CODE} / ${ADDRESS} (--join, --address); a code also picks the action's joinArgs.
+    struct HeadlessOptions {
+        // ${CODE} / ${ADDRESS} (--join, --address); a code also picks the action's joinArgs.
+        std::wstring joinCode, address;
+        std::vector<std::pair<std::wstring, std::wstring>> flashVars;  // more values for the game (the lobby's room)
+        // While a host action keeps the relay up: a JSON line each time who is connected changes.
+        std::function<void(const std::string&)> report;
+        // Set: the player's process is handed back here at once instead of waited for (the lobby watches it).
+        HANDLE* process = nullptr;
+    };
     static int launchHeadless(const Config& cfg, Library& lib, UserData& user, const std::wstring& userPath,
                               const GameSpec& game, const ActionSpec& action, std::wstring& message,
-                              const std::wstring& joinCode = {}, const std::wstring& address = {});
+                              const HeadlessOptions& opt = {});
 
 private:
     struct NavItem {

@@ -75,6 +75,7 @@ add_executable(launcher WIN32
   src/app/main.cpp
   src/app/cli.cpp
   src/app/cli_json.cpp
+  src/app/lobby_cli.cpp
   src/ui/dialogs.cpp
   src/ui/theme.cpp
   src/ui/launcher.cpp

@@ -163,6 +163,12 @@ if (WaitFor { Test-Path "$work\args.txt" }) { $args2 = @(Get-Content "$work\args
 Check ($args2.Count -eq 3 -and $args2[0] -eq '--tcp-connections' -and $args2[2] -like '*\my games\online demo.swf') "host passes args and a path with spaces ($($args2 -join ' | '))"
 $host1.WaitForExit(15000) | Out-Null
 Check ($host1.HasExited -and -not (PortOpen $port)) 'relay stops when the hosted game exits'
+# With --json the host prints the relay (port, this PC's addresses, who is connected) for a hosting box.
+$env:FL_FAKE_MS = '1500'
+$r = Run @('--launch', 'demo:host', '--json', '--config', "`"$work\launcher.json`"")
+$rl = $r.Out -split "`n" | Where-Object { $_ -match '^\{"relay"' } | Select-Object -First 1
+$rj = try { $rl | ConvertFrom-Json } catch { $null }
+Check ($r.Code -eq 0 -and $null -ne $rj -and $rj.relay.port -eq $port -and $null -ne $rj.relay.peers) '--launch --json reports the relay while hosting'
 
 $relay = Start-Process -FilePath $Launcher -ArgumentList @('--relay', ($port + 1)) -PassThru
 Check (WaitFor { PortOpen ($port + 1) }) '--relay runs a bare relay'
@@ -844,6 +850,53 @@ try {
   if ($bot) { $bot.Tcp.Close() }
   Stop-Process -Id $lw.Id -Force -ErrorAction SilentlyContinue
   $env:FL_FAKE_OUT = "$work\args.txt"
+}
+
+# ---- The lobby over standard input and output (--lobby-session): what the Tauri window drives ----
+$psi = New-Object Diagnostics.ProcessStartInfo $lobbyExe, '--lobby-session lob'
+$psi.UseShellExecute = $false
+$psi.RedirectStandardInput = $true
+$psi.RedirectStandardOutput = $true
+$psi.CreateNoWindow = $true
+$ls = [Diagnostics.Process]::Start($psi)
+# Next JSON line the session prints whose "t" matches and passes $where, or $null after $ms.
+function SessionExpect([string]$t, [scriptblock]$where = { $true }, [int]$ms = 8000) {
+  $sw = [Diagnostics.Stopwatch]::StartNew()
+  while ($sw.ElapsedMilliseconds -lt $ms) {
+    if (-not $script:pendingLine) { $script:pendingLine = $ls.StandardOutput.ReadLineAsync() }
+    if (-not $script:pendingLine.Wait([Math]::Max(1, $ms - $sw.ElapsedMilliseconds))) { return $null }
+    $line = $script:pendingLine.Result; $script:pendingLine = $null
+    if ($null -eq $line) { return $null }
+    $o = try { $line | ConvertFrom-Json } catch { $null }
+    if ($o -and $o.t -eq $t -and (& $where $o)) { return $o }
+  }
+  return $null
+}
+$sbot = $null
+try {
+  $sport = $lport + 1
+  $ls.StandardInput.WriteLine('{"op":"host","direct":true,"port":' + $sport + ',"maxPlayers":4}')
+  $ls.StandardInput.Flush()
+  Check ($null -ne (SessionExpect 'snapshot' { param($s) $s.host -and $s.phase -eq 'lobby' })) '--lobby-session hosts a room from a JSON line'
+  $tcp = New-Object System.Net.Sockets.TcpClient
+  $tcp.Connect('127.0.0.1', $sport)
+  $sbot = @{ Tcp = $tcp; Stream = $tcp.GetStream(); Buf = '' }
+  LobbySend $sbot.Stream ('{"k":"hello","proto":1,"name":"Bot","token":"bot-token-abcdefghij","version":"2.0#' + $lobHash + '"}')
+  Check ($null -ne (LobbyExpect $sbot 'welcome')) 'a friend joins the session''s room'
+  Check ($null -ne (SessionExpect 'snapshot' { param($s) @($s.players).Count -eq 2 })) 'the session prints the room with both players'
+  $ls.StandardInput.WriteLine('{"op":"chat","text":"hello from the session"}')
+  $ls.StandardInput.Flush()
+  $chat = LobbyExpect $sbot 'chat'
+  Check ($null -ne $chat) 'a chat command reaches the friend'
+  $ls.StandardInput.WriteLine('{"op":"leave"}')
+  $ls.StandardInput.Flush()
+  Check ($null -ne (SessionExpect 'closed')) 'leave ends the session'
+  Check ($null -ne (LobbyExpect $sbot 'closed')) 'and the friend hears the room closed'
+} catch {
+  Check $false "lobby session: $($_.Exception.Message)"
+} finally {
+  if ($sbot) { $sbot.Tcp.Close() }
+  if (-not $ls.HasExited) { Stop-Process -Id $ls.Id -Force -ErrorAction SilentlyContinue }
 }
 
 # ---- HTML5: a browser player, a local page, a game server and a friend's link ----
