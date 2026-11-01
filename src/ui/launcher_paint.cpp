@@ -383,8 +383,11 @@ void Launcher::paintStatus(Graphics& g, HDC) {
         drawText(g, text, left, t.caption, color, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
     } else {
         // Nothing to report: the keys this page answers to, as keycaps with their meaning.
-        std::vector<const char*> hints = guidePage() ? std::vector<const char*>{"back", "scroll"}
-                                                     : std::vector<const char*>{"open", "search", "refresh"};
+        // A connected controller swaps the keys for its buttons.
+        std::vector<const char*> hints = pad_ ? (guidePage() ? std::vector<const char*>{"padPress", "padMove", "padBack", "padScroll"}
+                                                             : std::vector<const char*>{"padOpen", "padMove", "padSearch"})
+                                     : guidePage() ? std::vector<const char*>{"back", "scroll"}
+                                                   : std::vector<const char*>{"open", "search", "refresh"};
         int hx = left.left, capH = t.s(20), cy = (left.top + left.bottom - capH) / 2;
         HDC hdc = g.GetHDC();
         std::vector<std::pair<int, int>> widths;

@@ -17,6 +17,7 @@
 #include <dwmapi.h>
 #include <uxtheme.h>
 #include <windowsx.h>
+#include <xinput.h>  // types only: XInputGetState is looked up at run time, so no import library is linked
 
 namespace fl::ui {
 
@@ -348,6 +349,11 @@ LRESULT Launcher::handle(UINT m, WPARAM w, LPARAM l) {
                 onFrame();
                 return 0;
             }
+            if (w == kPadTimer) {
+                pollPad(false);
+                return 0;
+            }
+            if (!pad_) pollPad(true);  // once a second: has a controller been plugged in?
             if (toastFrom_ && !motion_ && since(toastFrom_) > kToastMs) {  // no frames run without animations
                 toastFrom_ = 0;
                 ShowWindow(toast_, SW_HIDE);
@@ -481,6 +487,100 @@ LRESULT Launcher::handle(UINT m, WPARAM w, LPARAM l) {
             return 0;
     }
     return DefWindowProcW(hwnd_, m, w, l);
+}
+
+// ---- game controller -------------------------------------------------------
+
+void Launcher::pollPad(bool connectOnly) {
+    if (!padTried_) {
+        padTried_ = true;
+        for (const wchar_t* dll : {L"xinput1_4.dll", L"xinput9_1_0.dll"}) {
+            if (HMODULE m = LoadLibraryExW(dll, nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32))
+                padGetState_ = reinterpret_cast<void*>(GetProcAddress(m, "XInputGetState"));
+            if (padGetState_) break;
+        }
+    }
+    if (!padGetState_ || snapshot_) return;
+    using GetState = DWORD(WINAPI*)(DWORD, XINPUT_STATE*);
+    auto getState = reinterpret_cast<GetState>(padGetState_);
+    XINPUT_STATE s{};
+    bool connected = false;
+    for (DWORD i = 0; i < XUSER_MAX_COUNT && !connected; ++i) connected = getState(i, &s) == ERROR_SUCCESS;
+    unsigned b = connected ? s.Gamepad.wButtons : 0;
+    // The left stick past a third of its travel counts as the D-pad.
+    const SHORT dead = 12000;
+    if (s.Gamepad.sThumbLY > dead) b |= XINPUT_GAMEPAD_DPAD_UP;
+    if (s.Gamepad.sThumbLY < -dead) b |= XINPUT_GAMEPAD_DPAD_DOWN;
+    if (s.Gamepad.sThumbLX < -dead) b |= XINPUT_GAMEPAD_DPAD_LEFT;
+    if (s.Gamepad.sThumbLX > dead) b |= XINPUT_GAMEPAD_DPAD_RIGHT;
+    if (connected != pad_) {
+        pad_ = connected;
+        padButtons_ = b;  // what is held as it connects is not a press
+        padRepeatKey_ = 0;
+        if (connected) SetTimer(hwnd_, kPadTimer, 50, nullptr);
+        else KillTimer(hwnd_, kPadTimer);
+        InvalidateRect(hwnd_, &status_, FALSE);  // the hints switch between keys and buttons
+        return;
+    }
+    if (!connected || connectOnly) return;
+    unsigned pressed = b & ~padButtons_;
+    padButtons_ = b;
+    // Only into this launcher's own windows (Settings and the lobby included), and only while one is in front.
+    DWORD pid = 0;
+    GetWindowThreadProcessId(GetForegroundWindow(), &pid);
+    if (pid != GetCurrentProcessId()) {
+        padRepeatKey_ = 0;
+        return;
+    }
+    auto key = [](WORD vk, bool shift = false) {
+        INPUT in[4]{};
+        UINT n = 0;
+        auto add = [&](WORD k, bool up) {
+            in[n].type = INPUT_KEYBOARD;
+            in[n].ki.wVk = k;
+            in[n].ki.dwFlags = up ? KEYEVENTF_KEYUP : 0;
+            ++n;
+        };
+        if (shift) add(VK_SHIFT, false);
+        add(vk, false);
+        add(vk, true);
+        if (shift) add(VK_SHIFT, true);
+        SendInput(n, in, sizeof(INPUT));
+    };
+    struct Dir {
+        unsigned bit;
+        WORD vk;
+    };
+    const Dir dirs[] = {{XINPUT_GAMEPAD_DPAD_UP, VK_UP}, {XINPUT_GAMEPAD_DPAD_DOWN, VK_DOWN},
+                        {XINPUT_GAMEPAD_DPAD_LEFT, VK_LEFT}, {XINPUT_GAMEPAD_DPAD_RIGHT, VK_RIGHT}};
+    ULONGLONG now = GetTickCount64();
+    // A held direction repeats, like a held arrow key: after a pause, then steadily.
+    for (const Dir& d : dirs) {
+        if (pressed & d.bit) {
+            key(d.vk);
+            padRepeatKey_ = d.bit;
+            padRepeatAt_ = now + 400;
+        }
+    }
+    if (padRepeatKey_ && !(b & padRepeatKey_)) padRepeatKey_ = 0;
+    if (padRepeatKey_ && now >= padRepeatAt_) {
+        for (const Dir& d : dirs)
+            if (d.bit == padRepeatKey_) key(d.vk);
+        padRepeatAt_ = now + 120;
+    }
+    if (pressed & XINPUT_GAMEPAD_A) {
+        // Space presses a focused button; Enter opens a card (and answers everything else).
+        wchar_t cls[16] = {};
+        GetClassNameW(GetFocus(), cls, 16);
+        key(_wcsicmp(cls, L"Button") == 0 ? VK_SPACE : VK_RETURN);
+    }
+    if (pressed & XINPUT_GAMEPAD_B) key(VK_ESCAPE);
+    if (pressed & XINPUT_GAMEPAD_RIGHT_SHOULDER) key(VK_TAB);
+    if (pressed & XINPUT_GAMEPAD_LEFT_SHOULDER) key(VK_TAB, true);
+    if ((pressed & XINPUT_GAMEPAD_Y) && GetForegroundWindow() == hwnd_ && !guidePage()) {
+        SetFocus(search_);
+        SendMessageW(search_, EM_SETSEL, 0, -1);
+    }
 }
 
 }  // namespace fl::ui

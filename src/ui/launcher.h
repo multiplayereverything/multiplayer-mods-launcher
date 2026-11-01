@@ -237,6 +237,14 @@ private:
     std::wstring verifiedVersion(int gameIndex) const;
     void showPageTab(int tab);
     // The banner's Play: the game's first action, as the details panel leads with it. -1 when it has none to show.
+    // A game controller (XInput, loaded at run time) drives the window through the keys it already answers to:
+    // the D-pad or left stick are the arrows, A is Enter (Space on a button), B is Esc, LB and RB move between
+    // controls, Y searches. Its buttons replace the keys in the status bar's hints while one is connected.
+    void pollPad(bool connectOnly);
+    void* padGetState_ = nullptr;
+    bool padTried_ = false, pad_ = false;
+    unsigned padButtons_ = 0, padRepeatKey_ = 0;
+    ULONGLONG padRepeatAt_ = 0;
     HWND heroPlayBtn_ = nullptr;
     int heroAction_ = -1;
     int heroLead(int gameIndex) const;

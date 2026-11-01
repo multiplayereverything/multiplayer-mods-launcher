@@ -56,6 +56,7 @@ inline int stablePort(const std::string& gameId) {
 }
 constexpr UINT_PTR kTimer = 1;
 constexpr UINT_PTR kFrameTimer = 2;
+constexpr UINT_PTR kPadTimer = 3;  // reads a connected game controller, 20 times a second
 // About 30 frames a second: enough for a slow breath and a short decode, and
 // half the repaints of 60.
 constexpr UINT kFrameMs = 33;
