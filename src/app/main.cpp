@@ -2,6 +2,7 @@
 // the launcher window or runs one of the command-line modes (--list,
 // --launch, --relay, --validate, --snapshot).
 #include "app/cli.h"
+#include "app/cli_json.h"
 #include "core/config.h"
 #include "core/embedded.h"
 #include "core/fs.h"
@@ -122,6 +123,7 @@ int runModCommand(const Args& a, const Config& cfg, Library& lib, UserData& user
         return st ? st->gameDir : std::wstring();
     };
     if (a.mods) {
+        std::vector<ModReport> reports;
         for (const auto& g : cfg.games) {
             if (!g.mod) continue;
             mod::Spec s = specFor(g);
@@ -129,6 +131,27 @@ int runModCommand(const Args& a, const Config& cfg, Library& lib, UserData& user
             mod::Source src;
             std::wstring err;
             bool known = mod::resolveSource(s, modsInfo, src, err, cfg.updates.source.api, fs::join(lib.dataDir(), L"mods"));
+            if (a.json) {
+                ModReport r;
+                r.id = g.id;
+                r.gameFound = st.game.found();
+                r.gameDir = st.game.dir;
+                r.gameSource = st.game.source;
+                r.installed = st.installed;
+                r.installedVersion = st.installedVersion;
+                r.running = st.running;
+                r.problem = st.problem;
+                r.missing = st.missing;
+                r.known = known;
+                r.published = known && src.published();
+                r.stale = known && src.stale;
+                r.newest = src.version;
+                r.minVersion = src.minVersion;
+                r.notice = src.notice;
+                r.error = known ? std::wstring() : err;
+                reports.push_back(std::move(r));
+                continue;
+            }
             out(widen(g.id) + L"  " + g.name + L"\n");
             out(L"    game: " + (st.game.found() ? st.game.dir + L" (" + st.game.source + L")" : std::wstring(L"not found")) + L"\n");
             out(L"    installed: " + (st.installed ? st.installedVersion : std::wstring(L"no")) +
@@ -137,6 +160,7 @@ int runModCommand(const Args& a, const Config& cfg, Library& lib, UserData& user
             out(L"    newest: " + (!known ? L"unknown (" + err + L")" : src.published() ? src.version : std::wstring(L"not published yet")) +
                 (known && src.stale ? L"  (couldn't ask GitHub just now: this is the last answer)" : L"") + L"\n");
         }
+        if (a.json) out(widen(modsJson(reports)) + L"\n");
         return 0;
     }
     const std::string& id = !a.installMod.empty() ? a.installMod : !a.repairMod.empty() ? a.repairMod : a.uninstallMod;
@@ -271,7 +295,12 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         std::wstring server = resolveRoomServer(cfg.rooms.servers, cfg.rooms.server, &err);
         std::vector<RoomInfo> rooms;
         bool rejected = false;
-        if (!server.empty() && !listRooms(server, g->onlineId, rooms, err, 4000, &rejected) && rejected) {
+        bool listed = !server.empty() && listRooms(server, g->onlineId, rooms, err, 4000, &rejected);
+        if (a.json) {
+            out(widen(roomsJson(server, !rejected, rooms, listed ? std::wstring() : err)) + L"\n");
+            return listed || rejected ? 0 : 1;
+        }
+        if (!listed && rejected) {
             out(server + L": not on the server yet (" + err + L")\n");
             return 0;
         }
@@ -351,6 +380,17 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         return 0;
     }
 
+    if (a.list && a.json) {
+        // As the window lists them: the website's copy from the last run adds its games and fills gaps.
+        if (!cfg.downloads.site.empty() && !getenv("FL_NO_SITE")) {
+            std::vector<SiteGame> siteList;
+            SiteCache cached;
+            if (loadSiteCache(fs::join(lib.dataDir(), L"site.json"), cached) && parseSite(cached.raw, siteList))
+                mergeSite(lr.config, siteList, fs::join(lib.dataDir(), L"covers"));
+        }
+        out(widen(libraryJson(cfg, lib, user)) + L"\n");
+        return 0;
+    }
     if (a.list) {
         for (const auto& p : lib.players())
             out(p.spec->name + L": " + (p.found() ? p.exe : std::wstring(L"not found")) + L"\n");
@@ -392,7 +432,10 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
             return 3;
         }
         std::wstring message;
-        int code = ui::Launcher::launchHeadless(cfg, lib, user, userPath, *g, *act, message);
+        std::wstring joinCode;
+        for (wchar_t ch : a.join)
+            if (iswalnum(ch)) joinCode += static_cast<wchar_t>(towupper(ch));
+        int code = ui::Launcher::launchHeadless(cfg, lib, user, userPath, *g, *act, message, joinCode, a.address);
         if (code) fail(message);
         else out(message + L"\n");
         return code;

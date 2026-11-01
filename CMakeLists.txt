@@ -74,6 +74,7 @@ set_source_files_properties("${APP_RC}" PROPERTIES OBJECT_DEPENDS "${EMBEDDED_FI
 add_executable(launcher WIN32
   src/app/main.cpp
   src/app/cli.cpp
+  src/app/cli_json.cpp
   src/ui/dialogs.cpp
   src/ui/theme.cpp
   src/ui/launcher.cpp

@@ -215,6 +215,7 @@ searches, **Ctrl+,** opens Settings, **F5** rescans for players and game files,
 ```
 MultiplayerEverythingLauncher.exe --list                       every game and whether it can start
 MultiplayerEverythingLauncher.exe --launch gunmayhem2:host     start an action without the window
+MultiplayerEverythingLauncher.exe --launch gunmayhem2:online --join ABCDE   ...joining a room (--address <ip:port> for direct IP)
 MultiplayerEverythingLauncher.exe --relay 7777                 run only the relay (a dedicated relay PC)
 MultiplayerEverythingLauncher.exe --install-player ruffle      install Ruffle into players\ruffle
 MultiplayerEverythingLauncher.exe --download-game all          download every game file the catalog has
@@ -227,7 +228,8 @@ MultiplayerEverythingLauncher.exe --uninstall-mod spooky-together  remove it and
 MultiplayerEverythingLauncher.exe --validate                   check launcher.json
 ```
 
-`MultiplayerEverythingLauncher.exe --help` lists everything. Settings and the log live in
+Add `--json` to `--list`, `--mods` or `--rooms` for output a program can read (the Tauri prototype drives the
+launcher this way). `MultiplayerEverythingLauncher.exe --help` lists everything. Settings and the log live in
 `%LOCALAPPDATA%\MultiplayerEverything\FlashLauncher\`.
 
 ## Build

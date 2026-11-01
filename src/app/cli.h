@@ -19,6 +19,8 @@ struct Args {
     int guideScroll = 0;  // --guide-scroll <pixels>: scroll that far down in the snapshot
     bool guide = false;   // --guide: snapshot with the selected game's guide page open
     std::wstring lobby;  // --lobby setup|room: snapshot the lobby window
+    bool json = false;   // --json: --list, --mods and --rooms print JSON for programs (the Tauri front end)
+    std::wstring join, address;  // --join <code> / --address <ip:port> for --launch
     std::wstring error;
 };
 

@@ -130,6 +130,17 @@ $r = Run @('--validate', '--config', "`"$Root\launcher\launcher.json`""); Check 
 $r = Run @('--validate', '--config', "`"$work\launcher.json`""); Check ($r.Code -eq 0) 'test config validates'
 $r = Run @('--list', '--config', "`"$work\launcher.json`"")
 Check ($r.Out -match 'play \(Play\): ready' -and $r.Out -match 'game file missing') '--list shows ready and missing games'
+# --json: the same for programs (the Tauri front end reads the library this way).
+$r = Run @('--list', '--json', '--config', "`"$work\launcher.json`"")
+$lj = try { $r.Out | ConvertFrom-Json } catch { $null }
+Check ($null -ne $lj) '--list --json prints JSON'
+if ($lj) {
+  $demo = $lj.games | Where-Object id -eq 'demo'
+  $miss = $lj.games | Where-Object id -eq 'missing'
+  Check ((($demo.actions | Where-Object id -eq 'play').state -eq 'ready') -and (($miss.actions | Where-Object id -eq 'play').state -eq 'noFile')) '--list --json gives each action its state'
+  Check (($demo.actions | Where-Object id -eq 'host').relayPort -eq $port) '--list --json tells a host action from its relay'
+  Check ($lj.text.'status.ready' -eq 'Ready' -and $null -ne $lj.user -and $lj.players[0].id -eq 'fake') '--list --json carries the texts, the user and the players'
+}
 
 $env:FL_FAKE_MS = '0'
 Remove-Item "$work\args.txt" -ErrorAction SilentlyContinue
@@ -365,6 +376,14 @@ Remove-Item -Recurse -Force "$work\rdata" -ErrorAction SilentlyContinue
 "@ | Set-Content "$work\rooms.json" -Encoding UTF8
 $r = Run @('--rooms', 'demo2', '--config', "`"$work\rooms.json`"")
 Check ($r.Code -eq 0 -and $r.Out -match '2 open' -and $r.Out -match 'ABCDE\s+1/4\s+Test room') "--rooms lists the central server's rooms"
+$r = Run @('--rooms', 'demo2', '--json', '--config', "`"$work\rooms.json`"")
+$rj = try { $r.Out | ConvertFrom-Json } catch { $null }
+Check ($null -ne $rj -and @($rj.rooms).Count -eq 2 -and $rj.rooms[0].code -eq 'ABCDE' -and $rj.rooms[0].max -eq 4) '--rooms --json lists the rooms for programs'
+# --join: a room code without the window (lower case is tidied the way the Join box does).
+Remove-Item "$work\args.txt" -ErrorAction SilentlyContinue
+$env:FL_FAKE_MS = '0'
+$r = Run @('--launch', 'demo2:play', '--join', 'abcde', '--config', "`"$work\rooms.json`"")
+Check ($r.Code -eq 0 -and (WaitFor { (Test-Path "$work\args.txt") -and ((Get-Content "$work\args.txt") -contains '-Pjoin=ABCDE') })) '--launch --join passes the room code to the player'
 
 Add-Type -TypeDefinition @'
 using System; using System.Runtime.InteropServices;
@@ -537,6 +556,10 @@ $sha1 = MakePackage '1.0.0' 'v1'
 Publish '1.0.0' 'v1' $sha1 $false
 $r = ModRun @('--mods', '--game-dir', "`"$gameDir`"")
 Check ($r.Out -match 'game: .*FakeGame' -and $r.Out -match 'installed: no' -and $r.Out -match 'not published yet') '--mods shows the game found, not installed, not published'
+$r = ModRun @('--mods', '--json', '--game-dir', "`"$gameDir`"")
+$mj = try { @($r.Out | ConvertFrom-Json) } catch { @() }
+$mt = $mj | Where-Object id -eq 'modtest'
+Check ($null -ne $mt -and $mt.gameFound -and -not $mt.installed -and -not $mt.published -and $mt.gameDir -like '*FakeGame*') '--mods --json reports the same for programs'
 $r = ModRun @('--install-mod', 'modtest', '--game-dir', "`"$gameDir`"")
 Check ($r.Code -ne 0 -and $r.Out -match "isn't published" -and (Snapshot) -eq $modBefore) 'an unpublished mod is not installed'
 

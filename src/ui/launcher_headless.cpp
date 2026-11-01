@@ -9,6 +9,7 @@
 #include "core/fs.h"
 #include "core/log.h"
 #include "core/motion.h"
+#include "core/rooms.h"
 #include "core/strings.h"
 #include "launcher_internal.h"
 // win.h (via theme.h) first: these need the full Windows types.
@@ -26,7 +27,8 @@ using namespace detail;
 // ---- headless launch -----------------------------------------------------
 
 int Launcher::launchHeadless(const Config& cfg, Library& lib, UserData& user, const std::wstring& userPath,
-                             const GameSpec& game, const ActionSpec& action, std::wstring& message) {
+                             const GameSpec& game, const ActionSpec& action, std::wstring& message,
+                             const std::wstring& joinCode, const std::wstring& address) {
     if (game.mod) {
         mod::Spec spec = *game.mod;
         spec.text = &cfg.text;
@@ -57,7 +59,7 @@ int Launcher::launchHeadless(const Config& cfg, Library& lib, UserData& user, co
         message = L"\"" + action.label + L"\" opens " + action.link + L" in your browser and needs the launcher window.";
         return 3;
     }
-    ResolvedAction r = lib.resolve(game, action, user);
+    ResolvedAction r = lib.resolve(game, action, user, !joinCode.empty());
     if (r.state != ActionState::Ready) {
         message = cfg.t("notice.notReady", {{L"GAME", game.name}, {L"REASON", stateReason(cfg, r)}});
         return 4;
@@ -101,14 +103,18 @@ int Launcher::launchHeadless(const Config& cfg, Library& lib, UserData& user, co
         for (auto& arg : r.args) arg = replaceAll(arg, L"${URL}", url);
     }
     if (!r.web) {
-        // No window: no room code and no clipboard, so only the name and the central server can be filled in.
-        std::wstring missing = fillPlaceholders(r, user.playerName, {}, cfg.rooms.server, {});
+        // No window: the room code and address come from --join and --address; the server is the central one.
+        std::wstring roomServer = resolveRoomServer(cfg.rooms.servers, cfg.rooms.server, nullptr);
+        if (roomServer.empty()) roomServer = cfg.rooms.server;
+        std::wstring missing = fillPlaceholders(r, user.playerName, joinCode, roomServer, address);
         if (!missing.empty()) {
             message = L"\"" + action.label + L"\" needs a " + (missing == L"CODE" ? L"room code" : L"value for ${" + missing + L"}") +
                       L" and needs the launcher window.";
             return 3;
         }
-        addFlashVars(r, gameValues(action, user.playerName, {}));
+        FlashVars given;
+        if (!joinCode.empty()) given.push_back({L"join", joinCode});
+        addFlashVars(r, gameValues(action, user.playerName, given));
     }
     sys::Started p;
     std::wstring err;
