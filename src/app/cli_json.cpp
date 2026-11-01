@@ -1,12 +1,14 @@
 #include "cli_json.h"
 
 #include <cstdio>
+#include <set>
 
 #include "core/embedded.h"
 #include "core/fs.h"
+#include "core/game_options.h"
+#include "core/install.h"
 #include "core/json.h"
 #include "core/mod/spec.h"
-#include "core/game_options.h"
 #include "core/site.h"
 #include "core/strings.h"
 
@@ -123,6 +125,15 @@ std::string libraryJson(const Config& cfg, const Library& lib, const UserData& u
     root.set("categories", std::move(cats));
 
     auto catalogSettings = cachedCatalogSettings(lib.dataDir());
+    // Game files the cached catalog has a newer build of: the card says "Update available" and Download fetches it.
+    std::set<std::string> outdatedGames;
+    if (!cfg.downloads.catalog.empty()) {
+        std::string text;
+        std::wstring err;
+        std::vector<CatalogFile> catalog;
+        if (fs::readText(fs::join(lib.dataDir(), L"catalog.json"), text) && parseCatalog(text, cfg.downloads.catalog, catalog, err))
+            for (const auto& f : outdatedGameFiles(catalog, lib.vars().get(L"GAMES_DIR"))) outdatedGames.insert(f.game);
+    }
     GameOptions options(cfg, lib, user, catalogSettings);
     json::Value games = json::Value::array();
     for (const auto& g : cfg.games) {
@@ -172,6 +183,7 @@ std::string libraryJson(const Config& cfg, const Library& lib, const UserData& u
             cs.set("progress", !f.empty() && fs::isFile(f));
             o.set("coopSave", std::move(cs));
         }
+        o.set("outdated", outdatedGames.count(g.id) > 0);
         const GameStats* gs = user.find(g.id);
         o.set("player", gs ? gs->player : std::string());  // the player picked for this game, empty = automatic
         json::Value gc = json::Value::array();
