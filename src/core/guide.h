@@ -19,6 +19,7 @@ struct GuideBlock {
         Bullet,     // a point
         Key,        // `text` is the key, `detail` what it does
         Fact,       // `text` is the label, `detail` the value
+        Release,    // a version: `text` the version, `detail` what it is here, `number` 1 when it is SHA-256 checked
     } kind = Kind::Text;
     int number = 0;
     std::wstring text, detail;

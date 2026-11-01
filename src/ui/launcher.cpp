@@ -365,9 +365,10 @@ void Launcher::createControls() {
     sortBtn_ = makeButton(kIdSortChip, BtnStyle::Secondary);
     btnInfo_[catBtn_].menu = btnInfo_[sortBtn_].menu = true;
     heroPlayBtn_ = makeButton(kIdHeroPlay, BtnStyle::Primary);
-    for (int i = 0; i < 2; ++i) {
+    const char* tabKeys[] = {"page.overview", "page.details", "page.releases"};
+    for (int i = 0; i < 3; ++i) {
         pageTabs_[i] = makeButton(kIdPageTab0 + i, BtnStyle::Tab);
-        SetWindowTextW(pageTabs_[i], cfg_.t(i == 0 ? "page.overview" : "page.details").c_str());
+        SetWindowTextW(pageTabs_[i], cfg_.t(tabKeys[i]).c_str());
     }
     guideBack_ = makeButton(kIdGuideBack, BtnStyle::Secondary);
     for (int i = 0; i < static_cast<int>(kGuideMaxLinks); ++i) guideLinkBtns_.push_back(makeButton(kIdGuideLink0 + i, BtnStyle::Secondary));

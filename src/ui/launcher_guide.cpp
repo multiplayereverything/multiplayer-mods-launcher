@@ -95,10 +95,36 @@ GuidePage Launcher::detailsPage(int gi) {
     return page;
 }
 
+// The Releases tab of a PC mod: the newest version mods-info publishes and the one installed here (one line when
+// they are the same), or the version a community mod pins.
+GuidePage Launcher::releasesPage(int gi) {
+    using K = GuideBlock::Kind;
+    GuidePage page;
+    page.links = overview_.links;
+    const GameSpec& g = cfg_.games[gi];
+    const ModView* v = modView(gi);
+    std::wstring installed = v ? v->status.installedVersion : std::wstring();
+    if (g.mod && !g.mod->package.sha256.empty() && !g.mod->package.version.empty()) {
+        page.blocks.push_back({K::Release, 1, g.mod->package.version, cfg_.t("release.pinned")});
+    } else if (v && v->source.published()) {
+        bool same = installed == v->source.version;
+        std::wstring about = cfg_.t(same ? "release.newestInstalled" : "release.newest");
+        if (!v->source.notice.empty()) about += L" " + v->source.notice;
+        page.blocks.push_back({K::Release, 1, v->source.version, about});
+        if (same) installed.clear();
+    } else {
+        page.blocks.push_back({K::Text, 0, cfg_.t("release.unknown"), {}});
+    }
+    if (!installed.empty()) page.blocks.push_back({K::Release, 0, installed, cfg_.t("release.installed")});
+    if (v && !v->source.minVersion.empty())
+        page.blocks.push_back({K::Text, 0, cfg_.t("release.minimum", {{L"VERSION", v->source.minVersion}}), {}});
+    return page;
+}
+
 void Launcher::showPageTab(int tab) {
     if (!guidePage() || tab == pageTab_) return;
     pageTab_ = tab;
-    guide_ = tab == 0 ? overview_ : detailsPage(guideGame_);
+    guide_ = tab == 0 ? overview_ : tab == 1 ? detailsPage(guideGame_) : releasesPage(guideGame_);
     guideScroll_ = 0;
     relayout();
 }
@@ -107,7 +133,7 @@ void Launcher::showPageTab(int tab) {
 // in a card that scrolls. Rows are measured for the card's width; each keeps where it starts, so painting is a loop.
 void Launcher::layoutGuidePage() {
     if (!guideBack_) return;
-    std::vector<HWND> controls = {guideBack_, pageTabs_[0], pageTabs_[1]};
+    std::vector<HWND> controls = {guideBack_, pageTabs_[0], pageTabs_[1], pageTabs_[2]};
     for (HWND h : guideLinkBtns_) controls.push_back(h);
     if (!guidePage() || width(gridRc_) <= 0) {
         for (HWND h : controls) ShowWindow(h, SW_HIDE);
@@ -140,7 +166,8 @@ void Launcher::layoutGuidePage() {
     std::set<HWND> shown = {guideBack_};
     pageTabsRc_ = {x, y, x + w, y + t.s(42)};
     int tx = x;
-    for (int i = 0; i < 2; ++i) {
+    int tabCount = cfg_.games[guideGame_].mod ? 3 : 2;  // Releases is a PC mod's
+    for (int i = 0; i < tabCount; ++i) {
         int tw = textWidth(dc, t.button, windowText(pageTabs_[i])) + t.s(32);
         MoveWindow(pageTabs_[i], tx, y, tw, height(pageTabsRc_), TRUE);
         if (btnInfo_[pageTabs_[i]].selected != (i == pageTab_)) {
@@ -209,6 +236,10 @@ void Launcher::layoutGuidePage() {
                 h = std::max(textHeight(dc, t.caption, b.text, t.s(kLabelW)), textHeight(dc, t.body, b.detail, valueW)) + t.s(6);
                 break;
             }
+            case Kind::Release:
+                // The version over what it is here, with a rule under each release.
+                h = t.s(34) + textHeight(dc, t.caption, b.detail, textW) + t.s(22);
+                break;
         }
         r.y = cy;
         r.h = h;
@@ -382,6 +413,27 @@ void Launcher::paintGuidePage(Graphics& g, HDC dc) {
                 drawText(cg, b.text, RECT{x, top + t.s(2), x + t.s(kLabelW), bottom}, t.caption, t.c.textMuted, DT_WORDBREAK);
                 drawText(cg, b.detail, RECT{x + t.s(kLabelW) + t.s(12), top, x + w, bottom}, t.body, t.c.text, DT_WORDBREAK);
                 break;
+            case Kind::Release: {
+                drawText(cg, b.text, RECT{x, top + t.s(4), x + w, top + t.s(32)}, t.heading, t.c.text, DT_SINGLELINE | DT_VCENTER);
+                if (b.number) {
+                    // The Verified badge beside the version, as on the page's header.
+                    std::wstring badge = cfg_.t("release.verified");
+                    int vx = x + textWidth(dc, t.heading, b.text) + t.s(12), bw = textWidth(dc, t.caption, badge) + t.s(30);
+                    RECT pill{vx, top + t.s(7), vx + bw, top + t.s(29)};
+                    const Color& ok = t.c.success;
+                    fillRound(cg, rf(pill), t.sf(11), mix(t.c.surface, ok, 0.16f));
+                    strokeRound(cg, rf(pill), t.sf(11), mix(t.c.surface, ok, 0.5f), t.sf(1));
+                    SolidBrush dot(gc(ok));
+                    cg.FillEllipse(&dot, static_cast<REAL>(pill.left + t.s(10)), static_cast<REAL>((pill.top + pill.bottom) / 2 - t.s(3)),
+                                   t.sf(7), t.sf(7));
+                    drawText(cg, badge, RECT{pill.left + t.s(22), pill.top, pill.right, pill.bottom}, t.caption,
+                             t.dark ? ok : mix(ok, t.c.text, 0.55f), DT_SINGLELINE | DT_VCENTER);
+                }
+                drawText(cg, b.detail, RECT{x, top + t.s(36), x + w, bottom - t.s(14)}, t.caption, t.c.textMuted, DT_WORDBREAK);
+                Pen rule(gc(t.c.border), 1);
+                cg.DrawLine(&rule, static_cast<REAL>(x), static_cast<REAL>(bottom - 4), static_cast<REAL>(x + w), static_cast<REAL>(bottom - 4));
+                break;
+            }
         }
     }
     }

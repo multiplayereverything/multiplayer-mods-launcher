@@ -381,6 +381,28 @@ void Launcher::paintStatus(Graphics& g, HDC) {
                       t.sf(8));
         left.left += t.s(16);
         drawText(g, text, left, t.caption, color, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
+    } else {
+        // Nothing to report: the keys this page answers to, as keycaps with their meaning.
+        std::vector<const char*> hints = guidePage() ? std::vector<const char*>{"back", "scroll"}
+                                                     : std::vector<const char*>{"open", "search", "refresh"};
+        int hx = left.left, capH = t.s(20), cy = (left.top + left.bottom - capH) / 2;
+        HDC hdc = g.GetHDC();
+        std::vector<std::pair<int, int>> widths;
+        for (const char* h : hints)
+            widths.push_back({textWidth(hdc, t.tiny, cfg_.t(std::string("hint.") + h + "Key")) + t.s(14),
+                              textWidth(hdc, t.caption, cfg_.t(std::string("hint.") + h))});
+        g.ReleaseHDC(hdc);
+        for (size_t i = 0; i < hints.size(); ++i) {
+            auto [kw, lw] = widths[i];
+            if (hx + kw + t.s(6) + lw > left.right) break;
+            RECT cap{hx, cy, hx + kw, cy + capH};
+            fillRound(g, rf(cap), t.sf(5), t.c.surfaceHover);
+            strokeRound(g, rf(cap), t.sf(5), t.c.border, t.sf(1));
+            drawText(g, cfg_.t(std::string("hint.") + hints[i] + "Key"), cap, t.tiny, t.c.sidebarText, DT_SINGLELINE | DT_CENTER | DT_VCENTER);
+            RECT lr{cap.right + t.s(6), left.top, cap.right + t.s(6) + lw + t.s(2), left.bottom};
+            drawText(g, cfg_.t(std::string("hint.") + hints[i]), lr, t.caption, t.c.sidebarTextMuted, DT_SINGLELINE | DT_VCENTER);
+            hx = lr.right + t.s(18);
+        }
     }
 }
 
@@ -478,7 +500,20 @@ void Launcher::drawCard(HDC dc, int gi, RECT tile, bool selected, bool focused) 
         drawText(g, right, rr, t.caption, rc, DT_SINGLELINE | DT_VCENTER | DT_CENTER | DT_END_ELLIPSIS);
         mr.right = rr.left - t.s(6);
     }
-    drawText(g, game.playerCount, mr, t.caption, t.c.sidebarTextMuted, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
+    // On a narrow card "1-4 players (online co-op)" loses its note before it loses words to an ellipsis.
+    std::wstring players = game.playerCount;
+    if (size_t paren = players.find(L" ("); paren != std::wstring::npos) {
+        HDC mdc = g.GetHDC();
+        if (textWidth(mdc, t.caption, players) > width(mr)) players.resize(paren);
+        g.ReleaseHDC(mdc);
+    }
+    {
+        // Squeezed by a status pill, the pips alone say how many play.
+        HDC mdc = g.GetHDC();
+        if (textWidth(mdc, t.caption, players) > width(mr)) players.clear();
+        g.ReleaseHDC(mdc);
+    }
+    drawText(g, players, mr, t.caption, t.c.sidebarTextMuted, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
 
     // Selection is a neutral outline: red means "start", blue means keyboard focus.
     if (!selected && lift > 0.01f) strokeRound(g, rf(c), radius, mix(t.c.surface, game.color, 0.85f * lift), t.sf(1.5));

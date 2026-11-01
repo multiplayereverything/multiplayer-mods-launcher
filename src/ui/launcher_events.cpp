@@ -268,7 +268,7 @@ LRESULT Launcher::handle(UINT m, WPARAM w, LPARAM l) {
                         select(heroGame_);
                         runAction(heroGame_, static_cast<size_t>(heroAction_));
                     }
-                } else if (id == kIdPageTab0 || id == kIdPageTab1) {
+                } else if (id >= kIdPageTab0 && id <= kIdPageTab2) {
                     showPageTab(id - kIdPageTab0);
                 } else if (id == kIdCatChip) {
                     dropList(catBtn_, navCombo_, kIdNavCombo);

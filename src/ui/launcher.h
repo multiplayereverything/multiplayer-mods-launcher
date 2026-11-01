@@ -227,11 +227,13 @@ private:
     HWND guideBack_ = nullptr;
     std::vector<HWND> guideLinkBtns_;
     // The page's tabs: Overview (the guide) and Details (every fact as a list); the guide's links stay on both.
-    HWND pageTabs_[2] = {};
+    // ...and, for a PC mod, Releases (its newest and installed versions).
+    HWND pageTabs_[3] = {};
     int pageTab_ = 0;
     GuidePage overview_;
     RECT pageTabsRc_{}, verified_{};
     GuidePage detailsPage(int gameIndex);
+    GuidePage releasesPage(int gameIndex);
     std::wstring verifiedVersion(int gameIndex) const;
     void showPageTab(int tab);
     // The banner's Play: the game's first action, as the details panel leads with it. -1 when it has none to show.
