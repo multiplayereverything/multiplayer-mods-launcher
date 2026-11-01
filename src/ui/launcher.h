@@ -226,6 +226,18 @@ private:
     int pageKey_[3] = {-1, 0, 0}, iconKey_[3] = {-1, 0, 0};
     HWND guideBack_ = nullptr;
     std::vector<HWND> guideLinkBtns_;
+    // The page's tabs: Overview (the guide) and Details (every fact as a list); the guide's links stay on both.
+    HWND pageTabs_[2] = {};
+    int pageTab_ = 0;
+    GuidePage overview_;
+    RECT pageTabsRc_{}, verified_{};
+    GuidePage detailsPage(int gameIndex);
+    std::wstring verifiedVersion(int gameIndex) const;
+    void showPageTab(int tab);
+    // The banner's Play: the game's first action, as the details panel leads with it. -1 when it has none to show.
+    HWND heroPlayBtn_ = nullptr;
+    int heroAction_ = -1;
+    int heroLead(int gameIndex) const;
     std::wstring emptyTitle() const;
     std::wstring emptyBody() const;
     int gridRank(int gameIndex) const;  // PC mods before Flash games; favorites, ready, the rest; coming soon last

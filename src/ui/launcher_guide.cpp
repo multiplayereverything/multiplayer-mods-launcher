@@ -28,7 +28,9 @@ bool Launcher::guidePage() const { return guideGame_ >= 0 && guideGame_ < static
 void Launcher::openGuide(int gi) {
     if (gi < 0 || gi >= static_cast<int>(cfg_.games.size())) return;
     guideGame_ = gi;
-    guide_ = buildGuide(cfg_, cfg_.games[gi], siteOf(gi));
+    overview_ = buildGuide(cfg_, cfg_.games[gi], siteOf(gi));
+    guide_ = overview_;
+    pageTab_ = 0;
     guideScroll_ = 0;
     ShowWindow(grid_, SW_HIDE);
     relayout();
@@ -39,7 +41,7 @@ void Launcher::openGuide(int gi) {
 void Launcher::closeGuide() {
     if (!guidePage()) return;
     guideGame_ = -1;
-    guide_ = {};
+    guide_ = overview_ = {};
     guideRows_.clear();
     relayout();
     ShowWindow(grid_, visible_.empty() || roomsPage() ? SW_HIDE : SW_SHOW);
@@ -62,21 +64,53 @@ std::vector<std::pair<std::wstring, std::wstring>> Launcher::pageFacts(int gi) {
         out.push_back({cfg_.t("page.version"), g.mod->package.sha256.empty()
                                                    ? g.mod->package.version
                                                    : cfg_.t("page.pinned", {{L"VERSION", g.mod->package.version}})});
+    else if (std::wstring v = verifiedVersion(gi); !v.empty())
+        out.push_back({cfg_.t("page.version"), v});
     Color c;
     if (std::wstring st = stateText(gi, c); !st.empty()) out.push_back({cfg_.t("page.status"), st});
     return out;
+}
+
+// The mod version a download would be checked against by SHA-256: a community mod's pinned one, else the newest
+// mods-info publishes (the package step refuses any it can't learn a hash for). Empty for Flash games.
+std::wstring Launcher::verifiedVersion(int gi) const {
+    const GameSpec& g = cfg_.games[gi];
+    if (!g.mod) return {};
+    if (!g.mod->package.sha256.empty() && !g.mod->package.version.empty()) return g.mod->package.version;
+    const ModView* v = modView(gi);
+    return v && v->source.published() ? v->source.version : std::wstring();
+}
+
+// The Details tab: the facts card's items and more, one per line, with the guide's links kept for the footer.
+GuidePage Launcher::detailsPage(int gi) {
+    GuidePage page;
+    page.links = overview_.links;
+    for (const auto& [label, value] : pageFacts(gi)) page.blocks.push_back({GuideBlock::Kind::Fact, 0, label, value});
+    const GameSpec& g = cfg_.games[gi];
+    if (std::wstring cats = categoryText(g); !cats.empty()) page.blocks.push_back({GuideBlock::Kind::Fact, 0, cfg_.t("page.categories"), cats});
+    if (std::wstring played = statsText(user_.find(g.id)); !played.empty())
+        page.blocks.push_back({GuideBlock::Kind::Fact, 0, cfg_.t("page.played"), played});
+    return page;
+}
+
+void Launcher::showPageTab(int tab) {
+    if (!guidePage() || tab == pageTab_) return;
+    pageTab_ = tab;
+    guide_ = tab == 0 ? overview_ : detailsPage(guideGame_);
+    guideScroll_ = 0;
+    relayout();
 }
 
 // The game page: a header over the game's art (Back, icon, kicker, title, tagline), a card of facts, and the guide
 // in a card that scrolls. Rows are measured for the card's width; each keeps where it starts, so painting is a loop.
 void Launcher::layoutGuidePage() {
     if (!guideBack_) return;
-    std::vector<HWND> controls = {guideBack_};
+    std::vector<HWND> controls = {guideBack_, pageTabs_[0], pageTabs_[1]};
     for (HWND h : guideLinkBtns_) controls.push_back(h);
     if (!guidePage() || width(gridRc_) <= 0) {
         for (HWND h : controls) ShowWindow(h, SW_HIDE);
         guideRows_.clear();
-        guideView_ = guideHead_ = guideFoot_ = guideHeader_ = guideIcon_ = guideFacts_ = guideCard_ = {};
+        guideView_ = guideHead_ = guideFoot_ = guideHeader_ = guideIcon_ = guideFacts_ = guideCard_ = pageTabsRc_ = verified_ = {};
         return;
     }
     const Theme& t = theme_;
@@ -91,11 +125,35 @@ void Launcher::layoutGuidePage() {
     int iconS = t.s(92);
     guideIcon_ = {x, gridRc_.top + t.s(62), x + iconS, gridRc_.top + t.s(62) + iconS};
     guideHead_ = {guideIcon_.right + t.s(22), guideIcon_.top - t.s(2), x + w, guideHeader_.bottom - t.s(8)};
-    int y = guideHeader_.bottom + t.s(6);
+    int y = guideHeader_.bottom + t.s(2);
 
+    // A pinned mod's version, checked by SHA-256 when it downloads, in the header's top right.
+    verified_ = {};
+    if (std::wstring version = verifiedVersion(guideGame_); !version.empty()) {
+        int pw = textWidth(dc, t.caption, cfg_.t("page.verified", {{L"VERSION", version}})) + t.s(36);
+        verified_ = {x + w - pw, gridRc_.top + t.s(18), x + w, gridRc_.top + t.s(18) + t.s(26)};
+    }
+
+    // The tabs, under the header.
+    std::set<HWND> shown = {guideBack_};
+    pageTabsRc_ = {x, y, x + w, y + t.s(42)};
+    int tx = x;
+    for (int i = 0; i < 2; ++i) {
+        int tw = textWidth(dc, t.button, windowText(pageTabs_[i])) + t.s(32);
+        MoveWindow(pageTabs_[i], tx, y, tw, height(pageTabsRc_), TRUE);
+        if (btnInfo_[pageTabs_[i]].selected != (i == pageTab_)) {
+            btnInfo_[pageTabs_[i]].selected = i == pageTab_;
+            InvalidateRect(pageTabs_[i], nullptr, FALSE);
+        }
+        shown.insert(pageTabs_[i]);
+        tx += tw + t.s(4);
+    }
+    y = pageTabsRc_.bottom + t.s(14);
+
+    // The facts card leads the Overview; Details lists the same and more.
     std::vector<std::pair<std::wstring, std::wstring>> facts = pageFacts(guideGame_);
     guideFacts_ = {};
-    if (!facts.empty()) {
+    if (!facts.empty() && pageTab_ == 0) {
         guideFacts_ = {x, y, x + w, y + t.s(68)};
         y = guideFacts_.bottom + t.s(16);
     }
@@ -103,7 +161,6 @@ void Launcher::layoutGuidePage() {
     // Footer: one button per link.
     int footH = guide_.links.empty() ? 0 : t.s(48);
     guideFoot_ = {x, gridRc_.bottom - t.s(kPad) - footH, x + w, gridRc_.bottom - t.s(kPad)};
-    std::set<HWND> shown = {guideBack_};
     int bx = x;
     for (size_t i = 0; i < guide_.links.size() && i < guideLinkBtns_.size(); ++i) {
         std::wstring label = guide_.links[i].label;
@@ -226,6 +283,25 @@ void Launcher::paintGuidePage(Graphics& g, HDC dc) {
     std::wstring tagline = fitText(mdc, t.body, game.description, width(dr), height(dr));
     g.ReleaseHDC(mdc);
     drawText(g, tagline, dr, t.body, mix(t.c.textMuted, t.c.text, 0.5f), DT_WORDBREAK);
+
+    // The tabs sit on a rule across the page.
+    if (height(pageTabsRc_) > 0) {
+        Pen rule(gc(t.c.border), 1);
+        g.DrawLine(&rule, static_cast<REAL>(pageTabsRc_.left), static_cast<REAL>(pageTabsRc_.bottom - 1),
+                   static_cast<REAL>(pageTabsRc_.right), static_cast<REAL>(pageTabsRc_.bottom - 1));
+    }
+    if (height(verified_) > 0) {
+        const Color& ok = t.c.success;
+        fillRound(g, rf(verified_), t.sf(13), mix(t.c.surface, ok, 0.16f));
+        strokeRound(g, rf(verified_), t.sf(13), mix(t.c.surface, ok, 0.5f), t.sf(1));
+        SolidBrush dot(gc(ok));
+        g.FillEllipse(&dot, static_cast<REAL>(verified_.left + t.s(12)), static_cast<REAL>((verified_.top + verified_.bottom) / 2 - t.s(4)),
+                      t.sf(8), t.sf(8));
+        RECT vt{verified_.left + t.s(26), verified_.top, verified_.right - t.s(8), verified_.bottom};
+        // Light themes pull the green toward the text color to keep 4.5:1 on the tint.
+        drawText(g, cfg_.t("page.verified", {{L"VERSION", verifiedVersion(guideGame_)}}), vt, t.caption, t.dark ? ok : mix(ok, t.c.text, 0.55f),
+                 DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
+    }
 
     // Facts: label over value, in even columns.
     if (height(guideFacts_) > 0) {

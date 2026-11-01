@@ -91,6 +91,9 @@ enum : int {
     kIdHero,
     kIdCatChip,
     kIdSortChip,
+    kIdHeroPlay,
+    kIdPageTab0,
+    kIdPageTab1,
     kIdGuideBack,
     kIdGuideLink0,
     kIdGuideLink1,
@@ -129,7 +132,7 @@ enum : int {
 
 // Icon-font glyphs (Segoe Fluent Icons / MDL2 Assets) for the window's own items.
 constexpr wchar_t kIconAll[] = L"\uE8A9", kIconFav[] = L"\uE734", kIconReady[] = L"\uE768", kIconRooms[] = L"\uE902", kIconSoon[] = L"\uE916",
-                  kIconSettings[] = L"\uE713", kIconMore[] = L"\uE70D", kIconLess[] = L"\uE70E", kIconQuick[] = L"\uE945", kIconCards[] = L"\uE8A9";
+                  kIconSettings[] = L"\uE713", kIconMore[] = L"\uE70D", kIconLess[] = L"\uE70E", kIconQuick[] = L"\uE945", kIconCards[] = L"\uE8A9", kIconPlay[] = L"\uE768";
 constexpr wchar_t kIconInstall[] = L"\uE896", kIconUpdate[] = L"\uE777", kIconRepair[] = L"\uE90F",
                   kIconUninstall[] = L"\uE74D";
 constexpr wchar_t kToastClass[] = L"MultiplayerEverythingLauncherToast";

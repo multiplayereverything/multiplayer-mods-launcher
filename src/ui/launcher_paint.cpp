@@ -93,6 +93,15 @@ int Launcher::heroCandidate() const {
     return best;
 }
 
+// The action the details panel would lead with; PC mods have none here (theirs install, update or launch by state).
+int Launcher::heroLead(int gi) const {
+    if (gi < 0) return -1;
+    const auto& actions = cfg_.games[gi].actions;
+    for (size_t i = 0; i < actions.size(); ++i)
+        if (actionVisible(gi, actions[i]) && !actions[i].more) return actions[i].isMod() || actions[i].isLink() ? -1 : static_cast<int>(i);
+    return -1;
+}
+
 // Shown over the plain grid only: not on the Rooms or Guide pages, not while searching, not in the narrow layout.
 bool Launcher::heroWanted() const {
     return !isNarrow() && !roomsPage() && !guidePage() && GetWindowTextLengthW(search_) == 0 && heroCandidate() >= 0;

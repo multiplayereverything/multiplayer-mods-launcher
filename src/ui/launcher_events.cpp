@@ -259,6 +259,13 @@ LRESULT Launcher::handle(UINT m, WPARAM w, LPARAM l) {
                     if (roomsPage()) openNav(libraryKey_.empty() || libraryKey_ == "rooms" ? navItems_.front().key : libraryKey_);
                 } else if (id == kIdTabRoomsTop) {
                     if (!roomsPage()) openNav("rooms");
+                } else if (id == kIdHeroPlay) {
+                    if (heroGame_ >= 0 && heroAction_ >= 0) {
+                        select(heroGame_);
+                        runAction(heroGame_, static_cast<size_t>(heroAction_));
+                    }
+                } else if (id == kIdPageTab0 || id == kIdPageTab1) {
+                    showPageTab(id - kIdPageTab0);
                 } else if (id == kIdCatChip) {
                     dropList(catBtn_, navCombo_, kIdNavCombo);
                 } else if (id == kIdSortChip) {

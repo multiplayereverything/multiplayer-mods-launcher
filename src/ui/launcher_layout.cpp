@@ -82,12 +82,25 @@ void Launcher::relayout() {
     hero_ = {};
     if (heroGame_ >= 0) {
         hero_ = {left + t.s(kPad), y0, right - t.s(kPad), y0 + t.s(164)};
-        int bh = t.s(34);
-        MoveWindow(heroBtn_, hero_.left + t.s(24), hero_.bottom - t.s(16) - bh, t.s(104), bh, TRUE);
+        int bh = t.s(38), bx = hero_.left + t.s(24), by = hero_.bottom - t.s(18) - bh;
+        heroAction_ = heroLead(heroGame_);
+        if (heroAction_ >= 0) {
+            // Play leads, in red as everywhere else that starts a game; its words are the action's own.
+            const std::wstring& label = cfg_.games[heroGame_].actions[heroAction_].label;
+            SetWindowTextW(heroPlayBtn_, (label.empty() ? cfg_.t("hero.play") : label).c_str());
+            btnInfo_[heroPlayBtn_].icon = kIconPlay;
+            int pw = std::max<int>(t.s(120), textWidth(dc, t.button, windowText(heroPlayBtn_)) + t.s(64));
+            MoveWindow(heroPlayBtn_, bx, by, pw, bh, TRUE);
+            bx += pw + t.s(10);
+        }
+        MoveWindow(heroBtn_, bx, by, t.s(104), bh, TRUE);
         SetWindowTextW(heroBtn_, cfg_.t("hero.open").c_str());
         y0 = hero_.bottom + t.s(4);
+    } else {
+        heroAction_ = -1;
     }
     ShowWindow(heroBtn_, heroGame_ >= 0 ? SW_SHOW : SW_HIDE);
+    ShowWindow(heroPlayBtn_, heroAction_ >= 0 ? SW_SHOW : SW_HIDE);
     top_ = {left, y0, right, y0 + t.s(52)};
 
     int x = top_.left + t.s(kPad), boxH = t.s(36), y = top_.top + (height(top_) - boxH) / 2;

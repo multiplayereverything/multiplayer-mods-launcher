@@ -357,6 +357,11 @@ void Launcher::createControls() {
     catBtn_ = makeButton(kIdCatChip, BtnStyle::Secondary);
     sortBtn_ = makeButton(kIdSortChip, BtnStyle::Secondary);
     btnInfo_[catBtn_].menu = btnInfo_[sortBtn_].menu = true;
+    heroPlayBtn_ = makeButton(kIdHeroPlay, BtnStyle::Primary);
+    for (int i = 0; i < 2; ++i) {
+        pageTabs_[i] = makeButton(kIdPageTab0 + i, BtnStyle::Tab);
+        SetWindowTextW(pageTabs_[i], cfg_.t(i == 0 ? "page.overview" : "page.details").c_str());
+    }
     guideBack_ = makeButton(kIdGuideBack, BtnStyle::Secondary);
     for (int i = 0; i < static_cast<int>(kGuideMaxLinks); ++i) guideLinkBtns_.push_back(makeButton(kIdGuideLink0 + i, BtnStyle::Secondary));
     locateBtn_ = makeButton(kIdLocate, BtnStyle::Secondary);
