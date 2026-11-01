@@ -56,7 +56,12 @@ LRESULT CALLBACK Launcher::gridProc(HWND h, UINT m, WPARAM w, LPARAM l, UINT_PTR
             if (item >= 0 && ListView_GetItemRect(h, item, &r, LVIR_BOUNDS)) InvalidateRect(h, &r, FALSE);
             self->liftTick_ = GetTickCount64();
             self->wake();
+            self->placeTilePlay();
         }
+    } else if (m == WM_MOUSEWHEEL || m == WM_VSCROLL) {
+        // The cards move under a still mouse; Play comes back with the next move.
+        self->hoverItem_ = -1;
+        self->placeTilePlay();
     } else if (m == WM_SETFOCUS || m == WM_KILLFOCUS) {
         InvalidateRect(h, nullptr, FALSE);  // focus ring on the focused card
     } else if (m == WM_SIZE) {
@@ -102,6 +107,7 @@ LRESULT CALLBACK Launcher::buttonProc(HWND h, UINT m, WPARAM w, LPARAM l, UINT_P
     } else if (m == WM_MOUSELEAVE && self->hoverBtn_ == h) {
         self->hoverBtn_ = nullptr;
         InvalidateRect(h, nullptr, FALSE);
+        if (h == self->tilePlayBtn_) self->placeTilePlay();  // off the card's Play and off the card: it goes
     } else if (m == WM_ERASEBKGND) {
         return 1;  // drawn completely in NM_CUSTOMDRAW
     }
@@ -268,6 +274,12 @@ LRESULT Launcher::handle(UINT m, WPARAM w, LPARAM l) {
                     if (heroGame_ >= 0 && heroAction_ >= 0) {
                         select(heroGame_);
                         runAction(heroGame_, static_cast<size_t>(heroAction_));
+                    }
+                } else if (id == kIdTilePlay) {
+                    if (tilePlayGame_ >= 0 && tilePlayAction_ >= 0) {
+                        int gi = tilePlayGame_, ai = tilePlayAction_;
+                        select(gi);
+                        runAction(gi, static_cast<size_t>(ai));
                     }
                 } else if (id >= kIdPageTab0 && id <= kIdPageTab2) {
                     showPageTab(id - kIdPageTab0);

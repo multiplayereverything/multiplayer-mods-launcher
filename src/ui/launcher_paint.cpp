@@ -102,6 +102,49 @@ int Launcher::heroLead(int gi) const {
     return -1;
 }
 
+void Launcher::placeTilePlay() {
+    if (!tilePlayBtn_) return;
+    POINT cur;
+    GetCursorPos(&cur);
+    RECT onScreen;
+    GetWindowRect(tilePlayBtn_, &onScreen);
+    // Moving from the card onto its Play leaves the grid for a moment: keep it while the mouse is on it.
+    if (hoverItem_ < 0 && IsWindowVisible(tilePlayBtn_) && PtInRect(&onScreen, cur)) return;
+    int gi = hoverItem_ >= 0 && hoverItem_ < static_cast<int>(visible_.size()) && IsWindowVisible(grid_) ? visible_[hoverItem_] : -1;
+    int ai = gi >= 0 && !cfg_.games[gi].comingSoon ? heroLead(gi) : -1;
+    RECT item{};
+    if (ai < 0 || !ListView_GetItemRect(grid_, hoverItem_, &item, LVIR_BOUNDS)) {
+        tilePlayGame_ = tilePlayAction_ = -1;
+        ShowWindow(tilePlayBtn_, SW_HIDE);
+        return;
+    }
+    MapWindowPoints(grid_, hwnd_, reinterpret_cast<POINT*>(&item), 2);
+    const Theme& t = theme_;
+    int half = t.s(kGap) / 2;
+    RECT card{item.left + half, item.top + half, item.right - half, item.bottom - half};
+    const std::wstring& label = cfg_.games[gi].actions[ai].label;
+    std::wstring shown = label.empty() ? cfg_.t("hero.play") : label;
+    // The button's name says which game, for a screen reader; the face says only the action.
+    btnInfo_[tilePlayBtn_].label = shown;
+    SetWindowTextW(tilePlayBtn_, cfg_.t("tile.play", {{L"ACTION", shown}, {L"GAME", displayName(cfg_.games[gi])}}).c_str());
+    HDC dc = GetDC(hwnd_);
+    int bw = std::min<int>(textWidth(dc, t.button, shown) + t.s(58), width(card) - t.s(20)), bh = t.s(34);
+    ReleaseDC(hwnd_, dc);
+    // Over the top right of the picture, clear of the names along its foot.
+    RECT gridRect;
+    GetWindowRect(grid_, &gridRect);
+    MapWindowPoints(nullptr, hwnd_, reinterpret_cast<POINT*>(&gridRect), 2);
+    int bx = card.right - t.s(10) - bw, by = card.top + height(card) / 2 - bh / 2 - t.s(8);
+    if (by < gridRect.top || by + bh > gridRect.bottom) {  // a card half scrolled out: no Play for it
+        ShowWindow(tilePlayBtn_, SW_HIDE);
+        return;
+    }
+    tilePlayGame_ = gi;
+    tilePlayAction_ = ai;
+    SetWindowPos(tilePlayBtn_, HWND_TOP, bx, by, bw, bh, SWP_SHOWWINDOW | SWP_NOACTIVATE);
+    InvalidateRect(tilePlayBtn_, nullptr, FALSE);
+}
+
 // Shown over the plain grid only: not on the Rooms or Guide pages, not while searching, not in the narrow layout.
 bool Launcher::heroWanted() const {
     return !isNarrow() && !roomsPage() && !guidePage() && GetWindowTextLengthW(search_) == 0 && heroCandidate() >= 0;

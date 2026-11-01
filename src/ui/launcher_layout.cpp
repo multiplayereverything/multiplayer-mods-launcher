@@ -33,6 +33,7 @@ bool Launcher::isNarrow() const {
 
 void Launcher::relayout() {
     endIntro();
+    if (tilePlayBtn_) ShowWindow(tilePlayBtn_, SW_HIDE);  // the cards move; it returns with the mouse
     RECT cr;
     GetClientRect(hwnd_, &cr);
     if (cr.right <= 0 || cr.bottom <= 0) return;

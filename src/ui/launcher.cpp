@@ -365,6 +365,8 @@ void Launcher::createControls() {
     sortBtn_ = makeButton(kIdSortChip, BtnStyle::Secondary);
     btnInfo_[catBtn_].menu = btnInfo_[sortBtn_].menu = true;
     heroPlayBtn_ = makeButton(kIdHeroPlay, BtnStyle::Primary);
+    tilePlayBtn_ = makeButton(kIdTilePlay, BtnStyle::Primary);
+    btnInfo_[tilePlayBtn_].icon = kIconPlay;
     const char* tabKeys[] = {"page.overview", "page.details", "page.releases"};
     for (int i = 0; i < 3; ++i) {
         pageTabs_[i] = makeButton(kIdPageTab0 + i, BtnStyle::Tab);

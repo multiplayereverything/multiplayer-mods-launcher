@@ -96,6 +96,7 @@ enum : int {
     kIdPageTab0,
     kIdPageTab1,
     kIdPageTab2,
+    kIdTilePlay,
     kIdGuideBack,
     kIdGuideLink0,
     kIdGuideLink1,

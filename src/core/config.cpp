@@ -444,6 +444,7 @@ const std::vector<std::pair<std::string, std::wstring>>& defaultTexts() {
         {"hero.played", L"Played ${WHEN}"},
         {"hero.open", L"Open"},
         {"hero.play", L"Play"},
+        {"tile.play", L"${ACTION}: ${GAME}"},
         {"guide.back", L"Back to games"},
         {"guide.title", L"Guide: ${NAME}"},
         {"guide.h.about", L"About"},

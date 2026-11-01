@@ -245,6 +245,10 @@ private:
     bool padTried_ = false, pad_ = false;
     unsigned padButtons_ = 0, padRepeatKey_ = 0;
     ULONGLONG padRepeatAt_ = 0;
+    // Play on the card under the mouse (a real button laid over it): the card itself opens the page.
+    HWND tilePlayBtn_ = nullptr;
+    int tilePlayGame_ = -1, tilePlayAction_ = -1;
+    void placeTilePlay();
     HWND heroPlayBtn_ = nullptr;
     int heroAction_ = -1;
     int heroLead(int gameIndex) const;
