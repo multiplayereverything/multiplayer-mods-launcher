@@ -226,6 +226,10 @@ LRESULT Launcher::handle(UINT m, WPARAM w, LPARAM l) {
                 user_.category = navItems_[navIndex_].key;
                 closeGuide();
                 rebuildGrid();
+            } else if (id == kIdSort && code == CBN_SELCHANGE) {
+                user_.sortMode = std::clamp(static_cast<int>(SendMessageW(sortCombo_, CB_GETCURSEL, 0, 0)), 0, 3);
+                save();
+                rebuildGrid();
             } else if (id == kIdSearch && code == EN_CHANGE) {
                 closeGuide();
                 rebuildGrid();
@@ -251,11 +255,21 @@ LRESULT Launcher::handle(UINT m, WPARAM w, LPARAM l) {
                 else if (id == kIdFav) toggleFavorite();
                 else if (id == kIdLocate) locateFile();
                 else if (id == kIdFolder) openFolder();
-                else if (id == kIdHero) {
+                else if (id == kIdTabLibrary) {
+                    if (roomsPage()) openNav(libraryKey_.empty() || libraryKey_ == "rooms" ? navItems_.front().key : libraryKey_);
+                } else if (id == kIdTabRoomsTop) {
+                    if (!roomsPage()) openNav("rooms");
+                } else if (id == kIdSize) {
+                    user_.compactCards = !user_.compactCards;
+                    save();
+                    SetWindowTextW(sizeBtn_, cfg_.t(user_.compactCards ? "button.normalCards" : "button.compactCards").c_str());
+                    relayout();
+                } else if (id == kIdHero) {
                     if (heroGame_ >= 0) {
                         select(heroGame_);
                         auto at = std::find(visible_.begin(), visible_.end(), heroGame_);
                         if (at != visible_.end()) ListView_EnsureVisible(grid_, static_cast<int>(at - visible_.begin()), FALSE);
+                        openGuide(heroGame_);
                     }
                 } else if (id == kIdAbout) {
                     if (guidePage() && guideGame_ == selected_) closeGuide();

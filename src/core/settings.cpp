@@ -1,5 +1,6 @@
 #include "settings.h"
 
+#include <algorithm>
 #include <ctime>
 
 #include "fs.h"
@@ -46,6 +47,8 @@ UserData loadUserData(const std::wstring& path) {
     d.playerName = widen(str(root, "playerName"));
     if (const json::Value* o = root.find("showOriginals"); o && o->isBool()) d.showOriginals = o->boolean();
     if (const json::Value* o = root.find("autoUpdate"); o && o->isBool()) d.autoUpdate = o->boolean();
+    if (const json::Value* o = root.find("sortMode"); o && o->isNumber()) d.sortMode = std::clamp(static_cast<int>(o->number()), 0, 3);
+    if (const json::Value* o = root.find("compactCards"); o && o->isBool()) d.compactCards = o->boolean();
     if (const json::Value* o = root.find("showOffline"); o && o->isBool()) d.showOffline = o->boolean();
     if (const json::Value* w = root.find("window"); w && w->isObject()) {
         d.x = static_cast<int>(num(*w, "x"));
@@ -90,6 +93,8 @@ bool saveUserData(const UserData& d, const std::wstring& path, std::wstring* err
     root.set("playerName", narrow(d.playerName));
     root.set("showOriginals", d.showOriginals);
     root.set("autoUpdate", d.autoUpdate);
+    root.set("sortMode", d.sortMode);
+    root.set("compactCards", d.compactCards);
     root.set("showOffline", d.showOffline);
     json::Value w = json::Value::object();
     w.set("x", d.x);

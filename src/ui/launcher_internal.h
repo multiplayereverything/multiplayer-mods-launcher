@@ -76,6 +76,10 @@ inline bool systemAnimations() {
 enum : int {
     kIdNav = 100,
     kIdNavCombo,
+    kIdSort,
+    kIdTabLibrary,
+    kIdTabRoomsTop,
+    kIdSize,
     kIdSearch,
     kIdGrid,
     kIdPlayer,
@@ -123,15 +127,15 @@ enum : int {
 
 // Icon-font glyphs (Segoe Fluent Icons / MDL2 Assets) for the window's own items.
 constexpr wchar_t kIconAll[] = L"\uE8A9", kIconFav[] = L"\uE734", kIconReady[] = L"\uE768", kIconRooms[] = L"\uE902", kIconSoon[] = L"\uE916",
-                  kIconSettings[] = L"\uE713", kIconMore[] = L"\uE70D", kIconLess[] = L"\uE70E", kIconQuick[] = L"\uE945";
+                  kIconSettings[] = L"\uE713", kIconMore[] = L"\uE70D", kIconLess[] = L"\uE70E", kIconQuick[] = L"\uE945", kIconCards[] = L"\uE8A9";
 constexpr wchar_t kIconInstall[] = L"\uE896", kIconUpdate[] = L"\uE777", kIconRepair[] = L"\uE90F",
                   kIconUninstall[] = L"\uE74D";
 constexpr wchar_t kToastClass[] = L"MultiplayerEverythingLauncherToast";
 constexpr ULONGLONG kToastMs = 4000;
 
 // 96-DPI layout units.
-constexpr int kSidebarW = 244, kDetailW = 360, kDetailNarrowW = 300, kTopH = 68, kStatusH = 32, kPad = 20;
-constexpr int kCardMinW = 196, kGap = 16, kNarrowBelow = 900;
+constexpr int kTopBarH = 56, kSidebarW = 244, kDetailW = 360, kDetailNarrowW = 300, kTopH = 68, kStatusH = 32, kPad = 20;
+constexpr int kCardCompactW = 148, kCardMinW = 196, kGap = 16, kNarrowBelow = 900;
 
 class Buffer {
 public:

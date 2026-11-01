@@ -31,8 +31,7 @@ void Launcher::openGuide(int gi) {
     guide_ = buildGuide(cfg_, cfg_.games[gi], siteOf(gi));
     guideScroll_ = 0;
     ShowWindow(grid_, SW_HIDE);
-    layoutHero();
-    layoutGuidePage();
+    relayout();
     InvalidateRect(hwnd_, &gridRc_, FALSE);
     if (guideBack_) SetFocus(guideBack_);
 }
@@ -42,14 +41,34 @@ void Launcher::closeGuide() {
     guideGame_ = -1;
     guide_ = {};
     guideRows_.clear();
-    layoutHero();
-    layoutGrid();
-    layoutGuidePage();
+    relayout();
     ShowWindow(grid_, visible_.empty() || roomsPage() ? SW_HIDE : SW_SHOW);
     InvalidateRect(hwnd_, &gridRc_, FALSE);
 }
 
-// Measures every block for the page's width; the rows keep where each one starts, so painting is a loop.
+// What the game page's details card lists: who made it, players, where it comes from, the pinned version, its state.
+std::vector<std::pair<std::wstring, std::wstring>> Launcher::pageFacts(int gi) {
+    std::vector<std::pair<std::wstring, std::wstring>> out;
+    const GameSpec& g = cfg_.games[gi];
+    if (g.mod) out.push_back({cfg_.t("page.madeBy"), g.mod->mod.publisher.empty() ? cfg_.branding.title : g.mod->mod.publisher});
+    if (!g.playerCount.empty()) out.push_back({cfg_.t("page.players"), g.playerCount});
+    if (g.mod && !g.mod->mod.website.empty()) {
+        std::wstring site = g.mod->mod.website;
+        for (const wchar_t* scheme : {L"https://", L"http://"})
+            if (site.rfind(scheme, 0) == 0) site = site.substr(wcslen(scheme));
+        out.push_back({cfg_.t("page.source"), site});
+    }
+    if (g.mod && !g.mod->package.version.empty())
+        out.push_back({cfg_.t("page.version"), g.mod->package.sha256.empty()
+                                                   ? g.mod->package.version
+                                                   : cfg_.t("page.pinned", {{L"VERSION", g.mod->package.version}})});
+    Color c;
+    if (std::wstring st = stateText(gi, c); !st.empty()) out.push_back({cfg_.t("page.status"), st});
+    return out;
+}
+
+// The game page: a header over the game's art (Back, icon, kicker, title, tagline), a card of facts, and the guide
+// in a card that scrolls. Rows are measured for the card's width; each keeps where it starts, so painting is a loop.
 void Launcher::layoutGuidePage() {
     if (!guideBack_) return;
     std::vector<HWND> controls = {guideBack_};
@@ -57,26 +76,33 @@ void Launcher::layoutGuidePage() {
     if (!guidePage() || width(gridRc_) <= 0) {
         for (HWND h : controls) ShowWindow(h, SW_HIDE);
         guideRows_.clear();
-        guideView_ = guideHead_ = guideFoot_ = {};
+        guideView_ = guideHead_ = guideFoot_ = guideHeader_ = guideIcon_ = guideFacts_ = guideCard_ = {};
         return;
     }
     const Theme& t = theme_;
     HDC dc = GetDC(hwnd_);
-    int pad = t.s(kPad), x = gridRc_.left + pad, w = width(gridRc_) - pad * 2;
-    int y = gridRc_.top + t.s(4);
+    int pad = t.s(kPad + 8), x = gridRc_.left + pad, w = width(gridRc_) - pad * 2;
 
-    // Header: Back, and the page's title.
-    int backW = textWidth(dc, t.button, cfg_.t("guide.back")) + t.s(32), backH = t.s(34);
+    // Header: Back on top, then the icon with the text block beside it.
+    guideHeader_ = {gridRc_.left, gridRc_.top, gridRc_.right, gridRc_.top + t.s(204)};
+    int backW = textWidth(dc, t.button, cfg_.t("guide.back")) + t.s(32), backH = t.s(32);
     SetWindowTextW(guideBack_, cfg_.t("guide.back").c_str());
-    MoveWindow(guideBack_, x, y, backW, backH, TRUE);
-    std::wstring title = cfg_.t("guide.title", {{L"NAME", displayName(cfg_.games[guideGame_])}});
-    int titleH = textHeight(dc, t.heading, title, w - backW - t.s(16), DT_SINGLELINE);
-    guideHead_ = {x + backW + t.s(16), y + (backH - titleH) / 2, x + w, y + (backH - titleH) / 2 + titleH};
-    y += backH + t.s(14);
+    MoveWindow(guideBack_, x, gridRc_.top + t.s(14), backW, backH, TRUE);
+    int iconS = t.s(92);
+    guideIcon_ = {x, gridRc_.top + t.s(62), x + iconS, gridRc_.top + t.s(62) + iconS};
+    guideHead_ = {guideIcon_.right + t.s(22), guideIcon_.top - t.s(2), x + w, guideHeader_.bottom - t.s(8)};
+    int y = guideHeader_.bottom + t.s(6);
+
+    std::vector<std::pair<std::wstring, std::wstring>> facts = pageFacts(guideGame_);
+    guideFacts_ = {};
+    if (!facts.empty()) {
+        guideFacts_ = {x, y, x + w, y + t.s(68)};
+        y = guideFacts_.bottom + t.s(16);
+    }
 
     // Footer: one button per link.
     int footH = guide_.links.empty() ? 0 : t.s(48);
-    guideFoot_ = {x, gridRc_.bottom - pad - footH, x + w, gridRc_.bottom - pad};
+    guideFoot_ = {x, gridRc_.bottom - t.s(kPad) - footH, x + w, gridRc_.bottom - t.s(kPad)};
     std::set<HWND> shown = {guideBack_};
     int bx = x;
     for (size_t i = 0; i < guide_.links.size() && i < guideLinkBtns_.size(); ++i) {
@@ -88,11 +114,13 @@ void Launcher::layoutGuidePage() {
         shown.insert(guideLinkBtns_[i]);
         bx += bw + t.s(8);
     }
-    guideView_ = {x, y, x + w, guideFoot_.top - (footH ? t.s(8) : 0)};
+    guideCard_ = {x, y, x + w, guideFoot_.top - (footH ? t.s(8) : 0)};
+    guideView_ = {guideCard_.left + t.s(24), guideCard_.top + t.s(18), guideCard_.right - t.s(18), guideCard_.bottom - t.s(18)};
+    if (height(guideView_) < t.s(40)) guideView_.bottom = guideView_.top + t.s(40);
 
     // Rows.
     guideRows_.clear();
-    int cy = 0, textW = w - t.s(4);
+    int cy = 0, textW = width(guideView_) - t.s(4);
     for (size_t i = 0; i < guide_.blocks.size(); ++i) {
         const GuideBlock& b = guide_.blocks[i];
         GuideRow r;
@@ -149,15 +177,74 @@ void Launcher::paintGuidePage(Graphics& g, HDC dc) {
     if (!guidePage() || height(guideView_) <= 0) return;
     const Theme& t = theme_;
     (void)dc;
-    drawText(g, cfg_.t("guide.title", {{L"NAME", displayName(cfg_.games[guideGame_])}}), guideHead_, t.heading, t.c.text,
-             DT_SINGLELINE | DT_END_ELLIPSIS);
-    // A line under the header and over the link bar, so the scrolling part reads as its own area.
-    Pen line(gc(t.c.border), 1);
-    g.DrawLine(&line, static_cast<REAL>(guideView_.left), static_cast<REAL>(guideView_.top - t.s(6)),
-               static_cast<REAL>(guideView_.right), static_cast<REAL>(guideView_.top - t.s(6)));
-    if (height(guideFoot_) > 0)
-        g.DrawLine(&line, static_cast<REAL>(guideFoot_.left), static_cast<REAL>(guideFoot_.top - t.s(4)),
-                   static_cast<REAL>(guideFoot_.right), static_cast<REAL>(guideFoot_.top - t.s(4)));
+    const GameSpec& game = cfg_.games[guideGame_];
+    const Color& bg = t.c.background;
+
+    // Backdrop: the game's art behind the header, fading into the page below and darker on the text's side.
+    int hw = width(guideHeader_), hh = height(guideHeader_);
+    if (!pageBmp_ || pageKey_[0] != guideGame_ || pageKey_[1] != hw || pageKey_[2] != hh) {
+        pageBmp_ = buildArt(guideGame_, hw, hh);
+        pageKey_[0] = guideGame_;
+        pageKey_[1] = hw;
+        pageKey_[2] = hh;
+    }
+    RectF head = rf(guideHeader_);
+    g.DrawImage(pageBmp_.get(), head.X, head.Y, head.Width, head.Height);
+    LinearGradientBrush down(PointF(0, head.Y - 1), PointF(0, head.Y + head.Height + 1), gc(Color{bg.r, bg.g, bg.b, 120}),
+                             gc(Color{bg.r, bg.g, bg.b, 255}));
+    g.FillRectangle(&down, head);
+    LinearGradientBrush across(PointF(head.X - 1, 0), PointF(head.X + head.Width + 1, 0), gc(Color{bg.r, bg.g, bg.b, 200}),
+                               gc(Color{bg.r, bg.g, bg.b, 0}));
+    g.FillRectangle(&across, head);
+
+    // Icon: the same art, square, in a rounded frame.
+    int iw = width(guideIcon_);
+    if (!iconBmp_ || iconKey_[0] != guideGame_ || iconKey_[1] != iw) {
+        iconBmp_ = buildArt(guideGame_, iw, iw);
+        iconKey_[0] = guideGame_;
+        iconKey_[1] = iw;
+        iconKey_[2] = iw;
+    }
+    {
+        GraphicsPath path;
+        roundRectPath(path, rf(guideIcon_), t.sf(16));
+        GraphicsState saved = g.Save();
+        g.SetClip(&path, CombineModeIntersect);
+        g.DrawImage(iconBmp_.get(), static_cast<REAL>(guideIcon_.left), static_cast<REAL>(guideIcon_.top), static_cast<REAL>(iw),
+                    static_cast<REAL>(iw));
+        g.Restore(saved);
+        strokeRound(g, rf(guideIcon_), t.sf(16), mix(t.c.border, t.c.text, 0.15f), t.sf(1));
+    }
+
+    // Text beside the icon: kicker (the categories), title, tagline.
+    RECT kr{guideHead_.left, guideHead_.top, guideHead_.right, guideHead_.top + t.s(18)};
+    drawText(g, categoryText(game), kr, t.tiny, t.c.textMuted, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
+    RECT tr{guideHead_.left, kr.bottom + t.s(2), guideHead_.right, kr.bottom + t.s(46)};
+    drawText(g, displayName(game), tr, t.title, t.c.text, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
+    RECT dr{guideHead_.left, tr.bottom + t.s(4), std::min<LONG>(guideHead_.right, guideHead_.left + t.s(720)), guideHead_.bottom};
+    HDC mdc = g.GetHDC();
+    std::wstring tagline = fitText(mdc, t.body, game.description, width(dr), height(dr));
+    g.ReleaseHDC(mdc);
+    drawText(g, tagline, dr, t.body, mix(t.c.textMuted, t.c.text, 0.5f), DT_WORDBREAK);
+
+    // Facts: label over value, in even columns.
+    if (height(guideFacts_) > 0) {
+        fillRound(g, rf(guideFacts_), t.sf(9), t.c.surface);
+        strokeRound(g, rf(guideFacts_), t.sf(9), t.c.border, t.sf(1));
+        std::vector<std::pair<std::wstring, std::wstring>> facts = pageFacts(guideGame_);
+        int fx = guideFacts_.left + t.s(24), fw = (width(guideFacts_) - t.s(48)) / std::max<int>(1, static_cast<int>(facts.size()));
+        for (const auto& [label, value] : facts) {
+            drawText(g, label, RECT{fx, guideFacts_.top + t.s(14), fx + fw - t.s(16), guideFacts_.top + t.s(32)}, t.tiny,
+                     t.c.textMuted, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
+            drawText(g, value, RECT{fx, guideFacts_.top + t.s(34), fx + fw - t.s(16), guideFacts_.bottom - t.s(10)}, t.caption,
+                     t.c.text, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
+            fx += fw;
+        }
+    }
+
+    // The guide's card.
+    fillRound(g, rf(guideCard_), t.sf(9), t.c.surface);
+    strokeRound(g, rf(guideCard_), t.sf(9), t.c.border, t.sf(1));
 
     // The rows are drawn into a bitmap the size of the scrolling area and copied in, so nothing of a half-scrolled
     // row can land over the header or the link bar (GDI text ignores the clip a Graphics object holds).
@@ -165,7 +252,7 @@ void Launcher::paintGuidePage(Graphics& g, HDC dc) {
     Bitmap page(viewW, viewH0, PixelFormat32bppRGB);
     {
         Graphics cg(&page);
-        SolidBrush pageBg(gc(t.c.background));
+        SolidBrush pageBg(gc(t.c.surface));
         cg.SetSmoothingMode(SmoothingModeNone);  // the fill must cover every pixel, edges included
         cg.FillRectangle(&pageBg, -1, -1, viewW + 2, viewH0 + 2);
         cg.SetSmoothingMode(SmoothingModeAntiAlias);

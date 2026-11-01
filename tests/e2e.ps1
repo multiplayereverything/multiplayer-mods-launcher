@@ -402,17 +402,16 @@ try {
     [Acc]::Do($quick.Hwnd)
     Check (WaitFor { (Test-Path "$work\args.txt") -and ((Get-Content "$work\args.txt") -contains '-Pjoin=ABCDE') }) 'Quick play joins the busiest open room'
   } else { Check $false 'Quick play button found' }
-  # The sidebar's Rooms page lists every game's rooms with their own Join buttons.
-  $navList = [Acc]::Controls($h) | Where-Object { $_.Class -eq 'ListBox' } | Select-Object -First 1
-  if ($navList) {
-    [Acc]::SendMessage($navList.Hwnd, 0x0186, [IntPtr]3, [IntPtr]::Zero) | Out-Null  # LB_SETCURSEL: Rooms
-    [Acc]::SendMessage($h, 0x0111, [IntPtr](100 -bor (1 -shl 16)), $navList.Hwnd) | Out-Null  # WM_COMMAND LBN_SELCHANGE
+  # The top bar's Rooms tab opens a page of every game's rooms with their own Join buttons; Library goes back.
+  $roomsTop = [Acc]::Controls($h) | Where-Object { $_.Name -eq 'Rooms' } | Select-Object -First 1
+  $libTop = [Acc]::Controls($h) | Where-Object { $_.Name -eq 'Library' } | Select-Object -First 1
+  if ($roomsTop -and $libTop) {
+    [Acc]::Do($roomsTop.Hwnd)
     # The Play tab is open again, so a visible Join button is the page's own.
     Check (WaitFor { @([Acc]::Controls($h) | Where-Object { $_.Name -eq 'Join room ABCDE' }).Count -ge 1 }) 'the Rooms page lists the open rooms'
     Check ($null -ne ([Acc]::Controls($h) | Where-Object { $_.Name -eq 'Join by code' } | Select-Object -First 1)) 'the Rooms page has Join by code'
-    [Acc]::SendMessage($navList.Hwnd, 0x0186, [IntPtr]0, [IntPtr]::Zero) | Out-Null
-    [Acc]::SendMessage($h, 0x0111, [IntPtr](100 -bor (1 -shl 16)), $navList.Hwnd) | Out-Null
-  } else { Check $false 'sidebar found' }
+    [Acc]::Do($libTop.Hwnd)
+  } else { Check $false 'the top bar has Library and Rooms tabs' }
   $setBtn = [Acc]::Controls($h) | Where-Object { $_.Name -eq 'Settings' } | Select-Object -First 1
   if ($setBtn) {
     [Acc]::Do($setBtn.Hwnd)

@@ -31,6 +31,8 @@ struct UserData {
     std::wstring playerName;     // passed to games as ${PLAYER_NAME}
     bool showOriginals = false;  // list "edition": "original" actions
     bool autoUpdate = true;      // install new launcher releases by itself
+    int sortMode = 0;            // the grid's order: 0 ours, 1 recently played, 2 name, 3 most players
+    bool compactCards = false;   // smaller cards in the grid
     bool showOffline = false;    // list "offline" actions (solo, one keyboard)
     int x = 0, y = 0, width = 0, height = 0;  // 0 = default placement
     bool maximized = false;

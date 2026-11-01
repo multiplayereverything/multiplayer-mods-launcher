@@ -326,6 +326,7 @@ void Launcher::createControls() {
     nav_ = child(L"LISTBOX", WS_TABSTOP | LBS_NOTIFY | LBS_OWNERDRAWFIXED | LBS_HASSTRINGS | LBS_NOINTEGRALHEIGHT, 0,
                  kIdNav);
     navCombo_ = child(WC_COMBOBOXW, WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL, 0, kIdNavCombo);
+    sortCombo_ = child(WC_COMBOBOXW, WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL, 0, kIdSort);
     search_ = child(L"EDIT", WS_TABSTOP | ES_AUTOHSCROLL, 0, kIdSearch);
     SetWindowSubclass(search_, searchProc, 3, reinterpret_cast<DWORD_PTR>(this));
     grid_ = child(WC_LISTVIEWW, WS_TABSTOP | LVS_SINGLESEL | LVS_SHOWSELALWAYS | LVS_AUTOARRANGE | LVS_NOCOLUMNHEADER, 0,
@@ -349,6 +350,10 @@ void Launcher::createControls() {
     folderBtn_ = makeButton(kIdFolder, BtnStyle::Secondary);
     aboutBtn_ = makeButton(kIdAbout, BtnStyle::Secondary);
     heroBtn_ = makeButton(kIdHero, BtnStyle::Secondary);
+    sizeBtn_ = makeButton(kIdSize, BtnStyle::Secondary);
+    libTab_ = makeButton(kIdTabLibrary, BtnStyle::Tab);
+    roomsTopTab_ = makeButton(kIdTabRoomsTop, BtnStyle::Tab);
+    btnInfo_[sizeBtn_].icon = kIconCards;
     guideBack_ = makeButton(kIdGuideBack, BtnStyle::Secondary);
     for (int i = 0; i < static_cast<int>(kGuideMaxLinks); ++i) guideLinkBtns_.push_back(makeButton(kIdGuideLink0 + i, BtnStyle::Secondary));
     locateBtn_ = makeButton(kIdLocate, BtnStyle::Secondary);
@@ -415,7 +420,7 @@ void Launcher::createControls() {
                              hwnd_, nullptr, GetModuleHandleW(nullptr), this);
     if (theme_.dark && !theme_.highContrast) {
         for (HWND h : {nav_, grid_}) SetWindowTheme(h, L"DarkMode_Explorer", nullptr);
-        for (HWND h : {navCombo_, playerCombo_, saveCombo_, pageGameCombo_}) SetWindowTheme(h, L"DarkMode_CFD", nullptr);
+        for (HWND h : {navCombo_, sortCombo_, playerCombo_, saveCombo_, pageGameCombo_}) SetWindowTheme(h, L"DarkMode_CFD", nullptr);
         for (HWND h : settingCombos_) SetWindowTheme(h, L"DarkMode_CFD", nullptr);
     }
     applyFonts();
@@ -434,7 +439,7 @@ HWND Launcher::makeButton(int id, BtnStyle style, HWND parent) {
 }
 
 void Launcher::applyFonts() {
-    for (HWND h : {nav_, navCombo_, search_, grid_, playerCombo_, saveCombo_, pageGameCombo_})
+    for (HWND h : {nav_, navCombo_, sortCombo_, search_, grid_, playerCombo_, saveCombo_, pageGameCombo_})
         SendMessageW(h, WM_SETFONT, reinterpret_cast<WPARAM>(theme_.body), TRUE);
     for (HWND h : settingCombos_) SendMessageW(h, WM_SETFONT, reinterpret_cast<WPARAM>(theme_.body), TRUE);
     for (HWND h : {tabCodeEdit_, pageCodeEdit_})
@@ -498,6 +503,39 @@ void Launcher::buildNav() {
     }
     SendMessageW(nav_, LB_SETCURSEL, navIndex_, 0);
     SendMessageW(navCombo_, CB_SETCURSEL, navIndex_, 0);
+    SendMessageW(sortCombo_, CB_RESETCONTENT, 0, 0);
+    for (const char* key : {"sort.ours", "sort.recent", "sort.name", "sort.players"})
+        SendMessageW(sortCombo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(cfg_.t(key).c_str()));
+    SendMessageW(sortCombo_, CB_SETCURSEL, user_.sortMode, 0);
+    SetWindowTextW(sizeBtn_, cfg_.t(user_.compactCards ? "button.normalCards" : "button.compactCards").c_str());
+    SetWindowTextW(libTab_, cfg_.t("tab.library").c_str());
+    SetWindowTextW(roomsTopTab_, cfg_.t("tab.rooms").c_str());
+    syncTopTabs();
+}
+
+// The top bar's tabs follow the view: Rooms is its own page, everything else is the library.
+void Launcher::syncTopTabs() {
+    bool rooms = roomsPage();
+    if (!rooms && !navItems_.empty()) libraryKey_ = navItems_[navIndex_].key;
+    if (btnInfo_[libTab_].selected != !rooms || btnInfo_[roomsTopTab_].selected != rooms) {
+        btnInfo_[libTab_].selected = !rooms;
+        btnInfo_[roomsTopTab_].selected = rooms;
+        InvalidateRect(libTab_, nullptr, FALSE);
+        InvalidateRect(roomsTopTab_, nullptr, FALSE);
+    }
+}
+
+void Launcher::openNav(const std::string& key) {
+    for (size_t i = 0; i < navItems_.size(); ++i) {
+        if (navItems_[i].key != key) continue;
+        navIndex_ = i;
+        SendMessageW(nav_, LB_SETCURSEL, navIndex_, 0);
+        SendMessageW(navCombo_, CB_SETCURSEL, navIndex_, 0);
+        user_.category = key;
+        closeGuide();
+        rebuildGrid();
+        return;
+    }
 }
 
 bool Launcher::matches(int gi) const {
@@ -536,7 +574,24 @@ void Launcher::rebuildGrid() {
     visible_.clear();
     for (size_t i = 0; i < cfg_.games.size(); ++i)
         if (matches(static_cast<int>(i))) visible_.push_back(static_cast<int>(i));
-    std::stable_sort(visible_.begin(), visible_.end(), [this](int a, int b) { return gridRank(a) < gridRank(b); });
+    std::stable_sort(visible_.begin(), visible_.end(), [this](int a, int b) {
+        const GameStats *sa = user_.find(cfg_.games[a].id), *sb = user_.find(cfg_.games[b].id);
+        switch (user_.sortMode) {
+            case 1: {  // what was played last first; games never played keep our order after them
+                int64_t ta = sa ? sa->lastPlayed : 0, tb = sb ? sb->lastPlayed : 0;
+                if (ta != tb) return ta > tb;
+                break;
+            }
+            case 2:
+                return CompareStringOrdinal(displayName(cfg_.games[a]).c_str(), -1, displayName(cfg_.games[b]).c_str(), -1,
+                                            TRUE) == CSTR_LESS_THAN;
+            case 3:
+                if (cfg_.games[a].maxPlayers != cfg_.games[b].maxPlayers) return cfg_.games[a].maxPlayers > cfg_.games[b].maxPlayers;
+                break;
+            default: break;
+        }
+        return gridRank(a) < gridRank(b);
+    });
     suppressSelect_ = true;
     SendMessageW(grid_, WM_SETREDRAW, FALSE, 0);
     ListView_DeleteAllItems(grid_);
@@ -559,13 +614,8 @@ void Launcher::rebuildGrid() {
     suppressSelect_ = false;
     ShowWindow(grid_, visible_.empty() || roomsPage() || guidePage() ? SW_HIDE : SW_SHOW);
     // The banner comes and goes with the page, the search and the last game played.
-    if ((heroWanted() ? heroCandidate() : -1) != heroGame_) {
-        layoutHero();
-        layoutGrid();
-        layoutRoomsPage();
-        layoutGuidePage();
-        InvalidateRect(hwnd_, nullptr, FALSE);
-    }
+    syncTopTabs();
+    if (!intro_ && (heroWanted() ? heroCandidate() : -1) != heroGame_) relayout();
     hoverItem_ = -1;
     pageScroll_ = 0;
     layoutRoomsPage();

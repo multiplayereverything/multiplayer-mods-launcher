@@ -149,7 +149,11 @@ private:
     std::wstring statsText(const GameStats* st) const;
     Gdiplus::Bitmap* art(int gameIndex, int w, int h, bool detail);
     void ensureImage(int gameIndex);
-    void layoutHero();
+    void paintTopBar(Gdiplus::Graphics& g);
+    std::unique_ptr<Gdiplus::Bitmap> buildArt(int gameIndex, int w, int h);
+    std::vector<std::pair<std::wstring, std::wstring>> pageFacts(int gameIndex);
+    void syncTopTabs();
+    void openNav(const std::string& key);
     // The banner above the grid: the game played last, with a button that opens it (Quiver's "Continue playing").
     int heroCandidate() const;
     bool heroWanted() const;
@@ -215,6 +219,10 @@ private:
     GuidePage guide_;
     std::vector<GuideRow> guideRows_;
     RECT guideView_{}, guideHead_{}, guideFoot_{};
+    // The game page around the guide: backdrop header, icon, the facts card and the card the guide scrolls in.
+    RECT guideHeader_{}, guideIcon_{}, guideFacts_{}, guideCard_{};
+    std::unique_ptr<Gdiplus::Bitmap> pageBmp_, iconBmp_;
+    int pageKey_[3] = {-1, 0, 0}, iconKey_[3] = {-1, 0, 0};
     HWND guideBack_ = nullptr;
     std::vector<HWND> guideLinkBtns_;
     std::wstring emptyTitle() const;
@@ -371,6 +379,10 @@ private:
     std::map<std::string, int> coopSaveChoice_;  // game id -> 0 continue, 1 solo save, 2 new game
     HWND aboutBtn_ = nullptr;
     HWND heroBtn_ = nullptr;
+    HWND sortCombo_ = nullptr, sizeBtn_ = nullptr;  // the toolbar beside the search box
+    HWND libTab_ = nullptr, roomsTopTab_ = nullptr;  // the top bar's pages
+    RECT topBar_{};
+    std::string libraryKey_;  // the last library view, for the Library tab to go back to
     RECT hero_{};  // empty when the banner is not shown
     int heroGame_ = -1;
     std::unique_ptr<Gdiplus::Bitmap> heroBmp_;

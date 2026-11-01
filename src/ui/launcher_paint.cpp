@@ -67,6 +67,18 @@ void Launcher::ensureImage(int gi) {
     else images_[gi] = loadImageFile(path);
 }
 
+// The game's picture cropped to w x h (or its initials cover when it has none), for one-off sizes outside the card cache.
+std::unique_ptr<Bitmap> Launcher::buildArt(int gi, int w, int h) {
+    const GameSpec& game = cfg_.games[gi];
+    ensureImage(gi);
+    if (!images_[gi]) return coverArt(displayName(game), game.color, game.colorEnd, w, h);
+    auto bmp = std::make_unique<Bitmap>(w, h, PixelFormat32bppPARGB);
+    Graphics gg(bmp.get());
+    gg.SetInterpolationMode(InterpolationModeHighQualityBicubic);
+    drawCover(gg, *images_[gi], RectF(0, 0, static_cast<REAL>(w), static_cast<REAL>(h)), 0, true, game.imageFocus);
+    return bmp;
+}
+
 int Launcher::heroCandidate() const {
     int best = -1;
     int64_t when = 0;
@@ -94,15 +106,7 @@ void Launcher::paintHero(Graphics& g) {
     RectF box = rf(hero_);
     float radius = t.sf(14);
     if (!heroBmp_ || heroBmpGame_ != heroGame_ || heroBmpW_ != w || heroBmpH_ != h) {
-        ensureImage(heroGame_);
-        if (images_[heroGame_]) {
-            heroBmp_ = std::make_unique<Bitmap>(w, h, PixelFormat32bppPARGB);
-            Graphics gg(heroBmp_.get());
-            gg.SetInterpolationMode(InterpolationModeHighQualityBicubic);
-            drawCover(gg, *images_[heroGame_], RectF(0, 0, static_cast<REAL>(w), static_cast<REAL>(h)), 0, true, game.imageFocus);
-        } else {
-            heroBmp_ = coverArt(displayName(game), game.color, game.colorEnd, w, h);
-        }
+        heroBmp_ = buildArt(heroGame_, w, h);
         heroBmpGame_ = heroGame_;
         heroBmpW_ = w;
         heroBmpH_ = h;
@@ -179,10 +183,10 @@ void Launcher::paint(HDC dc, const RECT& dirty) {
         const Theme& t = theme_;
         SolidBrush bg(gc(t.c.background));
         g.FillRectangle(&bg, 0, 0, cr.right, cr.bottom);
-        paintSidebar(g, buf.dc);
+        paintTopBar(g);
 
         // Search box.
-        fillRound(g, rf(searchBox_), t.sf(6), t.c.surface);
+        if (!IsRectEmpty(&searchBox_)) fillRound(g, rf(searchBox_), t.sf(6), t.c.surface);
         strokeRound(g, rf(searchBox_), t.sf(6), GetFocus() == search_ ? t.c.primary : t.c.border, t.sf(1));
         RECT icon{searchBox_.left + t.s(10), searchBox_.top, searchBox_.left + t.s(30), searchBox_.bottom};
         drawText(g, L"\u2315", icon, t.body, t.c.textMuted, DT_SINGLELINE | DT_VCENTER | DT_LEFT);
@@ -205,6 +209,20 @@ void Launcher::paint(HDC dc, const RECT& dirty) {
     BitBlt(dc, dirty.left, dirty.top, width(dirty), height(dirty), buf.dc, dirty.left, dirty.top, SRCCOPY);
 }
 
+void Launcher::paintTopBar(Graphics& g) {
+    const Theme& t = theme_;
+    SolidBrush sb(gc(t.c.sidebar));
+    g.FillRectangle(&sb, rf(topBar_));
+    Pen edge(gc(t.c.border), 1);
+    g.DrawLine(&edge, 0.0f, static_cast<REAL>(topBar_.bottom - 1), static_cast<REAL>(topBar_.right), static_cast<REAL>(topBar_.bottom - 1));
+    // Text-only brand: no logo has been supplied, so none is invented.
+    HDC mdc = g.GetHDC();
+    int bw = textWidth(mdc, t.brand, cfg_.branding.title);
+    g.ReleaseHDC(mdc);
+    RECT r1{t.s(20), topBar_.top, t.s(20) + bw + t.s(4), topBar_.bottom};
+    drawText(g, cfg_.branding.title, r1, t.brand, t.c.sidebarText, DT_SINGLELINE | DT_VCENTER);
+}
+
 void Launcher::paintSidebar(Graphics& g, HDC) {
     if (width(sidebar_) <= 0) return;
     const Theme& t = theme_;
@@ -222,7 +240,7 @@ void Launcher::paintDetail(Graphics& g, HDC dc) {
     SolidBrush panel(gc(t.c.surface));
     g.FillRectangle(&panel, rf(detail_));
     Pen edge(gc(t.c.border), 1);
-    g.DrawLine(&edge, static_cast<REAL>(detail_.left), 0.0f, static_cast<REAL>(detail_.left),
+    g.DrawLine(&edge, static_cast<REAL>(detail_.left), static_cast<REAL>(detail_.top), static_cast<REAL>(detail_.left),
                static_cast<REAL>(detail_.bottom));
     if (selected_ < 0) {
         RECT r = detail_;
@@ -464,7 +482,7 @@ void Launcher::drawButton(HWND button, HDC hdc, RECT r, UINT state) {
         Color under = t.c.surface;  // the details panel and the Settings window
         if (GetParent(button) == hwnd_) {
             if (PtInRect(&dl_.host, mid)) under = mix(t.c.surface, t.c.online, 0.10f);
-            else if (PtInRect(&sidebar_, mid)) under = t.c.sidebar;
+            else if (PtInRect(&sidebar_, mid) || PtInRect(&topBar_, mid)) under = t.c.sidebar;
             else if (!PtInRect(&detail_, mid)) under = t.c.background;
         }
         SolidBrush ub(gc(under));

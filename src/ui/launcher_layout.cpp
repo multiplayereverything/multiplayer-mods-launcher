@@ -38,45 +38,82 @@ void Launcher::relayout() {
     if (cr.right <= 0 || cr.bottom <= 0) return;
     const Theme& t = theme_;
     bool narrowMode = isNarrow();
-    int sw = narrowMode ? 0 : t.s(kSidebarW);
+    int barH = t.s(kTopBarH);
     int dw = std::min<int>(t.s(narrowMode ? kDetailNarrowW : kDetailW), cr.right / 2);
-    sidebar_ = {0, 0, sw, cr.bottom - t.s(kStatusH)};
+    // A bar across the top (brand, Library and Rooms, Settings); under it the library on the left and the
+    // details panel on the right. The categories moved from the sidebar into the toolbar's dropdown.
+    topBar_ = {0, 0, cr.right, barH};
     status_ = {0, cr.bottom - t.s(kStatusH), cr.right, cr.bottom};
-    detail_ = {cr.right - dw, 0, cr.right, status_.top};
-    top_ = {sw, 0, detail_.left, t.s(kTopH)};
-    gridRc_ = {sw, top_.bottom, detail_.left, status_.top};
+    sidebar_ = {0, barH, 0, status_.top};
+    detail_ = {cr.right - dw, barH, cr.right, status_.top};
 
-    ShowWindow(nav_, narrowMode ? SW_HIDE : SW_SHOW);
-    ShowWindow(navCombo_, narrowMode ? SW_SHOW : SW_HIDE);
-    int brandH = t.s(86), setH = t.s(36);
-    int setTop = sidebar_.bottom - t.s(12) - setH;
-    MoveWindow(nav_, t.s(12), brandH, sw - t.s(24), setTop - t.s(8) - brandH, TRUE);
+    // The game page takes the whole library area: no banner, no toolbar.
+    bool page = guidePage();
+    ShowWindow(nav_, SW_HIDE);
+    ShowWindow(navCombo_, page ? SW_HIDE : SW_SHOW);
+    ShowWindow(search_, page ? SW_HIDE : SW_SHOW);
+    ShowWindow(sortCombo_, narrowMode || page ? SW_HIDE : SW_SHOW);
+    ShowWindow(sizeBtn_, narrowMode || page ? SW_HIDE : SW_SHOW);
 
-    int x = top_.left + t.s(kPad), boxH = t.s(36), y = (height(top_) - boxH) / 2;
-    int searchRight = top_.right - t.s(kPad);
-    if (narrowMode) {  // no sidebar: Settings moves to the end of the top bar
-        // As wide as its icon and label need (a fixed 96 cut "Settings" down to "Set..." in some languages and sizes).
-        HDC sdc = GetDC(hwnd_);
-        int bw = std::max<int>(t.s(96), textWidth(sdc, t.button, windowText(settingsBtn_)) + t.s(58));
-        ReleaseDC(hwnd_, sdc);
-        MoveWindow(settingsBtn_, searchRight - bw, y, bw, boxH, TRUE);
-        searchRight -= bw + t.s(10);
-    } else {
-        MoveWindow(settingsBtn_, t.s(12), setTop, sw - t.s(24), setH, TRUE);
+    HDC dc = GetDC(hwnd_);
+    // Top bar: the brand is painted; the tabs follow it, Settings sits at the far end.
+    int tabX = t.s(20) + textWidth(dc, t.brand, cfg_.branding.title) + t.s(32);
+    int tabTop = t.s(10), tabH = barH - tabTop;
+    bool online = std::any_of(navItems_.begin(), navItems_.end(), [](const NavItem& n) { return n.key == "rooms"; });
+    for (HWND tab : {libTab_, roomsTopTab_}) {
+        if (tab == roomsTopTab_ && !online) {
+            ShowWindow(tab, SW_HIDE);
+            continue;
+        }
+        int tw = textWidth(dc, t.button, windowText(tab)) + t.s(32);
+        MoveWindow(tab, tabX, tabTop, tw, tabH, TRUE);
+        ShowWindow(tab, SW_SHOW);
+        tabX += tw + t.s(4);
     }
-    if (narrowMode) {
-        int cw = t.s(170);
-        MoveWindow(navCombo_, x, y + (boxH - t.s(28)) / 2, cw, t.s(300), TRUE);
-        x += cw + t.s(10);
+    // As wide as its icon and label need (a fixed 96 cut "Settings" down to "Set..." in some languages and sizes).
+    int setW = std::max<int>(t.s(96), textWidth(dc, t.button, windowText(settingsBtn_)) + t.s(58));
+    MoveWindow(settingsBtn_, cr.right - t.s(16) - setW, (barH - t.s(36)) / 2, setW, t.s(36), TRUE);
+
+    // The banner leads the library, the toolbar follows it, the grid takes the rest.
+    int left = 0, right = detail_.left, y0 = barH + t.s(16);
+    heroGame_ = heroWanted() ? heroCandidate() : -1;
+    hero_ = {};
+    if (heroGame_ >= 0) {
+        hero_ = {left + t.s(kPad), y0, right - t.s(kPad), y0 + t.s(150)};
+        int bh = t.s(34);
+        MoveWindow(heroBtn_, hero_.left + t.s(24), hero_.bottom - t.s(16) - bh, t.s(104), bh, TRUE);
+        SetWindowTextW(heroBtn_, cfg_.t("hero.open").c_str());
+        y0 = hero_.bottom + t.s(4);
+    }
+    ShowWindow(heroBtn_, heroGame_ >= 0 ? SW_SHOW : SW_HIDE);
+    top_ = {left, y0, right, y0 + t.s(52)};
+
+    int x = top_.left + t.s(kPad), boxH = t.s(36), y = top_.top + (height(top_) - boxH) / 2;
+    int searchRight = top_.right - t.s(kPad);
+    int cw = t.s(narrowMode ? 150 : 170);
+    MoveWindow(navCombo_, x, y + (boxH - t.s(28)) / 2, cw, t.s(300), TRUE);
+    x += cw + t.s(8);
+    if (!narrowMode) {  // the toolbar to the right of the search box: order, then card size
+        int sizeW = std::max<int>(t.s(96), textWidth(dc, t.button, windowText(sizeBtn_)) + t.s(54));
+        MoveWindow(sizeBtn_, searchRight - sizeW, y, sizeW, boxH, TRUE);
+        searchRight -= sizeW + t.s(8);
+        int sortW = t.s(148);
+        MoveWindow(sortCombo_, searchRight - sortW, y + (boxH - t.s(28)) / 2, sortW, t.s(300), TRUE);
+        searchRight -= sortW + t.s(8);
     }
     searchBox_ = {x, y, std::max<LONG>(x + t.s(120), static_cast<LONG>(searchRight)), y + boxH};
     // The edit sits inside a painted rounded box; center its single text line.
-    HDC dc = GetDC(hwnd_);
     int lineH = textHeight(dc, t.body, L"Ag", 100, DT_SINGLELINE);
     ReleaseDC(hwnd_, dc);
     MoveWindow(search_, searchBox_.left + t.s(30), searchBox_.top + (boxH - lineH) / 2, width(searchBox_) - t.s(40),
                lineH, TRUE);
-    layoutHero();
+    gridRc_ = {left, page ? barH : top_.bottom, right, status_.top};
+    if (page) {
+        top_ = {left, barH, right, barH};
+        searchBox_ = {};
+    }
+    MoveWindow(grid_, gridRc_.left + t.s(kPad) - t.s(kGap) / 2, gridRc_.top, width(gridRc_) - t.s(kPad) * 2 + t.s(kGap),
+               height(gridRc_), TRUE);
     layoutGrid();
     layoutRoomsPage();
     layoutGuidePage();
@@ -85,29 +122,11 @@ void Launcher::relayout() {
     InvalidateRect(hwnd_, nullptr, FALSE);
 }
 
-// The banner takes the top of the grid's area when it is wanted; the grid takes what is left.
-void Launcher::layoutHero() {
-    const Theme& t = theme_;
-    gridRc_ = {top_.left, top_.bottom, top_.right, status_.top};
-    heroGame_ = heroWanted() ? heroCandidate() : -1;
-    hero_ = {};
-    if (heroGame_ >= 0) {
-        hero_ = {gridRc_.left + t.s(kPad), gridRc_.top, gridRc_.right - t.s(kPad), gridRc_.top + t.s(150)};
-        gridRc_.top = hero_.bottom + t.s(12);
-        int bh = t.s(34);
-        MoveWindow(heroBtn_, hero_.left + t.s(24), hero_.bottom - t.s(16) - bh, t.s(104), bh, TRUE);
-        SetWindowTextW(heroBtn_, cfg_.t("hero.open").c_str());
-    }
-    ShowWindow(heroBtn_, heroGame_ >= 0 ? SW_SHOW : SW_HIDE);
-    MoveWindow(grid_, gridRc_.left + t.s(kPad) - t.s(kGap) / 2, gridRc_.top, width(gridRc_) - t.s(kPad) * 2 + t.s(kGap),
-               height(gridRc_), TRUE);
-}
-
 void Launcher::layoutGrid() {
     RECT r;
     GetClientRect(grid_, &r);
     int avail = r.right - GetSystemMetrics(SM_CXVSCROLL);
-    int minTile = theme_.s(kCardMinW + kGap);
+    int minTile = theme_.s((user_.compactCards ? kCardCompactW : kCardMinW) + kGap);
     int cols = std::max(1, avail / std::max(minTile, 1));
     int tw = std::max(minTile, avail / cols);
     int cardW = tw - theme_.s(kGap);
@@ -152,7 +171,7 @@ void Launcher::layoutDetail() {
     const Theme& t = theme_;
     const GameSpec& g = cfg_.games[selected_];
     HDC dc = GetDC(hwnd_);
-    int x = detail_.left + t.s(kPad), w = width(detail_) - t.s(kPad) * 2, y = t.s(kPad);
+    int x = detail_.left + t.s(kPad), w = width(detail_) - t.s(kPad) * 2, y = detail_.top + t.s(kPad);
     // The header (art, title, meta, status) is placed after the controls so the
     // art can shrink on short windows instead of running into the buttons.
     int titleH = textHeight(dc, t.title, displayName(g), w);
