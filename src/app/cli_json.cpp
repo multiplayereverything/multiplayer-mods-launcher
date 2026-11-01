@@ -206,6 +206,7 @@ std::string libraryJson(const Config& cfg, const Library& lib, const UserData& u
             ao.set("id", a.id);
             ao.set("label", str(a.label));
             ao.set("description", str(a.description));
+            ao.set("hint", str(a.hint));  // what to do next, shown when it starts
             ao.set("icon", str(a.icon));
             ao.set("more", a.more);
             ao.set("offline", a.offline);
@@ -257,6 +258,7 @@ std::string libraryJson(const Config& cfg, const Library& lib, const UserData& u
     u.set("showOffline", user.showOffline);
     u.set("showOriginals", user.showOriginals);
     u.set("autoUpdate", user.autoUpdate);
+    u.set("compactCards", user.compactCards);
     json::Value stats = json::Value::object();
     for (const auto& [id, s] : user.games) {
         json::Value so = json::Value::object();
