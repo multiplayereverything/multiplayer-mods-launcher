@@ -212,7 +212,7 @@ export function TvStarting({ game, lib, label, pad, onBack }: { game: Game; lib:
       <Slots n={game.maxPlayers} colors={lib.branding.playerColors} />
       {open ? (
         <>
-          <p>{`${game.name} is running. Close its window${pad ? ', or hold Start in it for its menu,' : ''} to come back here.`}</p>
+          <p>{`${game.name} is running. Press Alt+F4 in it${pad ? ', or hold Start for its menu,' : ''} to come back here.`}</p>
           <button className="btn" onClick={onBack}><PadKey k="B" pad={pad} />Back to TV mode</button>
         </>
       ) : (
