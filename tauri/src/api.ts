@@ -177,9 +177,13 @@ export const setGameSetting = (game: string, id: string, value: string): Promise
   live ? invoke('set_game_setting', { game, id, value }) : Promise.resolve()
 export const setGamePlayer = (game: string, player: string): Promise<void> =>
   live ? invoke('set_game_player', { game, player }) : Promise.resolve()
-export interface PlayerUpdate { id: string; checked: boolean; updated: boolean; version: string; error: string }
+export interface PlayerUpdate { id: string; checked: boolean; available: boolean; updated: boolean; version: string; installed: string; error: string }
+// Whether a newer release exists (nothing is installed), then the update itself with `player-progress` events.
+export const checkPlayers = (): Promise<{ players: PlayerUpdate[] }> =>
+  live ? invoke('check_players') : Promise.resolve({ players: [] })
 export const updatePlayers = (): Promise<{ players: PlayerUpdate[] }> =>
   live ? invoke('update_players') : Promise.resolve({ players: [] })
+export interface PlayerProgress { id: string; done: number; total: number }
 export interface AllRooms { server: string; games: Record<string, Rooms> }
 export const loadAllRooms = (): Promise<AllRooms> => (live ? invoke('all_rooms') : Promise.resolve({ server: '', games: {} }))
 export const ping = (server: string): Promise<number> => (live ? invoke('ping', { server }) : Promise.reject(new Error('sample')))
@@ -311,6 +315,7 @@ const on = <T>(event: string, f: (e: T) => void): Promise<UnlistenFn> =>
   live ? listen<T>(event, (e) => f(e.payload)) : Promise.resolve(() => {})
 export const onLaunchEnded = (f: (e: LaunchEnded) => void) => on('launch-ended', f)
 export const onModProgress = (f: (e: ModProgress) => void) => on('mod-progress', f)
+export const onPlayerProgress = (f: (e: PlayerProgress) => void) => on('player-progress', f)
 export const onDownloadEnded = (f: (e: ModProgress) => void) => on('download-ended', f)
 export const onHostStatus = (f: (e: HostStatus) => void) => on('host-status', f)
 export const onLobby = (f: (e: { game: string; message: LobbyMessage }) => void) => on('lobby', f)

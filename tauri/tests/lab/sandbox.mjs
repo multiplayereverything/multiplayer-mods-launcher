@@ -1,7 +1,7 @@
 // The lab's sandbox: its own launcher.json, data folder, fake games, a fake PC game folder and the files the local
 // servers hand out (catalog, mods-info, the mod package). Everything lives under one temp folder; nothing outside it
 // is read or written, so a lab run never touches the real launcher's settings or a real game.
-import { createHash } from 'node:crypto'
+import { createHash, randomBytes } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
 import { mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join, relative } from 'node:path'
@@ -66,6 +66,19 @@ export function makeSandbox(work, fakePlayer) {
   const ruffleZip = join(work, 'www', 'ruffle.zip')
   execFileSync('powershell', ['-NoProfile', '-Command', `Compress-Archive -Path '${ruffleSrc}\\*' -DestinationPath '${ruffleZip}'`])
 
+  // A player the launcher installed from a GitHub release, one release behind: the local server answers as GitHub's
+  // API does with v1.0.1, so the window offers the update at start and the lab installs it with its progress.
+  write(join(work, 'players', 'rt', 'rt.exe'), 'updater test 1.0.0')
+  write(join(work, 'players', 'rt', '.version'), 'v1.0.0')
+  const rtSrc = join(work, 'rt-src')
+  write(join(rtSrc, 'rt.exe'), randomBytes(3_000_000))  // random, so the zip stays big enough to show progress
+  const rtZip = join(work, 'www', 'rt-1.0.1.zip')
+  execFileSync('powershell', ['-NoProfile', '-Command', `Compress-Archive -Path '${rtSrc}\\*' -DestinationPath '${rtZip}'`])
+  write(join(work, 'www', 'repos', 'o', 'rt', 'releases', 'latest'), JSON.stringify({
+    tag_name: 'v1.0.1', draft: false,
+    assets: [{ name: 'rt-1.0.1.zip', browser_download_url: `http://127.0.0.1:${PORTS.http}/rt-1.0.1.zip`, digest: `sha256:${sha256(rtZip)}` }],
+  }))
+
   const swf = (name) => [`\${GAMES_DIR}\\${name}`]
   const config = {
     branding: { title: 'Multiplayer Everything', subtitle: 'Test lab' },
@@ -78,6 +91,9 @@ export function makeSandbox(work, fakePlayer) {
       { id: 'second', name: 'Second Player', paths: [fakePlayer], args: ['--fake-player', '--second-player'] },
       { id: 'ruffle', name: 'Ruffle Together', paths: ['${PLAYERS_DIR}\\ruffle\\ruffle.exe'],
         install: { url: `http://127.0.0.1:${PORTS.http}/ruffle.zip`, sha256: sha256(ruffleZip), dir: '${PLAYERS_DIR}\\ruffle', exe: 'ruffle.exe' } },
+      // Last, so no game picks it as its automatic player.
+      { id: 'rt', name: 'Updater Test', paths: ['${PLAYERS_DIR}\\rt\\rt.exe'],
+        install: { github: 'o/rt', asset: 'rt-*.zip', api: `http://127.0.0.1:${PORTS.http}`, dir: '${PLAYERS_DIR}\\rt', exe: 'rt.exe' } },
     ],
     categories: [
       { id: 'flash', name: 'Flash mods', group: 'platform' }, { id: 'pc', name: 'PC mods', group: 'platform' },

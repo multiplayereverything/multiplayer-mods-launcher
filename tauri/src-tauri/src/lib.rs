@@ -311,10 +311,30 @@ async fn all_rooms() -> Result<serde_json::Value, String> {
     blocking(|| engine::run_json(&["--rooms".into(), "all".into(), "--json".into()])).await
 }
 
-/// Brings the players the launcher installed up to their newest release (`--update-players --json`).
+/// Whether a player the launcher installed has a newer release, without installing it
+/// (`--update-players --check --json`), so the window can ask first.
 #[tauri::command]
-async fn update_players() -> Result<serde_json::Value, String> {
-    blocking(|| engine::run_json(&["--update-players".into(), "--json".into()])).await
+async fn check_players() -> Result<serde_json::Value, String> {
+    blocking(|| engine::run_json(&["--update-players".into(), "--check".into(), "--json".into()])).await
+}
+
+/// Brings the players the launcher installed up to their newest release (`--update-players --json`). While a
+/// release downloads, its `{"progress":...}` lines become `player-progress` events; the last line is the answer.
+#[tauri::command]
+async fn update_players(app: AppHandle) -> Result<serde_json::Value, String> {
+    blocking(move || {
+        let mut last = String::new();
+        let (code, err) = engine::stream(&["--update-players".into(), "--json".into()], |line| {
+            match serde_json::from_str::<serde_json::Value>(line) {
+                Ok(v) if v.get("progress").is_some() => {
+                    let _ = app.emit("player-progress", v["progress"].clone());
+                }
+                _ => last = line.to_string(),
+            }
+        })?;
+        serde_json::from_str(last.trim()).map_err(|_| if err.trim().is_empty() { format!("The update stopped (exit {code})") } else { err.trim().to_string() })
+    })
+    .await
 }
 
 /// How long a connection to the central server takes, in milliseconds (the status bar's "Server online (N ms)").
@@ -424,7 +444,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             library, mods, rooms, launch, stop_session, mod_job, download_game, set_favorite, set_setting, set_game_dir,
             set_game_file, lobby_start, lobby_send, open, install_player, set_game_setting, set_game_player,
-            update_players, ping, all_rooms
+            check_players, update_players, ping, all_rooms
         ])
         .run(tauri::generate_context!())
         .expect("error while building tauri application");

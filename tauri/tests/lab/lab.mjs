@@ -115,6 +115,25 @@ const isMinimized = () =>
 
 // ---- the scenarios ---------------------------------------------------------------------------------------------
 const scenarios = {
+  async update() {
+    // The sandbox's Updater Test player is one release behind: the window asks at start, then shows the download.
+    const card = () => wd.exec("return document.querySelector('.isl.upd')?.textContent ?? ''")
+    const asked = await waitFor(async () => { const t = await card(); return t.includes('Update now?') && t }, 15000)
+    await check('a newer player release asks to update now', !!asked && asked.includes('Updater Test v1.0.1') && asked.includes('v1.0.0'), String(asked))
+    const rtDir = join(box.config, '..', 'players', 'rt')
+    await check('asking installs nothing yet', readFileSync(join(rtDir, '.version'), 'utf8').trim() === 'v1.0.0')
+    // Every view of the card while it downloads, read from the page itself so none is missed.
+    await wd.exec(`window.__labSeen = []
+      window.__labWatch = setInterval(() => window.__labSeen.push(document.querySelector('.isl.upd')?.textContent ?? ''), 15)`)
+    await wd.click(`//div[contains(@class,'upd')]${button('Update now')}`)
+    const installed = await waitFor(() => readFileSync(join(rtDir, '.version'), 'utf8').trim() === 'v1.0.1', 20000)
+    await check('Update now installs the new release', !!installed)
+    await waitFor(async () => !(await card()), 5000)
+    const seen = await wd.exec('clearInterval(window.__labWatch); return window.__labSeen')
+    await check('the download shows its progress in percent', seen.some((t) => /Updating Updater Test/.test(t) && /\d+%/.test(t)), [...new Set(seen)].slice(0, 4).join(' | '))
+    await check('the update says when it is done', (await waitFor(async () => (await toast()).includes('Updater Test v1.0.1'), 5000)) === true, await toast())
+  },
+
   async library() {
     const counts = await waitFor(async () => {
       const c = await wd.exec("return Object.fromEntries([...document.querySelectorAll('.navs .nav')].map(b => [b.querySelector('.lbl')?.textContent, b.querySelector('.n')?.textContent ?? '']))")

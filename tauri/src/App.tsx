@@ -8,8 +8,8 @@ import { Switcher, type SwitchTarget } from './Switcher'
 import { TV_SECTIONS, TvHints, TvHome, TvLibrary, TvRooms, TvStarting, TvTop, type TvCommon, type TvSection } from './Tv'
 import { TvPlaySheet, TvTextSheet, type SheetPad, type TextRequest } from './TvSheet'
 import {
-  downloadGame, launch, live, loadLibrary, loadMods, installPlayer, loadAllRooms, minimizeWindow, modJob, notify, ping, restoreWindow, updatePlayers, onDownloadEnded, onHostStatus,
-  onLaunchEnded, onModProgress, pickFile, pickFolder, setFavorite, setFullscreen, setSetting, setTvMode, noteTv, setGameDir, setGameFile, stopSession, windowControl,
+  checkPlayers, downloadGame, launch, live, loadLibrary, loadMods, installPlayer, loadAllRooms, minimizeWindow, modJob, notify, ping, restoreWindow, updatePlayers, onDownloadEnded, onHostStatus,
+  onLaunchEnded, onModProgress, onPlayerProgress, pickFile, pickFolder, setFavorite, setFullscreen, setSetting, setTvMode, noteTv, setGameDir, setGameFile, stopSession, windowControl,
   type Game, type Library, type ModInfo, type RelayStatus, type Room, type Rooms, type Settings,
 } from './api'
 import { agoText, isCoop, needsPlayMenu, roomAbout, joinByCode, lastPlayed, leadAction, playersShort, statusOf } from './model'
@@ -284,23 +284,44 @@ export default function App() {
     }
   }, [anyOnline, roomsServer])
 
-  // Ruffle Together kept on its newest release, once per start, as the C++ launcher does: everyone in a co-op
-  // session has to run the same build.
+  // Ruffle Together on its newest release: everyone in a co-op session has to run the same build. Once per start the
+  // launcher looks for a newer one and asks before installing it; the download shows its progress.
   const playersChecked = useRef(false)
   const autoUpdate = !!lib?.user.autoUpdate && !!lib?.user.online
+  const [update, setUpdate] = useState<{ name: string; version: string; installed: string } | null>(null)
+  const [updating, setUpdating] = useState<{ done: number; total: number } | null>(null)
   useEffect(() => {
     if (!autoUpdate || playersChecked.current) return
     playersChecked.current = true
+    checkPlayers()
+      .then((r) => {
+        const u = r.players.find((x) => x.available)
+        if (u) setUpdate({ name: lib?.players.find((pl) => pl.id === u.id)?.name ?? u.id, version: u.version, installed: u.installed })
+      })
+      .catch(() => {})
+  }, [autoUpdate, lib])
+  useEffect(() => {
+    const p = onPlayerProgress((e) => setUpdating({ done: e.done, total: e.total }))
+    return () => void p.then((f) => f())
+  }, [])
+  const runUpdate = () => {
+    if (!update) return
+    setUpdating({ done: 0, total: 0 })
     updatePlayers()
       .then((r) => {
         const done = r.players.filter((x) => x.updated)
-        if (!done.length) return
-        const names = done.map((x) => `${lib?.players.find((pl) => pl.id === x.id)?.name ?? x.id} ${x.version}`).join(', ')
-        say((lib?.text['update.player'] ?? '${PLAYER} is installed.').replace('${PLAYER}', names), 'ok')
+        const failed = r.players.find((x) => x.available && !x.updated && x.error)
+        if (done.length) say((lib?.text['update.player'] ?? '${PLAYER} is installed.').replace('${PLAYER}', `${update.name} ${update.version}`), 'ok')
+        else if (failed) say(`${update.name} couldn't be updated: ${failed.error}`, 'error')
+        setUpdate(null)
         refresh()
       })
-      .catch(() => {})
-  }, [autoUpdate, lib, refresh, say])
+      .catch((e) => {
+        say(String(e), 'error')
+        setUpdate(null)
+      })
+      .finally(() => setUpdating(null))
+  }
 
   // The launcher.json theme: the C++ light palette when it asks for one.
   const theme = lib?.theme ?? 'dark'
@@ -818,6 +839,33 @@ export default function App() {
           }} />
       )}
       <div className="island" aria-live="polite">
+        {update && (
+          <div className="isl upd" role={updating ? 'status' : 'alertdialog'} aria-label={`${update.name} ${update.version}`}>
+            {updating ? (
+              <>
+                <span className="k">
+                  <b>{`Updating ${update.name}...`}</b>
+                  <small>{updating.total ? `${(updating.done / 1048576).toFixed(1)} of ${(updating.total / 1048576).toFixed(1)} MB` : 'Starting the download'}</small>
+                </span>
+                <span className="pct">{updating.total ? `${Math.floor((updating.done * 100) / updating.total)}%` : ''}</span>
+                <span className="bar" role="progressbar" aria-valuemin={0} aria-valuemax={100}
+                  aria-valuenow={updating.total ? Math.floor((updating.done * 100) / updating.total) : undefined}>
+                  <i style={{ width: updating.total ? `${(updating.done * 100) / updating.total}%` : '0%' }} />
+                </span>
+              </>
+            ) : (
+              <>
+                <span className="k">
+                  <b>{`${update.name} ${update.version} is out. Update now?`}</b>
+                  <small>{playing.size ? 'Close the game first: it can\'t be replaced while it runs.'
+                    : `You have ${update.installed || 'an older version'}. Everyone in a room needs the same one.`}</small>
+                </span>
+                <button className="btn sm" onClick={() => setUpdate(null)}>Later</button>
+                <button className="btn sm main" disabled={playing.size > 0} onClick={runUpdate}>Update now</button>
+              </>
+            )}
+          </div>
+        )}
         {jobs.map(({ game, line }) => (
           <div className="isl" key={game!.id}>
             <span className="th"><Cover game={game!} className="fill" /></span>

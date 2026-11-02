@@ -620,3 +620,11 @@ main.enter-back > * { animation: slideBack .26s var(--ease) both; }
 .tv-page .set-row b { font: 15px/1.25 var(--font-title); }
 .tv-page .set-group h2 { font: 15px var(--font-title); }
 .tv-page .field, .tv-page .sel { font: 15px var(--font-title); }
+
+/* An update: the question with Later / Update now, then the download's progress in percent. */
+.isl.upd { width: min(520px, 90vw); flex-wrap: wrap; padding: 10px 12px; gap: 8px 10px; }
+.isl.upd .k { min-width: 12em; }
+.isl.upd b, .isl.upd small { white-space: normal; }
+.isl.upd .pct { font: 600 15px var(--font-title); color: var(--ink); min-width: 3ch; text-align: right; }
+.isl.upd .bar { flex-basis: 100%; height: 6px; border-radius: 3px; background: var(--card3); overflow: hidden; }
+.isl.upd .bar i { display: block; height: 100%; background: var(--online); transition: width .2s linear; }
