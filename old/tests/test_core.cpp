@@ -49,7 +49,7 @@ Vars baseVars(const TempDir& dir) {
 
 TEST(config_loads_shipped_launcher_json) {
     // The real config must stay valid: it is what users run.
-    std::wstring path = fs::join(fs::parent(fs::parent(fs::parent(fs::selfExePath()))), L"launcher\\launcher.json");
+    std::wstring path = fs::join(fs::parent(fs::parent(fs::parent(fs::parent(fs::selfExePath())))), L"launcher\\launcher.json");
     if (!fs::isFile(path)) path = L"launcher\\launcher.json";
     LoadResult r = loadConfigFile(path);
     if (!r.ok()) fprintf(stderr, "%ls\n", formatIssues(r.issues).c_str());
@@ -543,7 +543,7 @@ TEST(embedded_names_match_the_resource_script) {
 TEST(shipped_config_keeps_stealth_hunter_2_on_ruffle) {
     // Flash Player is never an option for Stealth Hunter 2: its online actions are Ruffle
     // Together's own options, which only that player understands.
-    std::wstring path = fs::join(fs::parent(fs::parent(fs::parent(fs::selfExePath()))), L"launcher\\launcher.json");
+    std::wstring path = fs::join(fs::parent(fs::parent(fs::parent(fs::parent(fs::selfExePath())))), L"launcher\\launcher.json");
     if (!fs::isFile(path)) path = L"launcher\\launcher.json";
     LoadResult r = loadConfigFile(path);
     REQUIRE(r.ok());
@@ -559,7 +559,7 @@ TEST(shipped_config_keeps_stealth_hunter_2_on_ruffle) {
 }
 
 TEST(shipped_config_gives_dad_n_me_a_friendly_fire_host_option) {
-    std::wstring path = fs::join(fs::parent(fs::parent(fs::parent(fs::selfExePath()))), L"launcher\\launcher.json");
+    std::wstring path = fs::join(fs::parent(fs::parent(fs::parent(fs::parent(fs::selfExePath())))), L"launcher\\launcher.json");
     if (!fs::isFile(path)) path = L"launcher\\launcher.json";
     LoadResult r = loadConfigFile(path);
     REQUIRE(r.ok());
@@ -573,7 +573,7 @@ TEST(shipped_config_gives_dad_n_me_a_friendly_fire_host_option) {
 }
 
 TEST(shipped_config_gives_zombotron_four_host_options_and_up_to_four_players) {
-    std::wstring path = fs::join(fs::parent(fs::parent(fs::parent(fs::selfExePath()))), L"launcher\\launcher.json");
+    std::wstring path = fs::join(fs::parent(fs::parent(fs::parent(fs::parent(fs::selfExePath())))), L"launcher\\launcher.json");
     if (!fs::isFile(path)) path = L"launcher\\launcher.json";
     LoadResult r = loadConfigFile(path);
     REQUIRE(r.ok());
@@ -602,7 +602,7 @@ TEST(catalog_settings_accept_the_live_dad_n_me_camera_choice) {
 }
 
 TEST(shipped_config_keeps_chaos_faction_2_to_six_players_on_its_key_map) {
-    std::wstring path = fs::join(fs::parent(fs::parent(fs::parent(fs::selfExePath()))), L"launcher\\launcher.json");
+    std::wstring path = fs::join(fs::parent(fs::parent(fs::parent(fs::parent(fs::selfExePath())))), L"launcher\\launcher.json");
     if (!fs::isFile(path)) path = L"launcher\\launcher.json";
     LoadResult r = loadConfigFile(path);
     REQUIRE(r.ok());

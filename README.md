@@ -234,11 +234,15 @@ launcher this way). `MultiplayerEverythingLauncher.exe --help` lists everything.
 
 ## Build
 
-Requires Visual Studio 2022 (or Build Tools) with the C++ workload.
+The launcher is moving to one Tauri app ([tauri/](tauri/README.md)). Until its Rust side takes over every job, the
+window still runs on the C++ launcher, which now lives in `old/`. The plan and what's done so far are in
+[tauri/PORTING.md](tauri/PORTING.md).
+
+The C++ launcher requires Visual Studio 2022 (or Build Tools) with the C++ workload.
 
 ```bat
-powershell -ExecutionPolicy Bypass -File build.ps1 -Test
-powershell -ExecutionPolicy Bypass -File build.ps1 -Dist
+powershell -ExecutionPolicy Bypass -File old\build.ps1 -Test
+powershell -ExecutionPolicy Bypass -File old\build.ps1 -Dist
 ```
 
 `-Test` runs the C++ tests (config, file lookup, command lines, settings, and
@@ -253,16 +257,18 @@ reinstall, first-run prompt, the window's download button). `-Dist` makes
 
 | Path | Contents |
 |---|---|
-| `src/core/mod/` | The PC-mod engine (ported from the installer template): game detection, planning, the all-or-nothing install transaction, the install record, package download |
-| `src/core/lobby.*` | The lobby: rooms through the server or direct IP, ready-up, start and the loaded barrier, reconnects, and the localhost bridge the game talks to |
-| `src/core/` | No UI: config, library (players, files, command lines), process watching, relay, downloads, rooms, settings, Discord, built-in files |
-| `src/ui/` | The launcher window and its theme |
-| `src/app/` | Entry point and command line |
-| `launcher/` | `launcher.json` and `covers\` (both also built into the exe), `games\`, `players\` |
+| `tauri/` | The launcher app: the window (React) and its Rust side, the test lab |
+| `old/` | The C++ launcher, kept while the Rust port takes its jobs over one by one |
+| `old/src/core/mod/` | The PC-mod engine (ported from the installer template): game detection, planning, the all-or-nothing install transaction, the install record, package download |
+| `old/src/core/lobby.*` | The lobby: rooms through the server or direct IP, ready-up, start and the loaded barrier, reconnects, and the localhost bridge the game talks to |
+| `old/src/core/` | No UI: config, library (players, files, command lines), process watching, relay, downloads, rooms, settings, Discord, built-in files |
+| `old/src/ui/` | The old C++ launcher window and its theme |
+| `old/src/app/` | Entry point and command line |
+| `launcher/` | `launcher.json` and `covers\` (both also built into the C++ exe), `games\`, `players\`: shared by both |
 | [docs/ADDING_A_MOD.md](docs/ADDING_A_MOD.md) | Checklist for adding a PC mod: author, review, loader, entry, tests |
 | `docs/html5-example.jsonc` | HTML5 support (browser players, Plazma Burst 2 co-op), kept out of the shipped list for now |
 | `docs/local-games-example.jsonc` | Gun Mayhem, Fireboy and Watergirl, Boxhead: local-only games set aside for now |
-| `tests/` | C++ tests and the end-to-end script |
+| `old/tests/` | C++ tests and the end-to-end script |
 | [CONFIG.md](CONFIG.md) | Every `launcher.json` option |
 
 Ruffle Together is built from Ruffle, which is open source ([ruffle.rs](https://ruffle.rs)). The

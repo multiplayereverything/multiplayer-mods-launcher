@@ -72,7 +72,7 @@ It needs:
 - `cargo install tauri-driver --locked`;
 - Microsoft Edge WebDriver matching the installed WebView2, either in `MSEDGEDRIVER` or in
   `%LOCALAPPDATA%\fl-lab\edgedriver-<version>\msedgedriver.exe`;
-- the C++ launcher's Debug build, in `FL_LAUNCHER_EXE` (default: the sibling `flash-launcher-multiplayer` checkout).
+- the C++ launcher's Debug build, in `FL_LAUNCHER_EXE` (default: `..\old\build\Debug`, made by `..\old\build.ps1 -Config Debug`).
 
 `--no-build` reuses the last build, `--only coop,mods` runs some scenarios, and `--keep` keeps the sandbox.
 `FL_LAUNCHER_CONFIG` (another launcher.json for every call to the C++ launcher) is what points the window at the

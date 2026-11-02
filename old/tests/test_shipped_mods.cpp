@@ -82,7 +82,7 @@ private:
 };
 
 Config loadShipped() {
-    std::wstring path = fs::join(fs::parent(fs::parent(fs::parent(fs::selfExePath()))), L"launcher\\launcher.json");
+    std::wstring path = fs::join(fs::parent(fs::parent(fs::parent(fs::parent(fs::selfExePath())))), L"launcher\\launcher.json");
     if (!fs::isFile(path)) path = L"launcher\\launcher.json";
     LoadResult r = loadConfigFile(path);
     if (!r.ok()) throw std::runtime_error(narrow(formatIssues(r.issues)));

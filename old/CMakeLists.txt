@@ -6,6 +6,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Static CRT: the launcher is a single self-contained .exe.
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
+# The C++ launcher, kept in old/ while the Tauri app (../tauri) takes over its work: the games, covers and
+# launcher.json it embeds are shared with the new app and stay at the top of the repository.
+get_filename_component(REPO_ROOT "${CMAKE_SOURCE_DIR}/.." ABSOLUTE)
+
 set(LAUNCHER_NAME "MultiplayerEverythingLauncher" CACHE STRING "Output name of the launcher executable")
 set(LAUNCHER_ICON "${CMAKE_SOURCE_DIR}/assets/app.ico" CACHE FILEPATH "Executable icon")
 
@@ -62,10 +66,10 @@ file(APPEND "${APP_RC}" "1 VERSIONINFO\nFILEVERSION ${V}\nPRODUCTVERSION ${V}\nB
 
 # launcher.json and the covers go into the exe as well (src/core/embedded.h), so
 # the launcher works as a single file; files next to the exe still win.
-file(GLOB EMBEDDED_COVERS CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/launcher/covers/*")
-set(EMBEDDED_FILES "${CMAKE_SOURCE_DIR}/launcher/launcher.json" ${EMBEDDED_COVERS})
+file(GLOB EMBEDDED_COVERS CONFIGURE_DEPENDS "${REPO_ROOT}/launcher/covers/*")
+set(EMBEDDED_FILES "${REPO_ROOT}/launcher/launcher.json" ${EMBEDDED_COVERS})
 foreach(f ${EMBEDDED_FILES})
-  file(RELATIVE_PATH rel "${CMAKE_SOURCE_DIR}/launcher" "${f}")
+  file(RELATIVE_PATH rel "${REPO_ROOT}/launcher" "${f}")
   string(TOUPPER "${rel}" name)
   string(REGEX REPLACE "[^A-Z0-9]" "_" name "${name}")
   file(APPEND "${APP_RC}" "F_${name} RCDATA \"${f}\"\n")
@@ -106,10 +110,10 @@ target_link_libraries(launcher_tests PRIVATE launcher_core shell32)
 add_test(NAME core_and_relay COMMAND launcher_tests)
 add_test(NAME end_to_end
   COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File "${CMAKE_SOURCE_DIR}/tests/e2e.ps1"
-          -Launcher "$<TARGET_FILE:launcher>" -Root "${CMAKE_SOURCE_DIR}")
+          -Launcher "$<TARGET_FILE:launcher>" -Root "${REPO_ROOT}")
 set_tests_properties(end_to_end PROPERTIES LABELS "ui" RUN_SERIAL TRUE)
 
 # Run straight from the build folder: the launcher reads launcher.json next to the exe.
 add_custom_command(TARGET launcher POST_BUILD
-  COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_SOURCE_DIR}/launcher/launcher.json" "$<TARGET_FILE_DIR:launcher>/launcher.json"
-  COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_SOURCE_DIR}/launcher/covers" "$<TARGET_FILE_DIR:launcher>/covers")
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different "${REPO_ROOT}/launcher/launcher.json" "$<TARGET_FILE_DIR:launcher>/launcher.json"
+  COMMAND ${CMAKE_COMMAND} -E copy_directory "${REPO_ROOT}/launcher/covers" "$<TARGET_FILE_DIR:launcher>/covers")

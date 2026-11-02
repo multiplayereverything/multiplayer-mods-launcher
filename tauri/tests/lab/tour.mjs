@@ -10,7 +10,7 @@ const here = dirname(fileURLToPath(import.meta.url))
 const tauriDir = resolve(here, '..', '..')
 const out = resolve(process.argv[2] ?? 'tour')
 const games = (process.argv[3] ?? '').split(',').filter(Boolean)
-const launcher = process.env.FL_LAUNCHER_EXE ?? resolve(tauriDir, '..', '..', 'flash-launcher-multiplayer', 'build', 'Debug', 'MultiplayerEverythingLauncher.exe')
+const launcher = process.env.FL_LAUNCHER_EXE ?? resolve(tauriDir, '..', 'old', 'build', 'Debug', 'MultiplayerEverythingLauncher.exe')
 const edgeDir = join(process.env.LOCALAPPDATA ?? '', 'fl-lab')
 const edgeDriver = process.env.MSEDGEDRIVER ?? readdirSync(edgeDir).map((d) => join(edgeDir, d, 'msedgedriver.exe')).find(existsSync)
 // FL_APP: another build of the window, such as the shipped layout with the launcher beside it (then it must find

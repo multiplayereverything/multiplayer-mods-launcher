@@ -12,3 +12,6 @@ PROMPT.md
 node_modules/
 tauri/src-tauri/target/
 tauri/src-tauri/gen/
+
+# The C++ launcher, kept while the Rust port takes over (local experiments in it stay out).
+old/qt-prototype/

@@ -49,7 +49,7 @@ if ($Dist) {
   if (Test-Path $out) { Remove-Item -Recurse -Force $out }
   New-Item -ItemType Directory -Force $out | Out-Null
   Copy-Item $exe $out
-  Copy-Item (Join-Path $root 'launcher\*') $out -Recurse
+  Copy-Item (Join-Path $root '..\launcher\*') $out -Recurse  # launcher\ is shared with the Tauri app, one level up
   Get-ChildItem $out -Recurse -Include *.swf, *.exe | Where-Object { $_.Name -ne 'MultiplayerEverythingLauncher.exe' } | ForEach-Object {
     throw "Refusing to package $($_.FullName): game files and player binaries must not be shipped."
   }
