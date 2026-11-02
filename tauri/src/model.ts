@@ -58,6 +58,9 @@ const plain = (a: Action) => !a.mod && !a.link
 // Ruffle Together co-op: the game has both a host and a join action, so Host a game and Join a game stand in for them.
 export const isCoop = (g: Game) => g.actions.some((a) => a.coopHost) && g.actions.some((a) => a.coopJoin)
 
+// TV mode: online games pick how to play first (Quick play, host, join with a code); the rest play at once.
+export const needsPlayMenu = (g: Game) => !g.mod && !g.comingSoon && (!!g.onlineId || isCoop(g) || g.lobby)
+
 // Settings decide two kinds of action: solo play (show offline) and the unmodded game (show originals).
 export interface Shown { showOffline: boolean; showOriginals: boolean }
 const visible = (a: Action, s: Shown) => (!a.offline || s.showOffline) && (!a.original || s.showOriginals)

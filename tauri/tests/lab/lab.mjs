@@ -72,6 +72,8 @@ async function check(name, ok, detail = '') {
   console.log(`  FAIL  ${name}${detail ? `: ${detail}` : ''}`)
   const errors = await wd.exec('return window.__labErrors ?? []').catch(() => [])
   if (errors.length) console.log(`        page errors: ${errors.join(' | ')}`)
+  const tvLog = await wd.exec("return JSON.parse(localStorage.getItem('fl.tvLog') ?? '[]')").catch(() => [])
+  if (tvLog.length) console.log(`        TV mode: ${tvLog.slice(-3).join(' | ')}`)
   try {
     mkdirSync(fails, { recursive: true })
     writeFileSync(join(fails, `${failed}-${name.replace(/[^a-z0-9]+/gi, '-').slice(0, 60)}.png`), Buffer.from(await wd.screenshot(), 'base64'))
@@ -590,11 +592,32 @@ const scenarios = {
     await gameClosed()
     await check('the starting screen goes when the game closes', !!(await waitFor(async () => (await wd.count("//div[contains(@class,'tv-starting')]")) === 0, 3000)))
     await check('TV mode is still on, full screen, after the game', await waitFor(stillTv, 3000) === true,
-      `tv ${await wd.count("//div[@id='tv']")}, fullscreen ${await fullscreen()}`)
+      `tv ${await wd.count("//div[@id='tv']")}, fullscreen ${await fullscreen()}, ` +
+        (await wd.exec("return JSON.parse(localStorage.getItem('fl.tvLog') ?? '[]')")).slice(-3).join(' | '))
     await wd.click("//button[contains(@class,'tv-tab') and normalize-space(.)='Settings']")
     await wd.click("//button[@role='switch' and contains(@aria-label,'Minimize')]")
     await waitFor(() => !settings().minimize)
     await key('Escape')
+
+    // An online game asks how to play: a sheet the D-pad stays in, then the on-screen keyboard for a room code.
+    await wd.click(`//button[contains(@class,'tv-tile')][.//span[contains(@class,'name') and normalize-space(.)=${q('Co-op Test')}]]`)
+    await wd.exec('document.activeElement.click()')
+    const items = await waitFor(async () => { const t = await wd.exec("return [...document.querySelectorAll('.tv-item b')].map(b => b.textContent)"); return t.length > 0 && t })
+    await check('A on an online game asks how to play', !!items && items.includes('Quick play') && items.includes('Join with a code'), String(items))
+    await check('the sheet lists the game\'s open rooms', !!items && items.some((i) => i.startsWith('Join ') && i !== 'Join with a code'), String(items))
+    for (let i = 0; i < 12; i++) await key('ArrowDown')
+    await check('the D-pad stays inside the sheet', await wd.exec("return !!document.activeElement?.closest('.tv-sheet')"))
+    await wd.click("//button[contains(@class,'tv-item')][.//b[normalize-space(.)='Join with a code']]")
+    await wd.find("//div[contains(@class,'tv-kb')]")
+    for (const ch of 'kx7q2') await key(ch)
+    const typed = await wd.exec("return [...document.querySelectorAll('.tv-kb-field .cell')].map(c => c.textContent).join('')")
+    await check('a keyboard types into the on-screen keyboard', typed === 'KX7Q2', typed)
+    await wd.click("//div[contains(@class,'tv-kb')]//button[normalize-space(.)='Q']")
+    await check('the on-screen keys stop at five letters', (await wd.exec("return [...document.querySelectorAll('.tv-kb-field .cell')].map(c => c.textContent).join('')")) === 'KX7Q2')
+    clearArgs()
+    await key('Enter')
+    const joined = await launchedWith()
+    await check('Enter joins with the typed code', joined.includes('--coop-code') && joined.includes('KX7Q2'), joined.join(' '))
 
     await key('F11')
     await check('F11 leaves TV mode', !!(await waitFor(async () => (await wd.count("//nav[contains(@class,'navs')]")) > 0)))

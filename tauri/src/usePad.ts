@@ -16,7 +16,9 @@ function visible(el: HTMLElement): boolean {
 
 // The closest control whose middle lies in that direction, favouring ones in line with the current one.
 export function moveFocus(dir: Dir) {
-  const all = [...document.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(visible)
+  // An open dialog keeps the focus inside it; the page behind it is still laid out but not reachable.
+  const scope = [...document.querySelectorAll<HTMLElement>('[aria-modal="true"]')].pop() ?? document
+  const all = [...scope.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(visible)
   const cur = document.activeElement instanceof HTMLElement && all.includes(document.activeElement) ? document.activeElement : null
   if (!cur) {
     all[0]?.focus()

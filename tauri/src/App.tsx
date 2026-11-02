@@ -6,12 +6,13 @@ import { SettingsPage } from './SettingsPage'
 import { SetupPage } from './SetupPage'
 import { Switcher, type SwitchTarget } from './Switcher'
 import { TV_SECTIONS, TvHints, TvHome, TvLibrary, TvRooms, TvStarting, TvTop, type TvCommon, type TvSection } from './Tv'
+import { TvPlaySheet, type SheetPad } from './TvSheet'
 import {
   downloadGame, launch, live, loadLibrary, loadMods, installPlayer, loadAllRooms, minimizeWindow, modJob, notify, ping, restoreWindow, updatePlayers, onDownloadEnded, onHostStatus,
   onLaunchEnded, onModProgress, pickFile, pickFolder, setFavorite, setFullscreen, setSetting, setTvMode, noteTv, setGameDir, setGameFile, stopSession, windowControl,
   type Game, type Library, type ModInfo, type RelayStatus, type Room, type Rooms, type Settings,
 } from './api'
-import { agoText, isCoop, roomAbout, joinByCode, lastPlayed, leadAction, playersShort, statusOf } from './model'
+import { agoText, isCoop, needsPlayMenu, roomAbout, joinByCode, lastPlayed, leadAction, playersShort, statusOf } from './model'
 import { Glyph, Pips, Seg, Shelf, Tile } from './ui'
 import { moveFocus, usePad } from './usePad'
 import './App.css'
@@ -175,6 +176,9 @@ export default function App() {
   // A game starting from TV mode: its screen covers TV mode until the game closes (session 0 until the launcher
   // answers).
   const [tvStart, setTvStart] = useState<{ game: string; session: number; label: string } | null>(null)
+  // An online game's choices (Quick play, host, join with a code) in TV mode, and what the sheet does with B and X.
+  const [tvSheet, setTvSheet] = useState('')
+  const sheetPad = useRef<SheetPad>({})
   useEffect(() => {
     keep('fl.tv', tv ? '1' : '0')
     setTvMode(tv)
@@ -446,6 +450,7 @@ export default function App() {
     main.current?.scrollTo({ top: 0 })
   }
   const back = () => {
+    if (sheetPad.current.back?.()) return
     if (tvStart) {
       setTvStart(null)
       return
@@ -490,6 +495,7 @@ export default function App() {
     noteTv(!tv, cause)
     setTv(!tv)
     setTvStart(null)
+    setTvSheet('')
     setSwitcher(false)
   }
   const pad = usePad({
@@ -502,6 +508,7 @@ export default function App() {
     prevTab: () => step(-1),
     nextTab: () => step(1),
     x: () => {
+      if (sheetPad.current.x?.()) return
       const g = tv ? focusedGame() : undefined
       if (g) toggleFav(g.id)
     },
@@ -803,7 +810,8 @@ export default function App() {
   )
 
   if (tv) {
-    const tvc: TvCommon = { lib, mods, favs, playingIds, allRooms, pad, onOpen: (g) => go('game', g.id), onPlay: playLead }
+    const tvc: TvCommon = { lib, mods, favs, playingIds, allRooms, pad, onOpen: (g) => go('game', g.id), onPlay: (g) => (needsPlayMenu(g) ? setTvSheet(g.id) : playLead(g)) }
+    const sheetGame = lib.games.find((g) => g.id === tvSheet)
     let tvPage = page
     if (view === 'home') tvPage = <TvHome c={tvc} games={[...new Set([...recent, ...playable.filter((g) => favs.has(g.id)), ...playable])]} />
     else if (view === 'library') tvPage = <TvLibrary c={tvc} cats={sideList.filter((x) => x.id !== 'rooms' && x.n > 0)} inCat={inCat} />
@@ -816,6 +824,21 @@ export default function App() {
           {tvPage}
         </main>
         <TvHints pad={pad} />
+        {sheetGame && (
+          <TvPlaySheet game={sheetGame} lib={lib} rooms={allRooms?.[sheetGame.id]} pad={pad} padRef={sheetPad} onClose={() => setTvSheet('')}
+            onRun={(a, code, address) => {
+              setTvSheet('')
+              actions.run(sheetGame, a, code, address)
+            }}
+            onLobby={(quick) => {
+              setTvSheet('')
+              actions.openLobby(sheetGame, quick)
+            }}
+            onPage={() => {
+              setTvSheet('')
+              go('game', sheetGame.id)
+            }} />
+        )}
         {tvStart && lib.games.some((g) => g.id === tvStart.game) && (
           <TvStarting game={lib.games.find((g) => g.id === tvStart.game)!} lib={lib} label={tvStart.label} pad={pad} onBack={() => setTvStart(null)} />
         )}
