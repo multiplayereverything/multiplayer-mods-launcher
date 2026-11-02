@@ -12,7 +12,7 @@ import { Driver, button, waitFor } from './webdriver.mjs'
 const here = dirname(fileURLToPath(import.meta.url))
 const tauriDir = resolve(here, '..', '..')
 const out = resolve(process.argv[2] ?? 'setup-shots')
-const launcher = process.env.FL_LAUNCHER_EXE ?? resolve(tauriDir, '..', 'old', 'build', 'Debug', 'MultiplayerEverythingLauncher.exe')
+const launcher = process.env.FL_LAUNCHER_EXE ?? resolve(tauriDir, 'old', 'build', 'Debug', 'MultiplayerEverythingLauncher.exe')
 const edgeDir = join(process.env.LOCALAPPDATA ?? '', 'fl-lab')
 const edgeDriver = process.env.MSEDGEDRIVER ?? readdirSync(edgeDir).map((d) => join(edgeDir, d, 'msedgedriver.exe')).find(existsSync)
 const app = join(process.env.CARGO_TARGET_DIR ?? join(tauriDir, 'src-tauri', 'target'), 'debug', 'app.exe')

@@ -4,9 +4,9 @@
   src-tauri/src/engine.rs looks for it. Nothing is published; the installer lands in
   src-tauri/target/release/bundle/nsis.
 .EXAMPLE
-  .\scripts\release.ps1 -Engine ..\old
+  .\scripts\release.ps1 -Engine .\old
 #>
-param([string]$Engine = (Join-Path $PSScriptRoot '..\..\old'))
+param([string]$Engine = (Join-Path $PSScriptRoot '..\old'))
 $ErrorActionPreference = 'Stop'
 $tauri = Split-Path $PSScriptRoot
 & (Join-Path $Engine 'build.ps1') -Test   # the engine ships only when its own tests pass

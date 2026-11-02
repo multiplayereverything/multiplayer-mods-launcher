@@ -1,6 +1,6 @@
 # Moving the launcher's work into the Tauri app
 
-The launcher becomes one Tauri app. Today the window still asks the C++ launcher in `../old` for everything
+The launcher becomes one Tauri app. Today the window still asks the C++ launcher in `old/` for everything
 (`src-tauri/src/engine.rs` runs it with the commands below). Each part here moves that job into Rust inside the
 app; when the last one is done, `old/` is deleted and the app ships alone.
 

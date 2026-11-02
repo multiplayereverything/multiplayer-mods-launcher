@@ -1,5 +1,6 @@
 build/
 dist/
+dist-ssr/
 # Never commit game files or player binaries.
 *.swf
 launcher/players/**/*.exe
@@ -8,10 +9,18 @@ launcher/players/**/*.exe
 AGENTS.md
 PROMPT.md
 
-# Tauri rewrite
+# The Tauri app
 node_modules/
-tauri/src-tauri/target/
-tauri/src-tauri/gen/
+src-tauri/target/
+src-tauri/gen/
+src-tauri/engine/
+*.local
+
+# Editors
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
 
 # The C++ launcher, kept while the Rust port takes over (local experiments in it stay out).
 old/qt-prototype/

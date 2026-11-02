@@ -6,7 +6,7 @@
 //
 // Needs: tauri-driver (cargo install tauri-driver --locked), Microsoft Edge WebDriver matching WebView2 (MSEDGEDRIVER,
 // or %LOCALAPPDATA%\fl-lab\edgedriver-<version>\msedgedriver.exe), and the C++ launcher's Debug build (FL_LAUNCHER_EXE,
-// default ..\old\build\Debug), whose launcher_tests.exe is the fake player.
+// default old\build\Debug), whose launcher_tests.exe is the fake player.
 import { execFileSync, spawn, spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -30,7 +30,7 @@ function need(path, what) {
   return path
 }
 
-const launcher = need(process.env.FL_LAUNCHER_EXE ?? resolve(tauriDir, '..', 'old', 'build', 'Debug', 'MultiplayerEverythingLauncher.exe'),
+const launcher = need(process.env.FL_LAUNCHER_EXE ?? resolve(tauriDir, 'old', 'build', 'Debug', 'MultiplayerEverythingLauncher.exe'),
   'the C++ launcher (set FL_LAUNCHER_EXE)')
 const fakePlayer = need(join(dirname(launcher), 'launcher_tests.exe'), 'launcher_tests.exe next to the launcher')
 const edgeDir = join(process.env.LOCALAPPDATA ?? '', 'fl-lab')

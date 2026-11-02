@@ -234,9 +234,9 @@ launcher this way). `MultiplayerEverythingLauncher.exe --help` lists everything.
 
 ## Build
 
-The launcher is moving to one Tauri app ([tauri/](tauri/README.md)). Until its Rust side takes over every job, the
-window still runs on the C++ launcher, which now lives in `old/`. The plan and what's done so far are in
-[tauri/PORTING.md](tauri/PORTING.md).
+The launcher is one Tauri app: the window in `src/`, its Rust side in `src-tauri/`, how to build and test it in
+[DEVELOPING.md](DEVELOPING.md). Until the Rust side takes over every job, the window still runs on the C++
+launcher, which now lives in `old/`. The plan and what's done so far are in [PORTING.md](PORTING.md).
 
 The C++ launcher requires Visual Studio 2022 (or Build Tools) with the C++ workload.
 
@@ -257,7 +257,7 @@ reinstall, first-run prompt, the window's download button). `-Dist` makes
 
 | Path | Contents |
 |---|---|
-| `tauri/` | The launcher app: the window (React) and its Rust side, the test lab |
+| `src/`, `src-tauri/`, `tests/lab/` | The launcher app: the window (React), its Rust side, the test lab |
 | `old/` | The C++ launcher, kept while the Rust port takes its jobs over one by one |
 | `old/src/core/mod/` | The PC-mod engine (ported from the installer template): game detection, planning, the all-or-nothing install transaction, the install record, package download |
 | `old/src/core/lobby.*` | The lobby: rooms through the server or direct IP, ready-up, start and the loaded barrier, reconnects, and the localhost bridge the game talks to |

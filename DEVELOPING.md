@@ -35,7 +35,6 @@ the exe. Settings, the lobby window and the hosting box still live in the C++ la
   The idea comes from RecompLauncher's Big Picture mode; none of its code is used.
 
 ```bash
-cd tauri
 npm install
 npm run dev          # the UI alone, in a browser at http://localhost:1420
 npx tauri dev        # the real window
@@ -72,7 +71,7 @@ It needs:
 - `cargo install tauri-driver --locked`;
 - Microsoft Edge WebDriver matching the installed WebView2, either in `MSEDGEDRIVER` or in
   `%LOCALAPPDATA%\fl-lab\edgedriver-<version>\msedgedriver.exe`;
-- the C++ launcher's Debug build, in `FL_LAUNCHER_EXE` (default: `..\old\build\Debug`, made by `..\old\build.ps1 -Config Debug`).
+- the C++ launcher's Debug build, in `FL_LAUNCHER_EXE` (default: `old\build\Debug`, made by `old\build.ps1 -Config Debug`).
 
 `--no-build` reuses the last build, `--only coop,mods` runs some scenarios, and `--keep` keeps the sandbox.
 `FL_LAUNCHER_CONFIG` (another launcher.json for every call to the C++ launcher) is what points the window at the

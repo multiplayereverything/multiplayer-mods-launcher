@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Static CRT: the launcher is a single self-contained .exe.
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
-# The C++ launcher, kept in old/ while the Tauri app (../tauri) takes over its work: the games, covers and
+# The C++ launcher, kept in old/ while the Tauri app (at the top of the repository) takes over its work: the games, covers and
 # launcher.json it embeds are shared with the new app and stay at the top of the repository.
 get_filename_component(REPO_ROOT "${CMAKE_SOURCE_DIR}/.." ABSOLUTE)
 
