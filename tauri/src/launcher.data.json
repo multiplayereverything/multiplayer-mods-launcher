@@ -1,0 +1,1314 @@
+{
+ "branding": {
+  "title": "Multiplayer Everything",
+  "subtitle": "Mods and Flash games",
+  "theme": "dark"
+ },
+ "categories": [
+  {
+   "id": "pc",
+   "name": "PC mods",
+   "icon": "E7F4",
+   "group": "platform"
+  },
+  {
+   "id": "flash",
+   "name": "Flash mods",
+   "icon": "E8B8",
+   "group": "platform"
+  },
+  {
+   "id": "community",
+   "name": "Community mods",
+   "icon": "E716",
+   "group": "platform"
+  },
+  {
+   "id": "online",
+   "name": "Online multiplayer",
+   "icon": "E774",
+   "group": "kind"
+  },
+  {
+   "id": "local",
+   "name": "Local multiplayer",
+   "icon": "E765",
+   "group": "kind"
+  },
+  {
+   "id": "coop",
+   "name": "Co-op",
+   "icon": "E716",
+   "group": "kind"
+  },
+  {
+   "id": "versus",
+   "name": "Versus",
+   "icon": "E945",
+   "group": "kind"
+  }
+ ],
+ "games": [
+  {
+   "id": "gunmayhem2",
+   "name": "Gun Mayhem 2: More Mayhem",
+   "players": "1-4 players",
+   "maxPlayers": 4,
+   "online": {
+    "id": "ruffle-coop",
+    "join": "online"
+   },
+   "categories": [
+    "flash",
+    "online",
+    "local",
+    "versus"
+   ],
+   "color": "#FF6A3D",
+   "colorEnd": "#B4234E",
+   "image": "covers/gunmayhem2.png",
+   "imageFocus": 0.1,
+   "description": "Knock each other off floating platforms with guns, in free-for-all or team matches against friends and bots. Online play runs in Ruffle Together: the host is Player 1 and friends join as Players 2, 3 and 4.",
+   "actions": [
+    {
+     "id": "online",
+     "label": "Play online",
+     "description": "Host a room for 2 players, or join one with a code"
+    },
+    {
+     "id": "room3",
+     "label": "Host a room for 3 players",
+     "description": "The game starts when 2 friends have joined"
+    },
+    {
+     "id": "room4",
+     "label": "Host a room for 4 players",
+     "description": "The game starts when 3 friends have joined"
+    },
+    {
+     "id": "host",
+     "label": "Host with your IP (2 players)",
+     "description": "Direct connect on port 7790"
+    },
+    {
+     "id": "host3",
+     "label": "Host with your IP (3 players)",
+     "description": "Direct connect on port 7790; starts when 2 friends have joined"
+    },
+    {
+     "id": "host4",
+     "label": "Host with your IP (4 players)",
+     "description": "Direct connect on port 7790; starts when 3 friends have joined"
+    },
+    {
+     "id": "join",
+     "label": "Join by IP",
+     "description": "Copy the host's address first"
+    },
+    {
+     "id": "local",
+     "label": "Play on one keyboard",
+     "description": "Up to 4 players on this PC"
+    },
+    {
+     "id": "play",
+     "label": "Play the original",
+     "description": "The Armor Games release, without the online mod"
+    }
+   ]
+  },
+  {
+   "id": "stealthhunter2",
+   "name": "Stealth Hunter 2",
+   "players": "1-4 players (online co-op)",
+   "maxPlayers": 4,
+   "online": {
+    "id": "ruffle-coop",
+    "join": "online"
+   },
+   "categories": [
+    "flash",
+    "online",
+    "coop"
+   ],
+   "color": "#2BD4C5",
+   "colorEnd": "#1B3A6B",
+   "image": "covers/stealthhunter2.png",
+   "imageFocus": 0.62,
+   "description": "Sneak through guarded bases, pick locks and take out guards without raising the alarm. Online play runs in Ruffle Together: up to four players play the campaign together on a shared view, and if anyone dies the team restarts the mission.",
+   "actions": [
+    {
+     "id": "online",
+     "label": "Play online",
+     "description": "Host a room for 2 players, or join one with a code"
+    },
+    {
+     "id": "room3",
+     "label": "Host a room for 3 players",
+     "description": "The game starts when 2 friends have joined"
+    },
+    {
+     "id": "room4",
+     "label": "Host a room for 4 players",
+     "description": "The game starts when 3 friends have joined"
+    },
+    {
+     "id": "host",
+     "label": "Host with your IP (2 players)",
+     "description": "Direct connect on port 7790"
+    },
+    {
+     "id": "host3",
+     "label": "Host with your IP (3 players)",
+     "description": "Direct connect on port 7790; starts when 2 friends have joined"
+    },
+    {
+     "id": "host4",
+     "label": "Host with your IP (4 players)",
+     "description": "Direct connect on port 7790; starts when 3 friends have joined"
+    },
+    {
+     "id": "join",
+     "label": "Join by IP",
+     "description": "Copy the host's address first"
+    },
+    {
+     "id": "offline",
+     "label": "Play solo",
+     "description": "The campaign on your own"
+    },
+    {
+     "id": "play",
+     "label": "Play the original",
+     "description": "Without the online mod"
+    }
+   ]
+  },
+  {
+   "id": "badicecream",
+   "name": "Bad Ice-Cream",
+   "players": "1-2 players (online co-op)",
+   "maxPlayers": 2,
+   "online": {
+    "id": "ruffle-coop",
+    "join": "online"
+   },
+   "categories": [
+    "flash",
+    "online",
+    "local",
+    "coop"
+   ],
+   "color": "#B983FF",
+   "colorEnd": "#3CCB7F",
+   "image": "covers/badicecream.png",
+   "imageFocus": 0.6,
+   "description": "Collect all the fruit in each maze while building and breaking ice walls to stay away from the monsters. Better with a friend. Online co-op runs in Ruffle Together: the host is Player 1, the friend joins as Player 2.",
+   "actions": [
+    {
+     "id": "online",
+     "label": "Play online",
+     "description": "Host a room, or join one with a code"
+    },
+    {
+     "id": "host",
+     "label": "Host with your IP",
+     "description": "Direct connect on port 7790"
+    },
+    {
+     "id": "join",
+     "label": "Join by IP",
+     "description": "Copy the host's address first"
+    },
+    {
+     "id": "local",
+     "label": "Play on one keyboard",
+     "description": "Co-op for two on this PC"
+    }
+   ]
+  },
+  {
+   "id": "territorywar",
+   "name": "Territory War",
+   "players": "2-4 players (online)",
+   "maxPlayers": 4,
+   "online": {
+    "id": "ruffle-coop",
+    "join": "online"
+   },
+   "categories": [
+    "flash",
+    "online",
+    "versus"
+   ],
+   "color": "#6BA539",
+   "colorEnd": "#2C4A1E",
+   "description": "Afro-Ninja's stick-figure team battle: walk, aim and throw grenades, shoot and kick on your turn. Online play runs in Ruffle Together: the host sets up the match and friends play their turns from the keyboard.",
+   "actions": [
+    {
+     "id": "online",
+     "label": "Play online",
+     "description": "Host a room for 2 players, or join one with a code"
+    },
+    {
+     "id": "room3",
+     "label": "Host a room for 3 players",
+     "description": "The game starts when 2 friends have joined"
+    },
+    {
+     "id": "room4",
+     "label": "Host a room for 4 players",
+     "description": "The game starts when 3 friends have joined"
+    },
+    {
+     "id": "host",
+     "label": "Host with your IP (2 players)",
+     "description": "Direct connect on port 7790"
+    },
+    {
+     "id": "host3",
+     "label": "Host with your IP (3 players)",
+     "description": "Direct connect on port 7790; starts when 2 friends have joined"
+    },
+    {
+     "id": "host4",
+     "label": "Host with your IP (4 players)",
+     "description": "Direct connect on port 7790; starts when 3 friends have joined"
+    },
+    {
+     "id": "join",
+     "label": "Join by IP",
+     "description": "Copy the host's address first"
+    },
+    {
+     "id": "offline",
+     "label": "Play offline",
+     "description": "Campaign, challenges and battles on this PC"
+    },
+    {
+     "id": "play",
+     "label": "Play the original",
+     "description": "Without the online mod"
+    }
+   ]
+  },
+  {
+   "id": "bowman",
+   "name": "Bow Man",
+   "players": "2 players (online)",
+   "maxPlayers": 2,
+   "online": {
+    "id": "ruffle-coop",
+    "join": "online"
+   },
+   "categories": [
+    "flash",
+    "online",
+    "versus"
+   ],
+   "color": "#C98A4B",
+   "colorEnd": "#3B2A1A",
+   "description": "Two archers take turns: drag to aim, release to shoot, mind the wind. Online play runs in Ruffle Together: each archer is on their own PC.",
+   "actions": [
+    {
+     "id": "online",
+     "label": "Play online",
+     "description": "Host a room for 2 players, or join one with a code"
+    },
+    {
+     "id": "host",
+     "label": "Host with your IP (2 players)",
+     "description": "Direct connect on port 7790"
+    },
+    {
+     "id": "join",
+     "label": "Join by IP",
+     "description": "Copy the host's address first"
+    },
+    {
+     "id": "offline",
+     "label": "Play offline",
+     "description": "VS Computer, practice and bird hunting"
+    },
+    {
+     "id": "play",
+     "label": "Play the original",
+     "description": "Without the online mod"
+    }
+   ]
+  },
+  {
+   "id": "ultimatecrabbattle",
+   "name": "Ultimate Crab Battle",
+   "players": "1-4 players (online co-op)",
+   "maxPlayers": 4,
+   "online": {
+    "id": "ruffle-coop",
+    "join": "online"
+   },
+   "categories": [
+    "flash",
+    "online",
+    "coop"
+   ],
+   "color": "#E8603C",
+   "colorEnd": "#1D3C6E",
+   "description": "One giant crab, up to four ships. Online play runs in Ruffle Together: every player flies their own ship, and the team shares one HP bar.",
+   "actions": [
+    {
+     "id": "online",
+     "label": "Play online",
+     "description": "Host a room for 2 players, or join one with a code"
+    },
+    {
+     "id": "room3",
+     "label": "Host a room for 3 players",
+     "description": "The game starts when 2 friends have joined"
+    },
+    {
+     "id": "room4",
+     "label": "Host a room for 4 players",
+     "description": "The game starts when 3 friends have joined"
+    },
+    {
+     "id": "host",
+     "label": "Host with your IP (2 players)",
+     "description": "Direct connect on port 7790"
+    },
+    {
+     "id": "host3",
+     "label": "Host with your IP (3 players)",
+     "description": "Direct connect on port 7790; starts when 2 friends have joined"
+    },
+    {
+     "id": "host4",
+     "label": "Host with your IP (4 players)",
+     "description": "Direct connect on port 7790; starts when 3 friends have joined"
+    },
+    {
+     "id": "join",
+     "label": "Join by IP",
+     "description": "Copy the host's address first"
+    },
+    {
+     "id": "offline",
+     "label": "Play offline",
+     "description": "The fight on your own"
+    },
+    {
+     "id": "play",
+     "label": "Play the original",
+     "description": "Without the online mod"
+    }
+   ]
+  },
+  {
+   "id": "airbattle",
+   "name": "Air Battle",
+   "players": "1-4 players (online co-op)",
+   "maxPlayers": 4,
+   "online": {
+    "id": "ruffle-coop",
+    "join": "online"
+   },
+   "categories": [
+    "flash",
+    "online",
+    "coop"
+   ],
+   "color": "#5AB4E6",
+   "colorEnd": "#B4621E",
+   "description": "BubbleBox's balloon-boat shooter, flown together: up to four boats through the game's levels, one per player. Online play runs in Ruffle Together.",
+   "actions": [
+    {
+     "id": "online",
+     "label": "Play online",
+     "description": "Host a room for 2 players, or join one with a code"
+    },
+    {
+     "id": "room3",
+     "label": "Host a room for 3 players",
+     "description": "The game starts when 2 friends have joined"
+    },
+    {
+     "id": "room4",
+     "label": "Host a room for 4 players",
+     "description": "The game starts when 3 friends have joined"
+    },
+    {
+     "id": "host",
+     "label": "Host with your IP (2 players)",
+     "description": "Direct connect on port 7790"
+    },
+    {
+     "id": "host3",
+     "label": "Host with your IP (3 players)",
+     "description": "Direct connect on port 7790; starts when 2 friends have joined"
+    },
+    {
+     "id": "host4",
+     "label": "Host with your IP (4 players)",
+     "description": "Direct connect on port 7790; starts when 3 friends have joined"
+    },
+    {
+     "id": "join",
+     "label": "Join by IP",
+     "description": "Copy the host's address first"
+    },
+    {
+     "id": "offline",
+     "label": "Play offline",
+     "description": "The levels on your own"
+    },
+    {
+     "id": "play",
+     "label": "Play the original",
+     "description": "Without the online mod"
+    }
+   ]
+  },
+  {
+   "id": "raftwars",
+   "name": "Raft Wars",
+   "players": "1-4 players (online co-op)",
+   "maxPlayers": 4,
+   "online": {
+    "id": "ruffle-coop",
+    "join": "online"
+   },
+   "categories": [
+    "flash",
+    "online",
+    "coop"
+   ],
+   "color": "#2E9CCA",
+   "colorEnd": "#8A4A22",
+   "description": "The brothers defend their treasure from the raft, taking turns at the bazooka. Online play runs in Ruffle Together: up to four players get a turn each, and the team shares the credits in the shop.",
+   "actions": [
+    {
+     "id": "online",
+     "label": "Play online",
+     "description": "Host a room for 2 players, or join one with a code"
+    },
+    {
+     "id": "room3",
+     "label": "Host a room for 3 players",
+     "description": "The game starts when 2 friends have joined"
+    },
+    {
+     "id": "room4",
+     "label": "Host a room for 4 players",
+     "description": "The game starts when 3 friends have joined"
+    },
+    {
+     "id": "host",
+     "label": "Host with your IP (2 players)",
+     "description": "Direct connect on port 7790"
+    },
+    {
+     "id": "host3",
+     "label": "Host with your IP (3 players)",
+     "description": "Direct connect on port 7790; starts when 2 friends have joined"
+    },
+    {
+     "id": "host4",
+     "label": "Host with your IP (4 players)",
+     "description": "Direct connect on port 7790; starts when 3 friends have joined"
+    },
+    {
+     "id": "join",
+     "label": "Join by IP",
+     "description": "Copy the host's address first"
+    },
+    {
+     "id": "offline",
+     "label": "Play offline",
+     "description": "The battles on your own"
+    },
+    {
+     "id": "play",
+     "label": "Play the original",
+     "description": "Without the online mod"
+    }
+   ]
+  },
+  {
+   "id": "dadnme",
+   "name": "Dad 'n Me",
+   "players": "1-4 players (online co-op)",
+   "maxPlayers": 4,
+   "online": {
+    "id": "ruffle-coop",
+    "join": "online"
+   },
+   "categories": [
+    "flash",
+    "online",
+    "coop"
+   ],
+   "color": "#D9822B",
+   "colorEnd": "#5A2E1A",
+   "description": "A father-and-son brawler. Online play runs in Ruffle Together: up to four players fight side by side, one per PC.",
+   "actions": [
+    {
+     "id": "online",
+     "label": "Play online",
+     "description": "Host a room for 2 players, or join one with a code"
+    },
+    {
+     "id": "room3",
+     "label": "Host a room for 3 players",
+     "description": "The game starts when 2 friends have joined"
+    },
+    {
+     "id": "room4",
+     "label": "Host a room for 4 players",
+     "description": "The game starts when 3 friends have joined"
+    },
+    {
+     "id": "host",
+     "label": "Host with your IP (2 players)",
+     "description": "Direct connect on port 7790"
+    },
+    {
+     "id": "host3",
+     "label": "Host with your IP (3 players)",
+     "description": "Direct connect on port 7790; starts when 2 friends have joined"
+    },
+    {
+     "id": "host4",
+     "label": "Host with your IP (4 players)",
+     "description": "Direct connect on port 7790; starts when 3 friends have joined"
+    },
+    {
+     "id": "join",
+     "label": "Join by IP",
+     "description": "Copy the host's address first"
+    },
+    {
+     "id": "offline",
+     "label": "Play solo",
+     "description": "The game on your own"
+    }
+   ]
+  },
+  {
+   "id": "stealthassassin",
+   "name": "Stealth Assassin",
+   "players": "1-4 players (online co-op)",
+   "maxPlayers": 4,
+   "online": {
+    "id": "ruffle-coop",
+    "join": "online"
+   },
+   "categories": [
+    "flash",
+    "online",
+    "coop"
+   ],
+   "color": "#3C6E47",
+   "colorEnd": "#16221A",
+   "description": "Stealth Assassin (2014) as co-op for up to four assassins. Sneak past the guards, kill every green target (one extra per extra player), then reach the escape. Online play runs in Ruffle Together.",
+   "actions": [
+    {
+     "id": "online",
+     "label": "Play online",
+     "description": "Host a room for 2 players, or join one with a code"
+    },
+    {
+     "id": "room3",
+     "label": "Host a room for 3 players",
+     "description": "The game starts when 2 friends have joined"
+    },
+    {
+     "id": "room4",
+     "label": "Host a room for 4 players",
+     "description": "The game starts when 3 friends have joined"
+    },
+    {
+     "id": "host",
+     "label": "Host with your IP (2 players)",
+     "description": "Direct connect on port 7790"
+    },
+    {
+     "id": "host3",
+     "label": "Host with your IP (3 players)",
+     "description": "Direct connect on port 7790; starts when 2 friends have joined"
+    },
+    {
+     "id": "host4",
+     "label": "Host with your IP (4 players)",
+     "description": "Direct connect on port 7790; starts when 3 friends have joined"
+    },
+    {
+     "id": "join",
+     "label": "Join by IP",
+     "description": "Copy the host's address first"
+    },
+    {
+     "id": "offline",
+     "label": "Play solo",
+     "description": "The game on your own"
+    }
+   ]
+  },
+  {
+   "id": "fireboywatergirlforesttemple",
+   "name": "Fireboy & Watergirl: The Forest Temple",
+   "players": "2 players (online co-op)",
+   "maxPlayers": 2,
+   "online": {
+    "id": "ruffle-coop",
+    "join": "online"
+   },
+   "categories": [
+    "flash",
+    "online",
+    "coop"
+   ],
+   "color": "#C8501E",
+   "colorEnd": "#1F6E8C",
+   "description": "Fireboy and Watergirl in The Forest Temple (Oslo Albet, Armor Games 2009): the game's own two-player co-op, online. Fireboy and Watergirl work together through 32 temple levels, and each player is on their own PC.",
+   "actions": [
+    {
+     "id": "online",
+     "label": "Play online",
+     "description": "Host a room for 2 players, or join one with a code"
+    },
+    {
+     "id": "host",
+     "label": "Host with your IP (2 players)",
+     "description": "Direct connect on port 7790"
+    },
+    {
+     "id": "join",
+     "label": "Join by IP",
+     "description": "Copy the host's address first"
+    },
+    {
+     "id": "offline",
+     "label": "Play on one keyboard",
+     "description": "Both players on this PC"
+    }
+   ]
+  },
+  {
+   "id": "zombotron",
+   "name": "Zombotron",
+   "players": "1-4 players (online co-op)",
+   "maxPlayers": 4,
+   "online": {
+    "id": "ruffle-coop",
+    "join": "online"
+   },
+   "categories": [
+    "flash",
+    "online",
+    "coop"
+   ],
+   "color": "#6E8F3A",
+   "colorEnd": "#1F2A12",
+   "description": "Zombotron (Ant Karlov, 2011): blast zombies and robots through 10 levels with up to 4 friends, each with their own camera, keys and mouse.",
+   "actions": [
+    {
+     "id": "online",
+     "label": "Play online",
+     "description": "Host a room for 2 players, or join one with a code"
+    },
+    {
+     "id": "room3",
+     "label": "Host a room for 3 players",
+     "description": "The game starts when 2 friends have joined"
+    },
+    {
+     "id": "room4",
+     "label": "Host a room for 4 players",
+     "description": "The game starts when 3 friends have joined"
+    },
+    {
+     "id": "host",
+     "label": "Host with your IP (2 players)",
+     "description": "Direct connect on port 7790"
+    },
+    {
+     "id": "host3",
+     "label": "Host with your IP (3 players)",
+     "description": "Direct connect on port 7790; starts when 2 friends have joined"
+    },
+    {
+     "id": "host4",
+     "label": "Host with your IP (4 players)",
+     "description": "Direct connect on port 7790; starts when 3 friends have joined"
+    },
+    {
+     "id": "join",
+     "label": "Join by IP",
+     "description": "Copy the host's address first"
+    },
+    {
+     "id": "offline",
+     "label": "Play solo",
+     "description": "The game on your own"
+    }
+   ]
+  },
+  {
+   "id": "hobo",
+   "name": "Hobo",
+   "players": "1-4 players (online co-op)",
+   "maxPlayers": 4,
+   "online": {
+    "id": "ruffle-coop",
+    "join": "online"
+   },
+   "categories": [
+    "flash",
+    "online",
+    "coop"
+   ],
+   "color": "#8A5A2B",
+   "colorEnd": "#2A1B0E",
+   "description": "Hobo (Seething Swarm / Armor Games, 2008): brawl through the city with up to 3 friends on one shared screen, each on their own keys.",
+   "actions": [
+    {
+     "id": "online",
+     "label": "Play online",
+     "description": "Host a room for 2 players, or join one with a code"
+    },
+    {
+     "id": "room3",
+     "label": "Host a room for 3 players",
+     "description": "The game starts when 2 friends have joined"
+    },
+    {
+     "id": "room4",
+     "label": "Host a room for 4 players",
+     "description": "The game starts when 3 friends have joined"
+    },
+    {
+     "id": "host",
+     "label": "Host with your IP (2 players)",
+     "description": "Direct connect on port 7790"
+    },
+    {
+     "id": "host3",
+     "label": "Host with your IP (3 players)",
+     "description": "Direct connect on port 7790; starts when 2 friends have joined"
+    },
+    {
+     "id": "host4",
+     "label": "Host with your IP (4 players)",
+     "description": "Direct connect on port 7790; starts when 3 friends have joined"
+    },
+    {
+     "id": "join",
+     "label": "Join by IP",
+     "description": "Copy the host's address first"
+    },
+    {
+     "id": "offline",
+     "label": "Play solo",
+     "description": "The game on your own"
+    }
+   ]
+  },
+  {
+   "id": "chaosfaction2",
+   "name": "Chaos Faction 2",
+   "players": "2-6 players (online)",
+   "maxPlayers": 6,
+   "online": {
+    "id": "ruffle-coop",
+    "join": "online"
+   },
+   "categories": [
+    "flash",
+    "online",
+    "versus"
+   ],
+   "color": "#B0302A",
+   "colorEnd": "#2A0F0F",
+   "description": "A brawler with weapons, taunts and shields. Online play runs in Ruffle Together: two to six fighters, one per PC, in Deathmatch.",
+   "actions": [
+    {
+     "id": "online",
+     "label": "Play online",
+     "description": "Host a room for 2 players, or join one with a code"
+    },
+    {
+     "id": "room3",
+     "label": "Host a room for 3 players",
+     "description": "The game starts when 2 friends have joined"
+    },
+    {
+     "id": "room4",
+     "label": "Host a room for 4 players",
+     "description": "The game starts when 3 friends have joined"
+    },
+    {
+     "id": "room5",
+     "label": "Host a room for 5 players",
+     "description": "The game starts when 4 friends have joined"
+    },
+    {
+     "id": "room6",
+     "label": "Host a room for 6 players",
+     "description": "The game starts when 5 friends have joined"
+    },
+    {
+     "id": "host",
+     "label": "Host with your IP (2 players)",
+     "description": "Direct connect on port 7790"
+    },
+    {
+     "id": "host3",
+     "label": "Host with your IP (3 players)",
+     "description": "Direct connect on port 7790; starts when 2 friends have joined"
+    },
+    {
+     "id": "host4",
+     "label": "Host with your IP (4 players)",
+     "description": "Direct connect on port 7790; starts when 3 friends have joined"
+    },
+    {
+     "id": "host5",
+     "label": "Host with your IP (5 players)",
+     "description": "Direct connect on port 7790; starts when 4 friends have joined"
+    },
+    {
+     "id": "host6",
+     "label": "Host with your IP (6 players)",
+     "description": "Direct connect on port 7790; starts when 5 friends have joined"
+    },
+    {
+     "id": "join",
+     "label": "Join by IP",
+     "description": "Copy the host's address first"
+    },
+    {
+     "id": "offline",
+     "label": "Play offline",
+     "description": "The game on your own"
+    }
+   ]
+  },
+  {
+   "id": "smileyswar",
+   "name": "Smileys War",
+   "players": "2-4 players (online)",
+   "maxPlayers": 4,
+   "online": {
+    "id": "ruffle-coop",
+    "join": "online"
+   },
+   "categories": [
+    "flash",
+    "online",
+    "versus"
+   ],
+   "color": "#F2B632",
+   "colorEnd": "#9A4B12",
+   "description": "A smiley-face shooter arena. Online play runs in Ruffle Together: two to four players take the place of bots, each with their own keys and mouse.",
+   "actions": [
+    {
+     "id": "online",
+     "label": "Play online",
+     "description": "Host a room for 2 players, or join one with a code"
+    },
+    {
+     "id": "room3",
+     "label": "Host a room for 3 players",
+     "description": "The game starts when 2 friends have joined"
+    },
+    {
+     "id": "room4",
+     "label": "Host a room for 4 players",
+     "description": "The game starts when 3 friends have joined"
+    },
+    {
+     "id": "host",
+     "label": "Host with your IP (2 players)",
+     "description": "Direct connect on port 7790"
+    },
+    {
+     "id": "host3",
+     "label": "Host with your IP (3 players)",
+     "description": "Direct connect on port 7790; starts when 2 friends have joined"
+    },
+    {
+     "id": "host4",
+     "label": "Host with your IP (4 players)",
+     "description": "Direct connect on port 7790; starts when 3 friends have joined"
+    },
+    {
+     "id": "join",
+     "label": "Join by IP",
+     "description": "Copy the host's address first"
+    },
+    {
+     "id": "offline",
+     "label": "Play solo",
+     "description": "The game on your own"
+    }
+   ]
+  },
+  {
+   "id": "intrusion",
+   "name": "Intrusion",
+   "players": "2-4 players (online co-op)",
+   "maxPlayers": 4,
+   "online": {
+    "id": "ruffle-coop",
+    "join": "online"
+   },
+   "categories": [
+    "flash",
+    "online",
+    "coop"
+   ],
+   "color": "#7C8591",
+   "colorEnd": "#24282E",
+   "description": "Side-scrolling shooter. Online play runs in Ruffle Together: two to four soldiers fight through the levels together.",
+   "actions": [
+    {
+     "id": "online",
+     "label": "Play online",
+     "description": "Host a room for 2 players, or join one with a code"
+    },
+    {
+     "id": "room3",
+     "label": "Host a room for 3 players",
+     "description": "The game starts when 2 friends have joined"
+    },
+    {
+     "id": "room4",
+     "label": "Host a room for 4 players",
+     "description": "The game starts when 3 friends have joined"
+    },
+    {
+     "id": "host",
+     "label": "Host with your IP (2 players)",
+     "description": "Direct connect on port 7790"
+    },
+    {
+     "id": "host3",
+     "label": "Host with your IP (3 players)",
+     "description": "Direct connect on port 7790; starts when 2 friends have joined"
+    },
+    {
+     "id": "host4",
+     "label": "Host with your IP (4 players)",
+     "description": "Direct connect on port 7790; starts when 3 friends have joined"
+    },
+    {
+     "id": "join",
+     "label": "Join by IP",
+     "description": "Copy the host's address first"
+    },
+    {
+     "id": "offline",
+     "label": "Play solo",
+     "description": "The game on your own"
+    }
+   ]
+  },
+  {
+   "id": "intrusion2",
+   "name": "Intrusion 2",
+   "players": "1-4 players (online co-op)",
+   "maxPlayers": 4,
+   "online": {
+    "id": "ruffle-coop",
+    "join": "online"
+   },
+   "categories": [
+    "flash",
+    "online",
+    "coop"
+   ],
+   "color": "#B0453A",
+   "colorEnd": "#1E2228",
+   "description": "The sequel to Intrusion. Online play runs in Ruffle Together: up to four soldiers fight through the missions together.",
+   "actions": [
+    {
+     "id": "online",
+     "label": "Play online",
+     "description": "Host a room for 2 players, or join one with a code"
+    },
+    {
+     "id": "room3",
+     "label": "Host a room for 3 players",
+     "description": "The game starts when 2 friends have joined"
+    },
+    {
+     "id": "room4",
+     "label": "Host a room for 4 players",
+     "description": "The game starts when 3 friends have joined"
+    },
+    {
+     "id": "host",
+     "label": "Host with your IP (2 players)",
+     "description": "Direct connect on port 7790"
+    },
+    {
+     "id": "host3",
+     "label": "Host with your IP (3 players)",
+     "description": "Direct connect on port 7790; starts when 2 friends have joined"
+    },
+    {
+     "id": "host4",
+     "label": "Host with your IP (4 players)",
+     "description": "Direct connect on port 7790; starts when 3 friends have joined"
+    },
+    {
+     "id": "join",
+     "label": "Join by IP",
+     "description": "Copy the host's address first"
+    },
+    {
+     "id": "offline",
+     "label": "Play solo",
+     "description": "The game on your own"
+    }
+   ]
+  },
+  {
+   "id": "spooky-together",
+   "name": "Spooky Together",
+   "players": "2-4 players (co-op)",
+   "online": {
+    "id": "spooky"
+   },
+   "categories": [
+    "pc",
+    "online",
+    "coop"
+   ],
+   "color": "#D6264F",
+   "colorEnd": "#2A0A16",
+   "description": "Co-op for Spooky's Jump Scare Mansion: HD Renovation (Steam). Play the mansion with up to four friends: shared rooms, keys, items, specimens, the axe and endings, with a LAN server list. Everyone needs the same version.",
+   "mod": {
+    "gameName": "Spooky's Jump Scare Mansion"
+   },
+   "site": "spooky",
+   "actions": []
+  },
+  {
+   "id": "baldi-together",
+   "name": "Baldi Together",
+   "players": "2-4 players (co-op)",
+   "categories": [
+    "pc",
+    "coop"
+   ],
+   "color": "#3C9B45",
+   "colorEnd": "#12331A",
+   "description": "Co-op for Baldi's Basics Plus (Steam): up to four players share one school, with Baldi, the other characters, items, the shop and elevators in sync. Play over your network or online through Steam. Everyone needs the same version.",
+   "mod": {
+    "gameName": "Baldi's Basics Plus"
+   },
+   "site": "baldi",
+   "actions": []
+  },
+  {
+   "id": "miside-together",
+   "name": "MiSide Together",
+   "players": "2-4 players (co-op)",
+   "categories": [
+    "pc",
+    "coop"
+   ],
+   "color": "#E58AB0",
+   "colorEnd": "#3A1226",
+   "description": "Co-op for MiSide (Steam): two to four players play the story together, with Mita, the cutscenes and the dialogue in sync. Friends join through Steam, your network or an address. Everyone needs the same version.",
+   "mod": {
+    "gameName": "MiSide"
+   },
+   "site": "miside",
+   "actions": []
+  },
+  {
+   "id": "cupheads",
+   "name": "CupHeads",
+   "players": "2 players (co-op)",
+   "categories": [
+    "pc",
+    "coop"
+   ],
+   "color": "#D9A21B",
+   "colorEnd": "#3A2A07",
+   "description": "Online co-op for Cuphead: both cups, the host's save, bosses, run-and-gun and plane levels and the world map, over Steam invites or LAN. Originally made by Germanized; this fork is maintained by Multiplayer Everything. Everyone needs the same version.",
+   "mod": {
+    "gameName": "Cuphead"
+   },
+   "site": "cuphead",
+   "actions": []
+  },
+  {
+   "id": "rick-and-morty-together",
+   "name": "Rick and Morty Together",
+   "players": "2 players (co-op)",
+   "categories": [
+    "pc",
+    "coop"
+   ],
+   "color": "#7BD16B",
+   "colorEnd": "#0F3A1E",
+   "description": "Co-op for Rick and Morty: Virtual Rick-ality (Steam, VR): two players share one game as Morty clones in the same garage, see each other's head and hands, and pass things from hand to hand, with the story and the lines in sync. Everyone needs the same version.",
+   "mod": {
+    "gameName": "Rick and Morty: Virtual Rick-ality"
+   },
+   "site": "rickandmorty",
+   "actions": []
+  },
+  {
+   "id": "dave-the-diver-multiplayer",
+   "name": "Dave the Diver Multiplayer",
+   "players": "2 players (co-op)",
+   "categories": [
+    "pc",
+    "coop"
+   ],
+   "color": "#2BA7C9",
+   "colorEnd": "#06303D",
+   "description": "Two-player online co-op for Dave the Diver: dive the Blue Hole together, see each other, and share the fish, the story and the sushi bar. Join a friend through Steam or LAN. Originally made by S1ii; this fork is maintained by Multiplayer Everything. Unofficial community mod. Everyone needs the same version.",
+   "mod": {
+    "gameName": "DAVE THE DIVER"
+   },
+   "site": "davethediver",
+   "actions": []
+  },
+  {
+   "id": "mdk2-coop",
+   "name": "MDK2 HD",
+   "players": "2-16 players (alpha)",
+   "maxPlayers": 4,
+   "categories": [
+    "community"
+   ],
+   "color": "#E8A33D",
+   "colorEnd": "#8A3B12",
+   "description": "Online co-op for MDK2 HD by TommoDotCommo: one player hosts, friends join over Steam or direct UDP, and you play the campaign together with shared enemies, doors and pickups. Alpha.",
+   "actions": [
+    {
+     "id": "page",
+     "label": "Open the mod's page",
+     "description": "github.com/TommoDotCommo/mdk2-coop",
+     "link": "https://github.com/TommoDotCommo/mdk2-coop/releases"
+    }
+   ]
+  },
+  {
+   "id": "witness-coop",
+   "name": "The Witness",
+   "players": "Dev preview",
+   "maxPlayers": 4,
+   "categories": [
+    "community"
+   ],
+   "color": "#3FA9A0",
+   "colorEnd": "#1C3E59",
+   "description": "Co-op for The Witness by TommoDotCommo. A dev preview: two games on one PC share some panels and doors and show each other as characters; playing with friends over the internet is not possible yet.",
+   "actions": [
+    {
+     "id": "page",
+     "label": "Open the mod's page",
+     "description": "github.com/TommoDotCommo/witness-coop",
+     "link": "https://github.com/TommoDotCommo/witness-coop"
+    }
+   ]
+  },
+  {
+   "id": "gta-coop",
+   "name": "GTA San Andreas",
+   "players": "2-4 players (co-op)",
+   "categories": [
+    "pc",
+    "coop"
+   ],
+   "color": "#E07A1F",
+   "colorEnd": "#3A1B07",
+   "description": "Co-op for Grand Theft Auto: San Andreas (PC, version 1.0 US): the whole story with up to four friends, with missions, cutscenes, money, saves and gang territories in sync. Based on CoopAndreas. You need your own copy of the game, downgraded to 1.0, and everyone needs the same version.",
+   "mod": {
+    "gameName": "Grand Theft Auto: San Andreas"
+   },
+   "site": "gta",
+   "actions": []
+  },
+  {
+   "id": "spore-coop",
+   "name": "Spore",
+   "players": "2-4 players (co-op)",
+   "categories": [
+    "community"
+   ],
+   "color": "#3E9C7A",
+   "colorEnd": "#0C2A22",
+   "description": "Co-op for Spore with Galactic Adventures (GOG and Steam) by WoodyWizard: two to four friends evolve in one world through every stage, from the cell to space. Made by WoodyWizard, not by us. Everyone needs the same version.",
+   "mod": {
+    "publisher": "WoodyWizard",
+    "website": "https://github.com/WoodyWizard/SporeCoop",
+    "gameName": "Spore",
+    "version": "0.7.3.1"
+   },
+   "actions": [
+    {
+     "id": "page",
+     "label": "SporeCoop on GitHub",
+     "description": "By WoodyWizard: github.com/WoodyWizard/SporeCoop",
+     "link": "https://github.com/WoodyWizard/SporeCoop"
+    }
+   ]
+  },
+  {
+   "id": "little-nightmares-coop",
+   "name": "Little Nightmares",
+   "players": "2 players (same PC)",
+   "categories": [
+    "community"
+   ],
+   "color": "#8A7A2B",
+   "colorEnd": "#241F0A",
+   "description": "Split-screen co-op for Little Nightmares (2017) Enhanced Edition by vladimirwoxi: two players on one PC, two gamepads, one half of the screen each. Not online. Made by vladimirwoxi, not by us.",
+   "mod": {
+    "publisher": "vladimirwoxi",
+    "website": "https://github.com/vladimirwoxi/little-nightmares-1-coop",
+    "gameName": "Little Nightmares",
+    "version": "0.7.1"
+   },
+   "actions": [
+    {
+     "id": "page",
+     "label": "Mod on GitHub",
+     "description": "By vladimirwoxi: github.com/vladimirwoxi/little-nightmares-1-coop",
+     "link": "https://github.com/vladimirwoxi/little-nightmares-1-coop"
+    }
+   ]
+  },
+  {
+   "id": "forager-coop",
+   "name": "Forager",
+   "players": "2-4 players (online co-op)",
+   "categories": [
+    "community"
+   ],
+   "color": "#6BA83A",
+   "colorEnd": "#17250C",
+   "description": "Online co-op for Forager (Steam) by melogo5: up to four players in one world, with shared resources, progress and dungeons, joined through Steam invites or your network. Made by melogo5, not by us. Everyone needs the same version.",
+   "mod": {
+    "publisher": "melogo5",
+    "website": "https://github.com/melogo5/forager-coop",
+    "gameName": "Forager",
+    "version": "0.1.1"
+   },
+   "actions": [
+    {
+     "id": "page",
+     "label": "Mod on GitHub",
+     "description": "By melogo5: github.com/melogo5/forager-coop",
+     "link": "https://github.com/melogo5/forager-coop"
+    }
+   ]
+  }
+ ]
+}

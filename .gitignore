@@ -7,3 +7,8 @@ launcher/players/**/*.exe
 # Notes for AI coding agents; kept local, not published.
 AGENTS.md
 PROMPT.md
+
+# Tauri rewrite
+node_modules/
+tauri/src-tauri/target/
+tauri/src-tauri/gen/

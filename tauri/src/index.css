@@ -1,0 +1,108 @@
+/* The C++ launcher's own palette and fonts, as the released window draws them (src/core/config.cpp darkPalette,
+   src/ui/theme.cpp): red only for starting a game, light blue for keyboard focus and online, green for ready,
+   and a neutral outline for what is selected. Colors come only from here. */
+:root {
+  --bg: #15171c;
+  --bg2: #0e1014;
+  --side: #0e1014;
+  --card: #1e2128;
+  --card2: #272b34;
+  --card3: #323743;
+  --ink: #e8eaed;
+  --side-ink: #f2f4f7;
+  --muted: #9aa1ac;
+  --side-muted: #8b93a1;
+  --side-sel: #1e2128;  /* the selected sidebar row */
+  --dim: #9aa1ac;
+  --accent: #c8313a;
+  --accent-hover: #b42a33;
+  --on-accent: #fff;
+  --online: #8fb0ff;
+  --on-online: #15171c;
+  --ok: #3ccb7f;
+  --warn: #f2b544;
+  --bad: #ff6464;
+  --line: #262a33;
+  --line2: #323743;
+  --line3: #444a57;
+  --fill: rgba(232, 234, 237, .03);
+  --fill2: #272b34;
+  --fill3: #30353f;
+  --glass: rgba(14, 16, 20, .88);
+  --grade-a: #3ccb7f;
+  --grade-b: #8fb0ff;
+  --grade-c: #f2b544;
+  --grade-d: #ff8a5c;
+  --grade-x: #9aa1ac;
+  --on-grade: #15171c;
+  --ease: cubic-bezier(.2, .8, .2, 1);
+  --side-w: 264px;
+  /* 10pt Segoe UI body; Bahnschrift SemiBold for headings and buttons, its Condensed cut for names and titles. */
+  --font-title: 'Bahnschrift SemiBold', Bahnschrift, 'Segoe UI', system-ui, sans-serif;
+  --font-name: 'Bahnschrift SemiBold Condensed', 'Bahnschrift SemiBold', Bahnschrift, 'Segoe UI', sans-serif;
+  --font-body: 'Segoe UI', system-ui, sans-serif;
+  --font-icon: 'Segoe Fluent Icons', 'Segoe MDL2 Assets';
+
+  color-scheme: dark;
+  font: 400 13.3px/1.45 var(--font-body);
+  color: var(--ink);
+  background: var(--bg);
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body, #root { height: 100%; margin: 0; }
+body { overflow: hidden; background: var(--bg); user-select: none; cursor: default; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { border: 0; background: none; cursor: pointer; padding: 0; }
+a { color: var(--online); text-decoration: none; }
+h1, h2, h3, h4, p { margin: 0; }
+h1, h2, h3 { font-weight: 400; line-height: 1.15; }
+h1 { font: 30.7px/1.1 var(--font-name); }
+h2 { font: 22px/1.2 var(--font-title); }
+h3 { font: 17.3px/1.2 var(--font-title); }
+:focus-visible { outline: 1.5px solid var(--online); outline-offset: 3px; }
+input:focus-visible, select:focus-visible { outline: 0; }
+.glyph { font-family: var(--font-icon); font-style: normal; font-weight: 400; line-height: 1; }
+
+* { scrollbar-width: thin; scrollbar-color: var(--line3) transparent; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01s !important; transition-duration: .01s !important; }
+}
+
+/* The C++ light palette (src/core/config.cpp lightPalette), for a launcher.json with "theme": "light". The sidebar
+   stays dark there too. */
+:root[data-theme='light'] {
+  color-scheme: light;
+  --bg: #ffffff;
+  --bg2: #eef1f5;
+  --card: #f4f6f9;
+  --card2: #e9edf3;
+  --card3: #d5dae1;
+  --ink: #1c2128;
+  --muted: #5b6472;
+  --dim: #5b6472;
+  --accent: #b42a33;
+  --accent-hover: #9c232b;
+  /* The C++ light palette's green, amber and blue fall under 4.5:1 as text on its panels (3.2-3.9), so the text
+     shades here are darker: 4.6:1 or better on #e9edf3, checked with a contrast checker. */
+  --online: #1f56c4;
+  --on-online: #fff;
+  --ok: #167a43;
+  --warn: #8a5a12;
+  --bad: #c42f2f;
+  --line: #e3e7ec;
+  --line2: #d5dae1;
+  --line3: #b9c0ca;
+  --fill2: #e9edf3;
+  --fill3: #dde2ea;
+  --glass: rgba(255, 255, 255, .85);
+  --side: #1b2030;
+  --side-ink: #f2f4f7;
+  --side-muted: #a3abba;
+  --side-sel: #2b3248;
+  --on-grade: #15171c;
+  color: var(--ink);
+  background: var(--bg);
+}
