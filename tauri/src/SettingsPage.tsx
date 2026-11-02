@@ -1,7 +1,7 @@
 // Settings, as the C++ Settings window has them: each change is saved at once to the launcher's own settings.json,
 // so both windows agree.
 import { useState, type ReactNode } from 'react'
-import { copyText, open, pickFolder, setSetting, type Library, type Settings } from './api'
+import { TV_LOG, copyText, open, pickFolder, setSetting, type Library, type Settings } from './api'
 import { Glyph, Switch } from './ui'
 
 function Row({ title, note, children }: { title: string; note?: string; children: ReactNode }) {
@@ -25,7 +25,17 @@ function diagnostics(lib: Library, server: string): string {
     `Server: ${lib.roomsServer || 'none'}, ${server}`,
     'Players:',
     ...lib.players.map((p) => `  ${p.name}: ${p.found ? `${p.exe ?? 'found'}${p.version ? ` (${p.version})` : ''}` : 'not found'}`),
+    'TV mode, latest last:',
+    ...tvLog().map((l) => `  ${l}`),
   ].join('\n')
+}
+
+function tvLog(): string[] {
+  try {
+    return JSON.parse(localStorage.getItem(TV_LOG) ?? '[]')
+  } catch {
+    return []
+  }
 }
 
 export function SettingsPage({ lib, onChanged, onRunSetup, server = '', tv = false, onTv }: {

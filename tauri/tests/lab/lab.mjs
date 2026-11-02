@@ -553,9 +553,37 @@ const scenarios = {
     await check('a game\'s page opens in TV mode', !!(await waitFor(async () => (await wd.count("//div[@id='tv']//h1[@aria-label]")) > 0)))
     await key('Escape')
 
+    // The game started above closes while TV mode is on: the window stays in TV mode and full screen, also when it
+    // minimized for the game (Minimize while a game runs, the launcher's default).
+    const gameClosed = () => waitFor(async () => !(await wd.exec("return document.querySelector('.island')?.textContent ?? ''")).includes('Playing'), FAKE_MS + 8000)
+    const stillTv = async () => (await wd.count("//div[@id='tv']")) > 0 && (await fullscreen()) === true
+    await gameClosed()
+    await check('TV mode stays on when the game closes', await waitFor(stillTv, 3000) === true)
+    await wd.click("//button[contains(@class,'tv-tab') and normalize-space(.)='Settings']")
+    await wd.click("//button[@role='switch' and contains(@aria-label,'Minimize')]")
+    await waitFor(() => settings().minimize === 1 || settings().minimize === true)
+    await key('Escape')
+    clearArgs()
+    await wd.click(`//button[contains(@class,'tv-tile')][.//span[contains(@class,'name') and normalize-space(.)=${q('Relay Test')}]]`)
+    await check('TV mode minimizes for the game when asked to', (await waitFor(async () => (await isMinimized()) === true, 5000)) === true)
+    await waitFor(async () => (await isMinimized()) === false, FAKE_MS + 8000)
+    await gameClosed()
+    await check('TV mode is still on, full screen, after a minimized game', await waitFor(stillTv, 3000) === true,
+      `tv ${await wd.count("//div[@id='tv']")}, fullscreen ${await fullscreen()}`)
+    await wd.click("//button[contains(@class,'tv-tab') and normalize-space(.)='Settings']")
+    await wd.click("//button[@role='switch' and contains(@aria-label,'Minimize')]")
+    await waitFor(() => !settings().minimize)
+    await key('Escape')
+
     await key('F11')
     await check('F11 leaves TV mode', !!(await waitFor(async () => (await wd.count("//nav[contains(@class,'navs')]")) > 0)))
     await check('the window gets its size back', (await waitFor(async () => (await fullscreen()) === false)) === true)
+    // A held F11 repeats; only the first press counts.
+    await wd.exec("window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F11', repeat: true }))")
+    await new Promise((r) => setTimeout(r, 400))
+    await check('a repeating F11 doesn\'t switch TV mode', (await wd.count("//div[@id='tv']")) === 0)
+    const log = await wd.exec("return JSON.parse(localStorage.getItem('fl.tvLog') ?? '[]')")
+    await check('each switch of TV mode is recorded with its cause', log.some((l) => l.endsWith('on: F11')) && log.some((l) => l.endsWith('off: F11')), log.slice(-3).join(' | '))
   },
 }
 

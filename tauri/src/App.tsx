@@ -8,7 +8,7 @@ import { Switcher, type SwitchTarget } from './Switcher'
 import { TV_SECTIONS, TvHints, TvHome, TvLibrary, TvRooms, TvTop, type TvCommon, type TvSection } from './Tv'
 import {
   downloadGame, launch, live, loadLibrary, loadMods, installPlayer, loadAllRooms, minimizeWindow, modJob, notify, ping, restoreWindow, updatePlayers, onDownloadEnded, onHostStatus,
-  onLaunchEnded, onModProgress, pickFile, pickFolder, setFavorite, setFullscreen, setSetting, setTvMode, setGameDir, setGameFile, stopSession, windowControl,
+  onLaunchEnded, onModProgress, pickFile, pickFolder, setFavorite, setFullscreen, setSetting, setTvMode, noteTv, setGameDir, setGameFile, stopSession, windowControl,
   type Game, type Library, type ModInfo, type RelayStatus, type Room, type Rooms, type Settings,
 } from './api'
 import { agoText, isCoop, roomAbout, joinByCode, lastPlayed, leadAction, playersShort, statusOf } from './model'
@@ -166,7 +166,11 @@ export default function App() {
   const [query, setQuery] = useState('')
   const [mini, setMini] = useState(false)
   // TV mode: full screen for a controller. It comes back on at the next start if it was left on.
-  const [tv, setTv] = useState(() => stored('fl.tv', '0') === '1')
+  const [tv, setTv] = useState(() => {
+    const on = stored('fl.tv', '0') === '1'
+    noteTv(on, 'start')
+    return on
+  })
   const tvShown = useRef(false)
   useEffect(() => {
     keep('fl.tv', tv ? '1' : '0')
@@ -466,8 +470,9 @@ export default function App() {
     return lib?.games.find((g) => g.id === id) ?? (view === 'game' ? lib?.games.find((g) => g.id === gameId) : undefined)
   }
   // TV mode always starts on Home, with a game to stand on; leaving it keeps the page you're on.
-  const toggleTv = () => {
+  const toggleTv = (cause: string) => {
     if (!tv) go('home')
+    noteTv(!tv, cause)
     setTv(!tv)
     setSwitcher(false)
   }
@@ -484,15 +489,16 @@ export default function App() {
       const g = tv ? focusedGame() : undefined
       if (g) toggleFav(g.id)
     },
-    menu: toggleTv,
+    menu: () => toggleTv('controller Start'),
   })
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const typing = e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement || e.target instanceof HTMLTextAreaElement
       if (e.key === 'F11') {
+        // A held key repeats: one press, one switch.
         e.preventDefault()
-        toggleTv()
+        if (!e.repeat) toggleTv('F11')
       } else if (tv && e.key.startsWith('Arrow') && !typing && !e.altKey) {
         // TV mode moves with the arrows everywhere, as the D-pad does.
         e.preventDefault()
@@ -635,7 +641,7 @@ export default function App() {
   let page: ReactNode
   if (view === 'settings') {
     page = (
-      <SettingsPage lib={lib} onChanged={changed} onRunSetup={() => setSetupOpen(true)} tv={tv} onTv={toggleTv}
+      <SettingsPage lib={lib} onChanged={changed} onRunSetup={() => setSetupOpen(true)} tv={tv} onTv={() => toggleTv('Settings')}
         server={server === 'online' ? `online, ping ${pingMs ?? '?'} ms` : server} />
     )
   } else if (view === 'lobby' && pageGame) {
@@ -746,7 +752,7 @@ export default function App() {
             setSwitcher(false)
             if (t.kind === 'game') go('game', t.id)
             else if (t.id === 'setup') setSetupOpen(true)
-            else if (t.id === 'tv') toggleTv()
+            else if (t.id === 'tv') toggleTv('Go to')
             else if (t.id.startsWith('cat:')) {
               setCat(t.id.slice(4))
               go('library')
@@ -789,7 +795,7 @@ export default function App() {
     else tvPage = <div className="tv-page">{page}</div>
     return (
       <div id="tv" className="tv">
-        <TvTop lib={lib} pad={pad} section={side as TvSection} onSection={(s) => go(s)} onLeave={toggleTv} />
+        <TvTop lib={lib} pad={pad} section={side as TvSection} onSection={(s) => go(s)} onLeave={() => toggleTv('Leave TV mode button')} />
         <main ref={main} className={`tv-main ${anim}`} key={`${view}:${gameId}`}>
           {tvPage}
         </main>
@@ -829,7 +835,7 @@ export default function App() {
           <button className={`setbtn ${side === 'settings' ? 'on' : ''}`} onClick={() => go('settings')}>
             <Glyph code="E713" /><span className="lbl">Settings</span>
           </button>
-          <button className="minibtn" onClick={toggleTv} aria-label="TV mode" title="TV mode (F11)">
+          <button className="minibtn" onClick={() => toggleTv('sidebar button')} aria-label="TV mode" title="TV mode (F11)">
             <Glyph code="E7F4" size={17} />
           </button>
           <button className="minibtn" onClick={() => setMini(!mini)} aria-label={mini ? 'Expand the sidebar' : 'Collapse the sidebar'} title={mini ? 'Expand' : 'Collapse'}>

@@ -159,6 +159,18 @@ export const setTvMode = (on: boolean) => {
   tvMode = on
 }
 
+// Each time TV mode turned on or off and why (the last 20), for Copy diagnostics.
+export const TV_LOG = 'fl.tvLog'
+export function noteTv(on: boolean, cause: string) {
+  try {
+    const log: string[] = JSON.parse(localStorage.getItem(TV_LOG) ?? '[]')
+    log.push(`${new Date().toISOString()} ${on ? 'on' : 'off'}: ${cause}`)
+    localStorage.setItem(TV_LOG, JSON.stringify(log.slice(-20)))
+  } catch {
+    // Only a help for a bug report.
+  }
+}
+
 export const launch = (game: string, action: string, code?: string, address?: string, coopSave?: string): Promise<number> =>
   live ? invoke<number>('launch', { game, action, code, address, coopSave, tv: tvMode }) : Promise.resolve(0)
 export const setGameSetting = (game: string, id: string, value: string): Promise<void> =>
