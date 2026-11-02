@@ -119,6 +119,7 @@ name until the check passes. The launcher keeps the last catalog it read in
 | `args` | Arguments before the game's own. `${SWF}` is added at the end unless an argument mentions it. |
 | `flashvarArg` | How the player passes a value into the game, e.g. `"-P${KEY}=${VALUE}"` for Ruffle. Players without it can't receive room codes. |
 | `kind` | `"flash"` (default) or `"browser"` (Edge, Chrome: HTML5 games, `${URL}` in `args`) |
+| `tv` | Optional: what a game started from TV mode (`--launch --tv`, the Tauri window's full-screen controller view) adds: `args` at the end of the command line and `env`, variables set for the player only, e.g. `{ "args": ["--fullscreen"], "env": { "RUFFLE_TOGETHER_TV": "1" } }`. Put anything an older player would refuse in `env`: unknown variables are ignored, unknown options stop it. |
 
 ### players[].install
 

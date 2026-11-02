@@ -41,14 +41,39 @@ std::wstring buildCommandLine(const std::wstring& exe, const std::vector<std::ws
     return cmd;
 }
 
+std::wstring environmentBlock(const wchar_t* current, const EnvVars& extra) {
+    std::wstring block;
+    for (const wchar_t* p = current; p && *p; p += wcslen(p) + 1) {
+        std::wstring entry = p;
+        // "=C:=C:\dir" entries (per-drive folders) start with '=': kept as they are.
+        size_t eq = entry.find(L'=', 1);
+        std::wstring name = eq == std::wstring::npos ? entry : entry.substr(0, eq);
+        bool replaced = std::any_of(extra.begin(), extra.end(), [&](const auto& e) { return _wcsicmp(e.first.c_str(), name.c_str()) == 0; });
+        if (!replaced) block += entry + L'\0';
+    }
+    for (const auto& [name, value] : extra) block += name + L'=' + value + L'\0';
+    block += L'\0';
+    return block;
+}
+
 bool startProcess(const std::wstring& exe, const std::vector<std::wstring>& args, const std::wstring& workDir,
-                  Started& out, std::wstring& error, bool hidden) {
+                  Started& out, std::wstring& error, bool hidden, const EnvVars& env) {
     std::wstring cmd = buildCommandLine(exe, args);
-    logger().info(L"Starting: " + cmd + (workDir.empty() ? L"" : L"  (in " + workDir + L")"));
+    std::wstring envText;
+    for (const auto& [name, value] : env) envText += L" " + name + L"=" + value;
+    logger().info(L"Starting: " + cmd + (workDir.empty() ? L"" : L"  (in " + workDir + L")") +
+                  (envText.empty() ? L"" : L"  (with" + envText + L")"));
+    std::wstring block;
+    if (!env.empty()) {
+        wchar_t* current = GetEnvironmentStringsW();
+        block = environmentBlock(current, env);
+        FreeEnvironmentStringsW(current);
+    }
     STARTUPINFOW si{};
     si.cb = sizeof si;
     PROCESS_INFORMATION pi{};
-    if (!CreateProcessW(exe.c_str(), cmd.data(), nullptr, nullptr, FALSE, hidden ? CREATE_NO_WINDOW : 0, nullptr,
+    DWORD flags = (hidden ? CREATE_NO_WINDOW : 0) | (block.empty() ? 0 : CREATE_UNICODE_ENVIRONMENT);
+    if (!CreateProcessW(exe.c_str(), cmd.data(), nullptr, nullptr, FALSE, flags, block.empty() ? nullptr : block.data(),
                         workDir.empty() ? nullptr : workDir.c_str(), &si, &pi)) {
         error = win32ErrorMessage(GetLastError());
         logger().error(L"CreateProcess failed: " + error);

@@ -58,6 +58,13 @@
       // Releases before "coopSaveSince" don't know it, so it is left out of their command line.
       "coopSaveArg": "--coop-save",
       "coopSaveSince": "1.0.3.6",
+      // Started from TV mode: full screen on every release; from 1.0.6 the variable also turns on the controller,
+      // the hold-Start menu and sofa-sized overlays. Older releases ignore the variable (an option they don't know
+      // would stop them starting).
+      "tv": {
+        "args": ["--fullscreen"],
+        "env": { "RUFFLE_TOGETHER_TV": "1" }
+      },
       // When it isn't found, the launcher offers to install the newest release (checked against its SHA-256).
       "install": {
         "github": "multiplayereverything/ruffle-together",

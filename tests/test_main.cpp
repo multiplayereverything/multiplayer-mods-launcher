@@ -97,6 +97,7 @@ static void fakeBridgeGame(int port, const std::string& token, ULONGLONG untilTi
 
 // Stand-in for a Flash player in tests\e2e.ps1: appends its arguments (one per
 // line) to %FL_FAKE_OUT%, stays open for %FL_FAKE_MS% milliseconds, exits 0.
+// Each variable named in %FL_FAKE_ENV% (separated by ';') it was started with adds an "ENV NAME=value" line.
 // Given the lobby's FlashVars (-PbridgePort=, -PsessionToken=) it also plays the
 // game's side of the bridge meanwhile.
 static int fakePlayer() {
@@ -111,6 +112,12 @@ static int fakePlayer() {
         if (arg.rfind("-PsessionToken=", 0) == 0) token = arg.substr(15);
     }
     LocalFree(argv);
+    wchar_t names[512] = L"";
+    GetEnvironmentVariableW(L"FL_FAKE_ENV", names, 512);
+    for (const auto& name : fl::split(names, L';')) {
+        wchar_t value[512] = L"";
+        if (!name.empty() && GetEnvironmentVariableW(name.c_str(), value, 512)) lines += "ENV " + fl::narrow(name + L"=" + value) + "\n";
+    }
     wchar_t ms[32] = L"";
     GetEnvironmentVariableW(L"FL_FAKE_MS", ms, 32);
     appendOut(lines);

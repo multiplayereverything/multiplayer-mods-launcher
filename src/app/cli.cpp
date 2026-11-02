@@ -66,6 +66,7 @@ Args parseArgs(int argc, wchar_t** argv) {
         else if (k == L"--coop-save") value(a.coopSave);
         else if (k == L"--update-players") a.updatePlayers = true;
         else if (k == L"--wait") a.wait = true;
+        else if (k == L"--tv") a.tv = true;
         else if (k == L"--lobby-session") {
             value(tmp);
             a.lobbySession = narrow(tmp);
@@ -97,6 +98,8 @@ launcher.json next to the exe.
     --wait               ...and stay until the game exits (counts its play time)
     --coop-save <continue|solo|new>
                          ...hosting a co-op game from this save (Ruffle Together)
+    --tv                 ...from TV mode: adds the player's "tv" options and environment
+                         (also with --lobby-session)
   --json                 With --list, --mods, --rooms or --update-players: print JSON
   --lobby-session <game> Run a game's lobby over standard input and output in JSON lines
                          (for a front end that draws its own lobby window)

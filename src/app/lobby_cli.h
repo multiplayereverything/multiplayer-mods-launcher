@@ -10,6 +10,8 @@
 
 namespace fl {
 
-int runLobbySession(const Config& cfg, Library& lib, UserData& user, const std::wstring& userPath, const GameSpec& game);
+// `tv`: the game starts as from TV mode (--tv).
+int runLobbySession(const Config& cfg, Library& lib, UserData& user, const std::wstring& userPath, const GameSpec& game,
+                    bool tv = false);
 
 }  // namespace fl

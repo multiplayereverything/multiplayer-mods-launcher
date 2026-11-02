@@ -1107,6 +1107,16 @@ LoadResult loadConfig(std::string_view jsonText, const std::wstring& configDir) 
             s.str("flashvarArg", p.flashvarArg);
             s.str("coopSaveArg", p.coopSaveArg);
             s.str("coopSaveSince", p.coopSaveSince);
+            if (auto tv = s.get("tv", Type::Object)) {
+                Section ts(tv, s.child("tv"), issues);
+                ts.strList("args", p.tvArgs);
+                if (auto env = ts.get("env", Type::Object)) {
+                    for (size_t k = 0; k < env->size(); ++k) {
+                        if (env->at(k).isString()) p.tvEnv.push_back({widen(env->keyAt(k)), widen(env->at(k).str())});
+                        else ts.error(L"env", L"values must be strings");
+                    }
+                }
+            }
             if (auto inst = s.get("install", Type::Object)) {
                 Section is(inst, s.child("install"), issues);
                 is.str("github", p.install.github);

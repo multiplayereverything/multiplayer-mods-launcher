@@ -19,9 +19,14 @@ struct Started {
     HANDLE process = nullptr;  // owned by the caller (or handed to ProcessWatcher)
     DWORD pid = 0;
 };
-// `hidden`: no console window (for helper tools such as tar.exe).
+using EnvVars = std::vector<std::pair<std::wstring, std::wstring>>;
+// This process's environment with `extra` set on top (a name already there is replaced, ignoring case), as the
+// NUL-separated block CreateProcess takes.
+std::wstring environmentBlock(const wchar_t* current, const EnvVars& extra);
+
+// `hidden`: no console window (for helper tools such as tar.exe). `env`: variables set for the new process only.
 bool startProcess(const std::wstring& exe, const std::vector<std::wstring>& args, const std::wstring& workDir,
-                  Started& out, std::wstring& error, bool hidden = false);
+                  Started& out, std::wstring& error, bool hidden = false, const EnvVars& env = {});
 
 bool openPath(const std::wstring& pathOrUrl);
 // True when a process with one of these executable names is running (`which` gets its name).

@@ -115,6 +115,11 @@ struct PlayerSpec {
     // and the first release that knows it. An older player fails on an option it doesn't know, so the
     // launcher adds the option only from that version on. Empty arg: the player has no such option.
     std::wstring coopSaveArg, coopSaveSince;
+    // TV mode (--launch --tv, the Tauri window's full-screen controller view): added to the command line and
+    // the player's environment. An option an older player would refuse belongs in the environment, which old
+    // builds ignore.
+    std::vector<std::wstring> tvArgs;
+    std::vector<std::pair<std::wstring, std::wstring>> tvEnv;
 };
 
 struct PlayerOverride {

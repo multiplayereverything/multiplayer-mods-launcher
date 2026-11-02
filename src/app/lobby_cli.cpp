@@ -130,7 +130,8 @@ struct Input {
 
 }  // namespace
 
-int runLobbySession(const Config& cfg, Library& lib, UserData& user, const std::wstring& userPath, const GameSpec& game) {
+int runLobbySession(const Config& cfg, Library& lib, UserData& user, const std::wstring& userPath, const GameSpec& game,
+                    bool tv) {
     if (!game.lobby.enabled || game.mod) {
         emitError(game.name + L" has no lobby.");
         return 3;
@@ -274,6 +275,7 @@ int runLobbySession(const Config& cfg, Library& lib, UserData& user, const std::
                             {L"seed", std::to_wstring(s.seed)},
                             {L"lobby", L"1"}};
             ho.process = &gameProcess;
+            ho.tv = tv;
             std::wstring message;
             int code = ui::Launcher::launchHeadless(cfg, lib, user, userPath, game, joinAction, message, ho);
             json::Value g = json::Value::object();

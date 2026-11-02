@@ -57,6 +57,7 @@ public:
         std::wstring joinCode, address;
         int coopSave = 0;  // the host's co-op save: 0 continue, 1 from the solo save, 2 new game
         bool wait = false;  // stay until the game exits (counts its time), not only while hosting
+        bool tv = false;    // started from TV mode: the player's "tv" options and environment
         std::vector<std::pair<std::wstring, std::wstring>> flashVars;  // more values for the game (the lobby's room)
         // While a host action keeps the relay up: a JSON line each time who is connected changes.
         std::function<void(const std::string&)> report;

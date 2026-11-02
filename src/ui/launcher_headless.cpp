@@ -123,9 +123,14 @@ int Launcher::launchHeadless(const Config& cfg, Library& lib, UserData& user, co
         if (!joinCode.empty()) given.push_back({L"join", joinCode});
         addFlashVars(r, gameValues(action, user.playerName, given));
     }
+    sys::EnvVars env;
+    if (opt.tv && r.player && !r.web) {
+        r.args.insert(r.args.end(), r.player->tvArgs.begin(), r.player->tvArgs.end());
+        env = r.player->tvEnv;
+    }
     sys::Started p;
     std::wstring err;
-    if (!sys::startProcess(r.playerExe, r.args, r.workDir, p, err)) {
+    if (!sys::startProcess(r.playerExe, r.args, r.workDir, p, err, false, env)) {
         message = cfg.t("notice.launchFailed", {{L"PLAYER", r.player->name}, {L"ERROR", err}});
         return 1;
     }

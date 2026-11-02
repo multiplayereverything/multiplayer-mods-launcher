@@ -106,7 +106,8 @@ $config = @"
 {
   "paths": { "games": "`${LAUNCHER_DIR}\\games", "players": "`${LAUNCHER_DIR}\\players",
              "data": "`${LAUNCHER_DIR}\\data", "flashpoint": [] },
-  "players": [ { "id": "fake", "name": "Fake Player", "paths": ["$($fake -replace '\\','\\')"], "args": ["--fake-player"] } ],
+  "players": [ { "id": "fake", "name": "Fake Player", "paths": ["$($fake -replace '\\','\\')"], "args": ["--fake-player"],
+                 "tv": { "args": ["--fullscreen"], "env": { "FAKE_TV": "1" } } } ],
   "categories": [ { "id": "online", "name": "Online multiplayer" } ],
   "games": [
     { "id": "demo", "name": "Demo Game", "players": "1-2 players", "categories": ["online"],
@@ -161,6 +162,17 @@ $after = Get-Content "$work\data\settings.json" -Raw | ConvertFrom-Json
 Check ($after.playerName -eq 'Changed While Playing' -and $after.games.demo.seconds -ge 2) "a game's exit keeps settings changed while it ran ($($after.playerName), $($after.games.demo.seconds) s)"
 
 $env:FL_FAKE_MS = '0'
+# --tv (a game started from TV mode): the player's "tv" options and environment, and only then.
+$env:FL_FAKE_ENV = 'FAKE_TV'
+Remove-Item "$work\args.txt" -ErrorAction SilentlyContinue
+$r = Run @('--launch', 'demo', '--tv', '--config', "`"$work\launcher.json`"")
+$tvArgs = if (WaitFor { Test-Path "$work\args.txt" }) { Get-Content "$work\args.txt" } else { @() }
+Check ($r.Code -eq 0 -and $tvArgs -contains '--fullscreen' -and $tvArgs -contains 'ENV FAKE_TV=1') "--launch --tv adds the player's TV options and environment ($($tvArgs -join ' '))"
+Remove-Item "$work\args.txt" -ErrorAction SilentlyContinue
+$r = Run @('--launch', 'demo', '--config', "`"$work\launcher.json`"")
+$plainArgs = if (WaitFor { Test-Path "$work\args.txt" }) { Get-Content "$work\args.txt" } else { @() }
+Check ($r.Code -eq 0 -and $plainArgs.Count -gt 0 -and $plainArgs -notcontains '--fullscreen' -and -not ($plainArgs -match '^ENV ')) 'without --tv neither is added'
+Remove-Item Env:FL_FAKE_ENV
 Remove-Item "$work\args.txt" -ErrorAction SilentlyContinue
 $r = Run @('--launch', 'demo', '--config', "`"$work\launcher.json`"")
 Check ($r.Code -eq 0) '--launch demo starts the player'

@@ -448,7 +448,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
             fail(L"No game with id \"" + widen(a.lobbySession) + L"\" (see --list)");
             return 3;
         }
-        return runLobbySession(cfg, lib, user, userPath, *g);
+        return runLobbySession(cfg, lib, user, userPath, *g, a.tv);
     }
 
     if (a.list && a.json) {
@@ -508,6 +508,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
             if (iswalnum(ch)) ho.joinCode += static_cast<wchar_t>(towupper(ch));
         ho.address = a.address;
         ho.wait = a.wait;
+        ho.tv = a.tv;
         if (!a.coopSave.empty() && a.coopSave != L"continue" && a.coopSave != L"solo" && a.coopSave != L"new") {
             fail(L"--coop-save takes continue, solo or new");
             return 3;

@@ -236,6 +236,32 @@ TEST(command_line_quoting) {
           L"\"C:\\Program Files\\r.exe\" --a \"C:\\My Games\\g.swf\"");
 }
 
+TEST(config_player_tv_block) {
+    LoadResult r = loadConfig(minimalConfig(R"([{ "id": "g", "actions": [{ "id": "p", "swf": "a.swf" }] }])",
+                                            R"([{ "id": "ruffle", "paths": ["r.exe"],
+                                                  "tv": { "args": ["--fullscreen"], "env": { "RUFFLE_TOGETHER_TV": "1" } } }])"),
+                              L"C:\\x");
+    REQUIRE(r.ok());
+    CHECK(r.issues.empty());
+    const PlayerSpec& p = r.config.players[0];
+    CHECK(p.tvArgs.size() == 1 && p.tvArgs[0] == L"--fullscreen");
+    CHECK(p.tvEnv.size() == 1 && p.tvEnv[0].first == L"RUFFLE_TOGETHER_TV" && p.tvEnv[0].second == L"1");
+
+    LoadResult bad = loadConfig(minimalConfig(R"([{ "id": "g", "actions": [{ "id": "p", "swf": "a.swf" }] }])",
+                                              R"([{ "id": "ruffle", "paths": ["r.exe"], "tv": { "env": { "X": 1 }, "argz": [] } }])"),
+                                L"C:\\x");
+    CHECK(hasIssue(bad, L"players[0].tv.env", ConfigIssue::Severity::Error));
+    CHECK(hasIssue(bad, L"players[0].tv.argz", ConfigIssue::Severity::Warning));
+}
+
+TEST(environment_block_sets_and_replaces) {
+    // "A=1", "=C:=C:\\d", "Path=x" as Windows hands them over, NUL-separated and NUL-ended.
+    std::wstring current = std::wstring(L"A=1") + L'\0' + L"=C:=C:\\d" + L'\0' + L"Path=x" + L'\0' + L'\0';
+    std::wstring block = sys::environmentBlock(current.c_str(), {{L"PATH", L"y"}, {L"TV", L"1"}});
+    std::wstring want = std::wstring(L"A=1") + L'\0' + L"=C:=C:\\d" + L'\0' + L"PATH=y" + L'\0' + L"TV=1" + L'\0' + L'\0';
+    CHECK(block == want);
+}
+
 TEST(settings_round_trip_and_damaged_file) {
     TempDir dir("settings");
     std::wstring path = dir / L"data\\settings.json";
