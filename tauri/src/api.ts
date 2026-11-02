@@ -243,6 +243,13 @@ export async function windowControl(what: 'minimize' | 'maximize' | 'close'): Pr
   else await w.close()
 }
 
+// TV mode fills the screen; leaving it gives the window back its size.
+export async function setFullscreen(on: boolean): Promise<void> {
+  if (!live) return
+  const { getCurrentWindow } = await import('@tauri-apps/api/window')
+  await getCurrentWindow().setFullscreen(on)
+}
+
 // The lobby: the C++ launcher runs the room (--lobby-session); the window sends commands and draws what it prints.
 export type LobbyRequest =
   | { op: 'host'; direct: boolean; roomName: string; password: string; public: boolean; maxPlayers: number; port: number }

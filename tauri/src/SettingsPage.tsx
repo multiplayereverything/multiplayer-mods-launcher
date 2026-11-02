@@ -28,7 +28,9 @@ function diagnostics(lib: Library, server: string): string {
   ].join('\n')
 }
 
-export function SettingsPage({ lib, onChanged, onRunSetup, server = '' }: { lib: Library; onChanged: (s: Partial<Settings>) => void; onRunSetup: () => void; server?: string }) {
+export function SettingsPage({ lib, onChanged, onRunSetup, server = '', tv = false, onTv }: {
+  lib: Library; onChanged: (s: Partial<Settings>) => void; onRunSetup: () => void; server?: string; tv?: boolean; onTv?: () => void
+}) {
   const t = (k: string, fallback: string) => (lib.text[k] ?? fallback).replace('${VERSION}', lib.launcherVersion).replace(/…|…/g, '...')
   const u = lib.user
   const [name, setName] = useState(u.playerName)
@@ -72,6 +74,11 @@ export function SettingsPage({ lib, onChanged, onRunSetup, server = '' }: { lib:
           </Row>
           {sw('showOffline', t('settings.offline', 'Show offline play (solo and one keyboard)'))}
           {sw('showOriginals', t('settings.originals', 'Show the original versions of modded games'))}
+          {onTv && (
+            <Row title="TV mode" note="Full screen, made for a controller on the couch. Start on a controller or F11 switches it too.">
+              <button className="btn sm" onClick={onTv}>{tv ? 'Leave TV mode' : 'Open TV mode'}</button>
+            </Row>
+          )}
         </div>
       </section>
 

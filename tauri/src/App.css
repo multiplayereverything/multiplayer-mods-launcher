@@ -476,3 +476,79 @@ main.enter-back > * { animation: slideBack .26s var(--ease) both; }
 .tile:hover .badges.right, .tile:focus-within .badges.right { opacity: 0; }
 .set-foot .ver { margin-left: 14px; }
 .spin { display: inline-block; }
+
+/* TV mode: the whole screen, sized from its width (ems off one base) so a TV across the room reads like a desk
+   monitor. The same tokens as the window; the focus is the light-blue ring, thicker, since it is the only pointer. */
+.tv { --side-w: 0px; height: 100%; display: flex; flex-direction: column; background: var(--bg); font-size: clamp(14px, 1.15vw, 28px); }
+.tv :focus:not(input):not(select):not(textarea) { outline: .16em solid var(--online); outline-offset: .16em; }
+.pk { display: inline-grid; place-items: center; min-width: 1.7em; height: 1.7em; padding: 0 .45em; border-radius: .85em; background: var(--card3); color: var(--ink); font: 600 .72em/1 var(--font-body); }
+.btn.main .pk { background: var(--on-accent); color: var(--accent); }
+
+.tv-top { flex: none; display: flex; align-items: center; gap: 1.6em; padding: 1.3em 3em .6em; }
+.tv-brand { display: flex; align-items: center; gap: .6em; font: 1.15em var(--font-title); white-space: nowrap; }
+.tv-brand img { width: 1.9em; height: 1.9em; }
+.tv-tabs { display: flex; align-items: center; gap: .3em; margin: 0 auto; padding: .3em .5em; border-radius: .6em; background: var(--card); border: 1px solid var(--line); }
+.tv-tab { height: 2.2em; padding: 0 1.1em; border-radius: .4em; font: 1em var(--font-title); color: var(--muted); }
+.tv-tab:hover { color: var(--ink); }
+.tv-tab.on { background: var(--card3); color: var(--ink); }
+.tv-clock { font: 1.1em var(--font-title); }
+.tv .btn { height: 2.5em; padding: 0 1.1em; gap: .55em; border-radius: .4em; font-size: 1em; }
+.tv .btn.big { height: 2.9em; padding: 0 1.4em; font-size: 1.15em; }
+.tv-page .btn { height: 40px; padding: 0 16px; gap: 9px; border-radius: 6px; font-size: 16.7px; }
+.tv-page .btn.sm { height: 32px; padding: 0 12px; font-size: 14px; }
+.tv-page .btn.big { height: 52px; padding: 0 24px; font-size: 16.7px; }
+
+.tv-main { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; }
+.tv-main.enter > *, .tv-main.enter-game > * { animation: fade .22s var(--ease) both; }
+.tv-empty { display: flex; flex-direction: column; align-items: center; gap: .8em; padding: 5em 2em; text-align: center; color: var(--muted); }
+.tv-empty h2 { color: var(--ink); font-size: 1.5em; }
+
+.tv-home { min-height: 100%; display: flex; flex-direction: column; gap: .7em; padding: .6em 3em 1em; }
+.tv-hero { flex: 1 0 auto; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); gap: 3em; align-items: center; animation: fade .25s var(--ease) both; }
+.tv-hero-text { display: flex; flex-direction: column; align-items: flex-start; gap: min(.85em, 1.6vh); min-width: 0; }
+.tv-kick { color: var(--online); font: 1em var(--font-title); }
+/* Smaller on a short screen, and two lines at most, so the hero and the row fit without scrolling. */
+.tv-hero h1 { font: min(3.6em, 8vh)/1.02 var(--font-name); overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.tv-based { display: flex; align-items: center; gap: .6em; color: var(--muted); font-size: 1.05em; }
+.tv-based b { color: var(--ink); font-weight: 400; }
+.tv-hero .pstrip { width: min(100%, 26em); }
+.tv-hero .pslot { height: 2.2em; font-size: .95em; }
+.tv-state { display: flex; gap: 1.2em; font-size: 1em; }
+.tv-hero p { color: var(--muted); max-width: 34em; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.tv-hero .acts { display: flex; gap: .7em; margin-top: .4em; }
+.tv-hero-art { position: relative; width: 100%; aspect-ratio: 16 / 10; max-height: 42vh; justify-self: end; border-radius: .8em; overflow: hidden; border: 1px solid var(--line2); background: var(--card); }
+
+.tv-row-h { font: 1.25em var(--font-title); }
+.tv-row { display: flex; gap: 1em; overflow-x: auto; scrollbar-width: none; padding: .4em .4em .6em; margin: 0 -.4em; scroll-padding-inline: 3em; }
+.tv-tile { flex: none; width: min(13.5em, 24vh); display: flex; flex-direction: column; gap: .3em; padding: .4em; border-radius: .7em; text-align: left; }
+.tv-tile:hover, .tv-tile:focus { background: var(--card); }
+.tv-tile .art { position: relative; aspect-ratio: 16 / 10; border-radius: .5em; overflow: hidden; background: var(--card); border: 1px solid var(--line); }
+.tv-tile .star { position: absolute; top: .4em; right: .4em; }
+.tv-tile .name { font: 1.1em var(--font-name); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tv-tile .st { font-size: .85em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.tv-lib { display: flex; flex-direction: column; gap: 1.2em; padding: 1em 3em 2em; }
+.tv-chips { display: flex; flex-wrap: wrap; gap: .5em; }
+.tv-chip { height: 2.2em; padding: 0 1em; border-radius: .4em; display: inline-flex; align-items: center; gap: .5em; background: var(--card); border: 1px solid var(--line2); color: var(--muted); }
+.tv-chip.on { color: var(--ink); border-color: var(--ink); }
+.tv-chip .n { font-size: .85em; }
+.tv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(12.5em, 1fr)); gap: .8em; }
+.tv-grid .tv-tile { width: auto; }
+
+.tv-rooms { display: flex; flex-direction: column; gap: .7em; padding: 1em 3em 2em; }
+.tv-room { display: grid; grid-template-columns: 7em minmax(0, 1fr) auto auto auto; align-items: center; gap: 1.4em; padding: .7em; border-radius: .6em; background: var(--card); border: 1px solid var(--line); }
+.tv-room .th { position: relative; aspect-ratio: 16 / 10; border-radius: .4em; overflow: hidden; }
+.tv-room .k { display: flex; flex-direction: column; min-width: 0; }
+.tv-room b { font: 1.15em var(--font-name); font-weight: 400; }
+.tv-room small { color: var(--muted); font-size: .85em; }
+.tv-room .code { font: 1.1em var(--font-title); color: var(--online); letter-spacing: .08em; }
+.tv-room .num { color: var(--muted); }
+
+.tv-hints { flex: none; display: flex; align-items: center; gap: 1.6em; padding: .8em 3em; border-top: 1px solid var(--line); color: var(--muted); font-size: .9em; white-space: nowrap; overflow: hidden; }
+.tv-hints span { display: inline-flex; align-items: center; gap: .45em; }
+.tv-hints .grow { flex: 1; }
+
+/* A game's page, the lobby and Settings are the window's own, enlarged with the screen. */
+@media (min-width: 1500px) { .tv-page { zoom: 1.25; } }
+@media (min-width: 1900px) { .tv-page { zoom: 1.5; } }
+@media (min-width: 2500px) { .tv-page { zoom: 2; } }

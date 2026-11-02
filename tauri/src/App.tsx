@@ -5,9 +5,10 @@ import { LobbyPage } from './LobbyPage'
 import { SettingsPage } from './SettingsPage'
 import { SetupPage } from './SetupPage'
 import { Switcher, type SwitchTarget } from './Switcher'
+import { TV_SECTIONS, TvHints, TvHome, TvLibrary, TvRooms, TvTop, type TvCommon, type TvSection } from './Tv'
 import {
   downloadGame, launch, live, loadLibrary, loadMods, installPlayer, loadAllRooms, minimizeWindow, modJob, notify, ping, restoreWindow, updatePlayers, onDownloadEnded, onHostStatus,
-  onLaunchEnded, onModProgress, pickFile, pickFolder, setFavorite, setSetting, setGameDir, setGameFile, stopSession, windowControl,
+  onLaunchEnded, onModProgress, pickFile, pickFolder, setFavorite, setFullscreen, setSetting, setGameDir, setGameFile, stopSession, windowControl,
   type Game, type Library, type ModInfo, type RelayStatus, type Room, type Rooms, type Settings,
 } from './api'
 import { agoText, isCoop, roomAbout, joinByCode, lastPlayed, leadAction, playersShort, statusOf } from './model'
@@ -164,6 +165,14 @@ export default function App() {
   const [setupOpen, setSetupOpen] = useState<boolean | null>(null)
   const [query, setQuery] = useState('')
   const [mini, setMini] = useState(false)
+  // TV mode: full screen for a controller. It comes back on at the next start if it was left on.
+  const [tv, setTv] = useState(() => stored('fl.tv', '0') === '1')
+  const tvShown = useRef(false)
+  useEffect(() => {
+    keep('fl.tv', tv ? '1' : '0')
+    if (tv || tvShown.current) void setFullscreen(tv)
+    tvShown.current = tv
+  }, [tv])
   const [favs, setFavs] = useState<Set<string>>(new Set())
   // Games started from here whose launcher is still running (a host keeps it up until the game closes).
   const [playing, setPlaying] = useState<Map<number, string>>(new Map())
@@ -421,6 +430,11 @@ export default function App() {
     main.current?.scrollTo({ top: 0 })
   }
   const back = () => {
+    // In TV mode B from Games, Rooms or Settings goes Home, as a console's menus do.
+    if (tv && (view === 'library' || view === 'rooms' || view === 'settings')) {
+      go('home')
+      return
+    }
     if (view !== 'game' && view !== 'lobby') return
     setAnim('enter-back')
     setView(view === 'lobby' ? 'game' : from)
@@ -440,16 +454,50 @@ export default function App() {
     setFavorite(id, on).catch((e) => say(String(e), 'error'))
   }
 
-  const SECTIONS: View[] = ['home', 'library', 'rooms']
+  const SECTIONS: View[] = tv ? TV_SECTIONS.map((s) => s.id) : ['home', 'library', 'rooms']
   const step = (d: number) => {
-    const i = SECTIONS.indexOf(view)
+    const i = SECTIONS.indexOf(view === 'game' || view === 'lobby' ? from : view)
     go(SECTIONS[(Math.max(0, i) + d + SECTIONS.length) % SECTIONS.length])
   }
-  const pad = usePad({ back, search: focusSearch, prevTab: () => step(-1), nextTab: () => step(1) })
+  // The game the controller is on in TV mode: the tile, hero or room with the focus, else the open page's.
+  const focusedGame = () => {
+    const id = document.activeElement instanceof HTMLElement ? document.activeElement.closest('[data-game]')?.getAttribute('data-game') : null
+    return lib?.games.find((g) => g.id === id) ?? (view === 'game' ? lib?.games.find((g) => g.id === gameId) : undefined)
+  }
+  const toggleTv = () => {
+    setTv((v) => !v)
+    setSwitcher(false)
+  }
+  const pad = usePad({
+    back,
+    search: () => {
+      const g = tv ? focusedGame() : undefined
+      if (g) go('game', g.id)
+      else if (!tv) focusSearch()
+    },
+    prevTab: () => step(-1),
+    nextTab: () => step(1),
+    x: () => {
+      const g = tv ? focusedGame() : undefined
+      if (g) toggleFav(g.id)
+    },
+    menu: toggleTv,
+  })
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.key.toLowerCase() === 'k') {
+      const typing = e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement || e.target instanceof HTMLTextAreaElement
+      if (e.key === 'F11') {
+        e.preventDefault()
+        toggleTv()
+      } else if (tv && e.key.startsWith('Arrow') && !typing && !e.altKey) {
+        // TV mode moves with the arrows everywhere, as the D-pad does.
+        e.preventDefault()
+        moveFocus(e.key.slice(5).toLowerCase() as 'up' | 'down' | 'left' | 'right')
+      } else if (tv && (e.key === 'PageUp' || e.key === 'PageDown')) {
+        e.preventDefault()
+        step(e.key === 'PageUp' ? -1 : 1)
+      } else if (e.ctrlKey && e.key.toLowerCase() === 'k') {
         e.preventDefault()
         setSwitcher((v) => !v)
       } else if (e.ctrlKey && e.key.toLowerCase() === 'f') {
@@ -584,7 +632,7 @@ export default function App() {
   let page: ReactNode
   if (view === 'settings') {
     page = (
-      <SettingsPage lib={lib} onChanged={changed} onRunSetup={() => setSetupOpen(true)}
+      <SettingsPage lib={lib} onChanged={changed} onRunSetup={() => setSetupOpen(true)} tv={tv} onTv={toggleTv}
         server={server === 'online' ? `online, ping ${pingMs ?? '?'} ms` : server} />
     )
   } else if (view === 'lobby' && pageGame) {
@@ -657,69 +705,8 @@ export default function App() {
   const playingNow = [...playingIds].map((id) => lib.games.find((g) => g.id === id)).filter((g): g is Game => !!g)
   const jobs = Object.entries(modLines).map(([id, line]) => ({ game: lib.games.find((g) => g.id === id), line })).filter((j) => j.game)
 
-  return (
-    <div id="app">
-      <aside className={`side ${mini ? 'mini' : ''}`}>
-        <div className="brand">
-          <button id="brand" onClick={() => go('home')} aria-label={mini ? lib.branding.title : undefined}>
-            <img className="logo" src="/icon.png" alt="" />
-            <span className="word lbl"><b>{lib.branding.title}</b><small>{lib.branding.subtitle}</small></span>
-          </button>
-        </div>
-        <nav className="navs">
-          <button className={`nav ${side === 'home' ? 'on' : ''}`} onClick={() => go('home')} title={mini ? 'Home' : undefined}>
-            <Glyph code="E80F" /><span className="lbl">Home</span>
-          </button>
-          <button className={`nav ${side === 'library' && cat === 'all' ? 'on' : ''}`} onClick={() => { setCat('all'); go('library') }} title={mini ? 'All games' : undefined}>
-            <Glyph code="E8A9" /><span className="lbl">All games</span><span className="n">{lib.games.length}</span>
-          </button>
-          {sideList.map((c) => {
-            const on = c.id === 'rooms' ? side === 'rooms' : side === 'library' && cat === c.id
-            return (
-              <button key={c.id} className={`nav ${on ? 'on' : ''}`} title={mini ? c.name : undefined} aria-current={on ? 'page' : undefined}
-                onClick={() => { if (c.id === 'rooms') go('rooms'); else { setCat(c.id); go('library') } }}>
-                <Glyph code={c.icon} /><span className="lbl">{c.name}</span>{c.n >= 0 && <span className="n">{c.n}</span>}
-              </button>
-            )
-          })}
-        </nav>
-        <div className="side-foot">
-          <button className={`setbtn ${side === 'settings' ? 'on' : ''}`} onClick={() => go('settings')}>
-            <Glyph code="E713" /><span className="lbl">Settings</span>
-          </button>
-          <button className="minibtn" onClick={() => setMini(!mini)} aria-label={mini ? 'Expand the sidebar' : 'Collapse the sidebar'} title={mini ? 'Expand' : 'Collapse'}>
-            <Glyph code="E700" size={17} />
-          </button>
-        </div>
-      </aside>
-
-      <div className="mainwrap">
-        <div className="topbar" data-tauri-drag-region>
-          {live && (
-            <div className="win">
-              <button aria-label="Minimize" onClick={() => windowControl('minimize')}><Glyph code="E921" size={16} /></button>
-              <button aria-label="Maximize" onClick={() => windowControl('maximize')}><Glyph code="E922" size={13} /></button>
-              <button className="close" aria-label="Close" onClick={() => windowControl('close')}><Glyph code="E8BB" size={17} /></button>
-            </div>
-          )}
-        </div>
-        <main ref={main} className={anim} key={`${view}:${gameId}`}>
-          {page}
-        </main>
-        <footer className="statusbar">
-          <span className="hints">
-            {(pad ? [['A', 'Select'], ['B', 'Back'], ['Y', 'Search'], ['LB/RB', 'Sections']] : [['Enter', 'Open'], ['Ctrl+K', 'Go to'], ['Ctrl+F', 'Search'], ['Esc', 'Back']])
-              .map(([k, l]) => <span key={k}><kbd>{k}</kbd>{l}</span>)}
-          </span>
-          <span className="grow" />
-          {server !== 'unknown' && (
-            <span className={`srv ${server}`}><i />{server === 'online' ? `Server online${pingMs !== null ? ` (${pingMs} ms)` : ''}` : server === 'checking' ? 'Checking the server...' : 'Server offline'}</span>
-          )}
-          {ruffle && <span>{ruffle.name} {ruffle.found ? '\u2713' : <span className="tone-warn">missing</span>}</span>}
-          {lib.flashpoint && <span>Flashpoint: {lib.flashpoint}</span>}
-        </footer>
-      </div>
-
+  const overlays = (
+    <>
       {offerPlayer && (
         <div className="scrim" onMouseDown={(e) => e.target === e.currentTarget && !installingPlayer && setOfferPlayer(null)}>
           <div className="dialog" role="dialog" aria-modal="true" aria-label={`Install ${offerPlayer.name}?`}>
@@ -749,12 +736,14 @@ export default function App() {
             { kind: 'page', id: 'rooms', label: 'Open rooms', note: 'Rooms on the central server', icon: 'E716' },
             { kind: 'page', id: 'settings', label: 'Settings', note: 'Your name, folders and choices', icon: 'E713' },
             { kind: 'page', id: 'setup', label: 'Run setup again', note: 'The first-run steps', icon: 'E72C' },
+            { kind: 'page', id: 'tv', label: tv ? 'Leave TV mode' : 'TV mode', note: 'Full screen, for a controller', icon: 'E7F4' },
             ...sideList.filter((c) => c.id !== 'rooms').map((c): SwitchTarget => ({ kind: 'page', id: 'cat:' + c.id, label: c.name, note: `${c.n} games`, icon: c.icon })),
           ]}
           onPick={(t) => {
             setSwitcher(false)
             if (t.kind === 'game') go('game', t.id)
             else if (t.id === 'setup') setSetupOpen(true)
+            else if (t.id === 'tv') toggleTv()
             else if (t.id.startsWith('cat:')) {
               setCat(t.id.slice(4))
               go('library')
@@ -785,6 +774,95 @@ export default function App() {
           </div>
         )}
       </div>
+    </>
+  )
+
+  if (tv) {
+    const tvc: TvCommon = { lib, mods, favs, playingIds, allRooms, pad, onOpen: (g) => go('game', g.id), onPlay: playLead }
+    let tvPage = page
+    if (view === 'home') tvPage = <TvHome c={tvc} games={[...new Set([...recent, ...playable.filter((g) => favs.has(g.id)), ...playable])]} />
+    else if (view === 'library') tvPage = <TvLibrary c={tvc} cats={sideList.filter((x) => x.id !== 'rooms' && x.n > 0)} inCat={inCat} />
+    else if (view === 'rooms') tvPage = <TvRooms c={tvc} onJoin={(g, code) => { const a = joinByCode(g); if (a) actions.run(g, a, code) }} />
+    else tvPage = <div className="tv-page">{page}</div>
+    return (
+      <div id="tv" className="tv">
+        <TvTop lib={lib} pad={pad} section={side as TvSection} onSection={(s) => go(s)} onLeave={toggleTv} />
+        <main ref={main} className={`tv-main ${anim}`} key={`${view}:${gameId}`}>
+          {tvPage}
+        </main>
+        <TvHints pad={pad} />
+        {overlays}
+      </div>
+    )
+  }
+
+  return (
+    <div id="app">
+      <aside className={`side ${mini ? 'mini' : ''}`}>
+        <div className="brand">
+          <button id="brand" onClick={() => go('home')} aria-label={mini ? lib.branding.title : undefined}>
+            <img className="logo" src="/icon.png" alt="" />
+            <span className="word lbl"><b>{lib.branding.title}</b><small>{lib.branding.subtitle}</small></span>
+          </button>
+        </div>
+        <nav className="navs">
+          <button className={`nav ${side === 'home' ? 'on' : ''}`} onClick={() => go('home')} title={mini ? 'Home' : undefined}>
+            <Glyph code="E80F" /><span className="lbl">Home</span>
+          </button>
+          <button className={`nav ${side === 'library' && cat === 'all' ? 'on' : ''}`} onClick={() => { setCat('all'); go('library') }} title={mini ? 'All games' : undefined}>
+            <Glyph code="E8A9" /><span className="lbl">All games</span><span className="n">{lib.games.length}</span>
+          </button>
+          {sideList.map((c) => {
+            const on = c.id === 'rooms' ? side === 'rooms' : side === 'library' && cat === c.id
+            return (
+              <button key={c.id} className={`nav ${on ? 'on' : ''}`} title={mini ? c.name : undefined} aria-current={on ? 'page' : undefined}
+                onClick={() => { if (c.id === 'rooms') go('rooms'); else { setCat(c.id); go('library') } }}>
+                <Glyph code={c.icon} /><span className="lbl">{c.name}</span>{c.n >= 0 && <span className="n">{c.n}</span>}
+              </button>
+            )
+          })}
+        </nav>
+        <div className="side-foot">
+          <button className={`setbtn ${side === 'settings' ? 'on' : ''}`} onClick={() => go('settings')}>
+            <Glyph code="E713" /><span className="lbl">Settings</span>
+          </button>
+          <button className="minibtn" onClick={toggleTv} aria-label="TV mode" title="TV mode (F11)">
+            <Glyph code="E7F4" size={17} />
+          </button>
+          <button className="minibtn" onClick={() => setMini(!mini)} aria-label={mini ? 'Expand the sidebar' : 'Collapse the sidebar'} title={mini ? 'Expand' : 'Collapse'}>
+            <Glyph code="E700" size={17} />
+          </button>
+        </div>
+      </aside>
+
+      <div className="mainwrap">
+        <div className="topbar" data-tauri-drag-region>
+          {live && (
+            <div className="win">
+              <button aria-label="Minimize" onClick={() => windowControl('minimize')}><Glyph code="E921" size={16} /></button>
+              <button aria-label="Maximize" onClick={() => windowControl('maximize')}><Glyph code="E922" size={13} /></button>
+              <button className="close" aria-label="Close" onClick={() => windowControl('close')}><Glyph code="E8BB" size={17} /></button>
+            </div>
+          )}
+        </div>
+        <main ref={main} className={anim} key={`${view}:${gameId}`}>
+          {page}
+        </main>
+        <footer className="statusbar">
+          <span className="hints">
+            {(pad ? [['A', 'Select'], ['B', 'Back'], ['Y', 'Search'], ['LB/RB', 'Sections'], ['Start', 'TV mode']] : [['Enter', 'Open'], ['Ctrl+K', 'Go to'], ['Ctrl+F', 'Search'], ['Esc', 'Back']])
+              .map(([k, l]) => <span key={k}><kbd>{k}</kbd>{l}</span>)}
+          </span>
+          <span className="grow" />
+          {server !== 'unknown' && (
+            <span className={`srv ${server}`}><i />{server === 'online' ? `Server online${pingMs !== null ? ` (${pingMs} ms)` : ''}` : server === 'checking' ? 'Checking the server...' : 'Server offline'}</span>
+          )}
+          {ruffle && <span>{ruffle.name} {ruffle.found ? '\u2713' : <span className="tone-warn">missing</span>}</span>}
+          {lib.flashpoint && <span>Flashpoint: {lib.flashpoint}</span>}
+        </footer>
+      </div>
+
+      {overlays}
     </div>
   )
 }

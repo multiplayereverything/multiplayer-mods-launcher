@@ -518,6 +518,42 @@ const scenarios = {
     const played = await wd.exec("return [...document.querySelectorAll('.stats > div')].find(d => d.querySelector('span')?.textContent === 'Played')?.querySelector('b')?.textContent")
     await check('Played never says Not yet after a game was played', played && played !== 'Not yet', played)
   },
+
+  async tv() {
+    const fullscreen = () =>
+      wd.execAsync("const done = arguments[arguments.length - 1]; window.__TAURI_INTERNALS__.invoke('plugin:window|is_fullscreen', { label: 'main' }).then(done, () => done(null))")
+    const hero = () => wd.exec("return document.querySelector('.tv-hero h1')?.textContent ?? ''")
+    await key('F11')
+    await check('F11 opens TV mode', !!(await waitFor(async () => (await wd.count("//div[@id='tv']")) > 0)))
+    await check('TV mode fills the screen', (await waitFor(fullscreen)) === true)
+    await check('a game has the focus to start from', !!(await waitFor(() => wd.exec("return document.activeElement?.classList.contains('tv-tile')"))))
+    const first = await hero()
+    await key('ArrowRight')
+    const second = await waitFor(async () => { const h = await hero(); return h && h !== first && h })
+    await check('moving along the row shows that game at the top', !!second && second === (await wd.exec("return document.activeElement?.querySelector('.name')?.textContent")), `${first} -> ${second}`)
+    await key('ArrowUp')
+    await check('up from the row reaches the game\'s buttons', !!(await waitFor(() => wd.exec("return !!document.activeElement?.closest('.tv-hero')"))))
+
+    // A on a ready game starts it, through the same launch as the window's Play.
+    clearArgs()
+    await wd.click(`//button[contains(@class,'tv-tile')][.//span[contains(@class,'name') and normalize-space(.)=${q('Relay Test')}]]`)
+    await check('a game in the row starts with A', (await launchedWith()).some((a) => a.includes('.swf')))
+
+    await key('PageDown')
+    await check('RB goes to Games', !!(await waitFor(async () => (await wd.count("//div[contains(@class,'tv-lib')]")) > 0)))
+    await check('Games shows every game', (await waitFor(async () => (await wd.count("//div[contains(@class,'tv-grid')]//button[contains(@class,'tv-tile')]")) === 7)) === true)
+    await wd.click("//button[contains(@class,'tv-chip')][starts-with(normalize-space(.),'PC mods')]")
+    await check('a filter narrows the games', (await waitFor(async () => (await wd.count("//div[contains(@class,'tv-grid')]//button[contains(@class,'tv-tile')]")) === 1)) === true)
+    await key('Escape')
+    await check('B goes back Home', !!(await waitFor(async () => (await wd.count("//div[contains(@class,'tv-home')]")) > 0)))
+    await wd.click("//section[contains(@class,'tv-hero')]//button[contains(normalize-space(.),'Game page')]")
+    await check('a game\'s page opens in TV mode', !!(await waitFor(async () => (await wd.count("//div[@id='tv']//h1[@aria-label]")) > 0)))
+    await key('Escape')
+
+    await key('F11')
+    await check('F11 leaves TV mode', !!(await waitFor(async () => (await wd.count("//nav[contains(@class,'navs')]")) > 0)))
+    await check('the window gets its size back', (await waitFor(async () => (await fullscreen()) === false)) === true)
+  },
 }
 
 // ---- run ---------------------------------------------------------------------------------------------------------

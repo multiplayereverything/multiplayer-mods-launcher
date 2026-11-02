@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 
 // A game controller through the browser's Gamepad API (WebView2 has it): the D-pad or left stick move the focus to
 // the nearest control in that direction, A presses it, B goes back, Y searches, LB and RB switch the top tabs.
-// The same moves as the C++ launcher's XInput mapping.
+// The same moves as the C++ launcher's XInput mapping. X and Start/Menu are TV mode's: X stars the game you're on,
+// Start switches TV mode on and off.
 
 type Dir = 'up' | 'down' | 'left' | 'right'
 
@@ -51,6 +52,8 @@ export interface PadHandlers {
   search: () => void
   prevTab: () => void
   nextTab: () => void
+  x?: () => void
+  menu?: () => void
 }
 
 // Returns whether a controller is connected, for the status bar's hints.
@@ -78,11 +81,13 @@ export function usePad(handlers: PadHandlers): boolean {
       const now = performance.now()
       const stick = (i: number) => pad.axes[i] ?? 0
       const down = (i: number) => !!pad.buttons[i]?.pressed
-      // Standard mapping: 0 A, 1 B, 3 Y, 4 LB, 5 RB, 12-15 the D-pad.
+      // Standard mapping: 0 A, 1 B, 2 X, 3 Y, 4 LB, 5 RB, 9 Start/Menu, 12-15 the D-pad.
       const state: boolean[] = []
       state[0] = down(0)
       state[1] = down(1)
+      state[2] = down(2)
       state[3] = down(3)
+      state[9] = down(9)
       state[4] = down(4)
       state[5] = down(5)
       state[12] = down(12) || stick(1) < -0.5
@@ -107,7 +112,9 @@ export function usePad(handlers: PadHandlers): boolean {
         }
         if (pressed(0) && document.activeElement instanceof HTMLElement) document.activeElement.click()
         if (pressed(1)) h.current.back()
+        if (pressed(2)) h.current.x?.()
         if (pressed(3)) h.current.search()
+        if (pressed(9)) h.current.menu?.()
         if (pressed(4)) h.current.prevTab()
         if (pressed(5)) h.current.nextTab()
       }

@@ -28,6 +28,11 @@ the exe. Settings, the lobby window and the hosting box still live in the C++ la
   tabs, and the play panel as the right column. Esc or Back returns.
 - Key hints in the status bar; with a game controller (the browser's Gamepad API) the D-pad moves between
   controls, A presses, B goes back, Y searches, LB and RB switch Library and Rooms, and the hints show its buttons.
+- TV mode (`src/Tv.tsx`) for a controller on the couch: Start, F11, the sidebar's TV button or Settings switch it.
+  Full screen; Home shows the game you're on large with its player slots over one row of your games, and LB/RB
+  (PgUp/PgDn) move between Home, Games, Rooms and Settings. A plays, Y opens the game's page, X stars it, B goes
+  back. A game's page, the lobby and Settings are the window's own, enlarged. It reopens in TV mode if left on.
+  The idea comes from RecompLauncher's Big Picture mode; none of its code is used.
 
 ```bash
 cd tauri
