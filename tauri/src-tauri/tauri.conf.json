@@ -20,7 +20,8 @@
         "fullscreen": false,
         "minWidth": 900,
         "minHeight": 560,
-        "center": true
+        "center": true,
+        "devtools": false
       }
     ],
     "security": {
