@@ -535,9 +535,21 @@ const scenarios = {
     await key('ArrowUp')
     await check('up from the row reaches the game\'s buttons', !!(await waitFor(() => wd.exec("return !!document.activeElement?.closest('.tv-hero')"))))
 
-    // A on a ready game starts it, through the same launch as the window's Play.
+    // A mouse click picks a game for the top without starting it; A (a click with no mouse) and a double-click play.
+    const relayTile = `//button[contains(@class,'tv-tile')][.//span[contains(@class,'name') and normalize-space(.)=${q('Relay Test')}]]`
     clearArgs()
-    await wd.click(`//button[contains(@class,'tv-tile')][.//span[contains(@class,'name') and normalize-space(.)=${q('Relay Test')}]]`)
+    await wd.click(relayTile)
+    await check('a mouse click picks the game without starting it',
+      (await waitFor(async () => (await hero()) === 'Relay Test')) === true && !(await waitFor(() => existsSync(box.args), 1500)))
+    await wd.exec("document.activeElement.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, detail: 2 }))")
+    const dbl = await launchedWith()
+    await check('a double-click plays it', dbl.some((a) => a.includes('.swf')), dbl.join(' '))
+    await waitFor(async () => (await wd.count("//div[contains(@class,'tv-starting')]")) > 0)
+    await key('Escape')
+    await waitFor(async () => !(await wd.exec("return document.querySelector('.island')?.textContent ?? ''")).includes('Playing'), FAKE_MS + 8000)
+    clearArgs()
+    await wd.click(relayTile)
+    await wd.exec('document.activeElement.click()')
     const tvRun = await launchedWith()
     await check('a game in the row starts with A', tvRun.some((a) => a.includes('.swf')))
     await check('a game started from TV mode gets the player\'s TV options', tvRun.includes('--fullscreen') && tvRun.includes('ENV FAKE_TV=1'), tvRun.join(' '))
@@ -569,7 +581,8 @@ const scenarios = {
     await waitFor(() => settings().minimize === 1 || settings().minimize === true)
     await key('Escape')
     clearArgs()
-    await wd.click(`//button[contains(@class,'tv-tile')][.//span[contains(@class,'name') and normalize-space(.)=${q('Relay Test')}]]`)
+    await wd.click(relayTile)
+    await wd.exec('document.activeElement.click()')
     await new Promise((r) => setTimeout(r, 2500))
     const behind = [await isMinimized(), await fullscreen(), await wd.count("//div[contains(@class,'tv-starting')]")]
     await check('TV mode stays full screen behind the game instead of minimizing', behind[0] === false && behind[1] === true && behind[2] > 0,

@@ -31,12 +31,18 @@ export function PadKey({ k, pad }: { k: string; pad: boolean }) {
   return pad ? <kbd className="pk">{k}</kbd> : null
 }
 
-// A game in a row or the grid: A plays it when it is ready, otherwise opens its page (to download or install).
+// A game in a row or the grid. A (or Enter) plays it when it is ready, otherwise opens its page (to download or
+// install). A mouse is pointing, not committing: a click on Home's row picks the game for the top (a double-click
+// plays it), a click in the grid opens its page.
 function TvTile({ game, c, onFocus }: { game: Game; c: TvCommon; onFocus?: () => void }) {
   const line = stateLine(game, c.lib, c.mods, c.playingIds.has(game.id))
   const ready = leadAction(game)?.state === 'ready'
+  const commit = () => (ready ? c.onPlay(game) : c.onOpen(game))
   return (
-    <button className="tv-tile" data-game={game.id} onFocus={onFocus} onClick={() => (ready ? c.onPlay(game) : c.onOpen(game))}
+    <button className="tv-tile" data-game={game.id} onFocus={onFocus}
+      // detail is 0 for Enter, Space and the controller's A (a click() with no mouse).
+      onClick={(e) => (e.detail === 0 ? commit() : onFocus ? undefined : c.onOpen(game))}
+      onDoubleClick={() => onFocus && commit()}
       aria-label={`${game.name}, ${line.text}`}>
       <span className="art">
         <Cover game={game} className="fill" />
@@ -206,7 +212,7 @@ export function TvStarting({ game, lib, label, pad, onBack }: { game: Game; lib:
       <Slots n={game.maxPlayers} colors={lib.branding.playerColors} />
       {open ? (
         <>
-          <p>{`${game.name} is running. Close it, or hold Start in it for its menu, to come back here.`}</p>
+          <p>{`${game.name} is running. Close its window${pad ? ', or hold Start in it for its menu,' : ''} to come back here.`}</p>
           <button className="btn" onClick={onBack}><PadKey k="B" pad={pad} />Back to TV mode</button>
         </>
       ) : (
@@ -222,7 +228,7 @@ export function TvStarting({ game, lib, label, pad, onBack }: { game: Game; lib:
 export function TvHints({ pad, children }: { pad: boolean; children?: ReactNode }) {
   const keys = pad
     ? [['A', 'Select'], ['B', 'Back'], ['X', 'Favorite'], ['Y', 'Game page'], ['LB RB', 'Sections'], ['Start', 'Leave TV mode']]
-    : [['Arrows', 'Move'], ['Enter', 'Select'], ['Esc', 'Back'], ['PgUp PgDn', 'Sections'], ['F11', 'Leave TV mode']]
+    : [['Arrows', 'Move'], ['Enter', 'Select'], ['Double-click', 'Play'], ['Esc', 'Back'], ['PgUp PgDn', 'Sections'], ['F11', 'Leave TV mode']]
   return (
     <footer className="tv-hints">
       {keys.map(([k, l]) => <span key={k}>{k.split(' ').map((x) => <kbd key={x} className="pk">{x}</kbd>)}{l}</span>)}
