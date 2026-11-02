@@ -1,4 +1,5 @@
 mod engine;
+pub mod launcher;
 
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
@@ -23,11 +24,11 @@ async fn blocking<T: Send + 'static>(f: impl FnOnce() -> Result<T, String> + Sen
     tauri::async_runtime::spawn_blocking(f).await.map_err(|e| e.to_string())?
 }
 
-/// Every game, its actions and their state, the UI texts, the user's stats and settings (`--list --json`). The
-/// covers are opened to the window's asset protocol so it can show them.
+/// Every game, its actions and their state, the UI texts, the user's stats and settings: what `--list --json` printed,
+/// now built here (src/launcher). The covers are opened to the window's asset protocol so it can show them.
 #[tauri::command]
 async fn library(app: AppHandle, shared: State<'_, Shared>) -> Result<serde_json::Value, String> {
-    let lib = blocking(|| engine::run_json(&["--list".into(), "--json".into()])).await?;
+    let lib = blocking(launcher::library_json::library_json).await?;
     if let Some(dir) = lib.get("dataDir").and_then(|v| v.as_str()) {
         *shared.data_dir.lock().unwrap() = Some(PathBuf::from(dir));
     }

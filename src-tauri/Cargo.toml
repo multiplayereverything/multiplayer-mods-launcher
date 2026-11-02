@@ -28,3 +28,8 @@ tauri-plugin-clipboard-manager = "2"
 tauri-plugin-window-state = "2"
 tauri-plugin-single-instance = "2"
 tauri-plugin-notification = "2"
+# The library port (src/launcher): the catalog's SHA-256 check, launcher.json's server-link patterns, and the Windows
+# lookups the C++ launcher makes (known folders, PATH search, FindFirstFile wildcards).
+sha2 = "0.10"
+regex = "1"
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_UI_Shell", "Win32_System_Com"] }
