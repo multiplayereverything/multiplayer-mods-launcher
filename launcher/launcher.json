@@ -202,7 +202,8 @@
           "icon": "E765",
           "offline": true,
           "description": "Up to 4 players on this PC",
-          "swf": ["${GAMES_DIR}\\gunmayhem2_online.swf"]
+          "swf": ["${GAMES_DIR}\\gunmayhem2_online.swf"],
+          "args": ["--coop-keys", "gun-mayhem-2"]
         },
         {
           "id": "play",
@@ -320,7 +321,8 @@
           "icon": "E77B",
           "offline": true,
           "description": "The campaign on your own",
-          "swf": ["${GAMES_DIR}\\stealthhunter2_online.swf"]
+          "swf": ["${GAMES_DIR}\\stealthhunter2_online.swf"],
+          "args": ["--coop-keys", "stealth-hunter-2"]
         },
         {
           "id": "play",
@@ -398,7 +400,8 @@
           "icon": "E765",
           "offline": true,
           "description": "Co-op for two on this PC",
-          "swf": ["${GAMES_DIR}\\BadIceCream_coop.swf"]
+          "swf": ["${GAMES_DIR}\\BadIceCream_coop.swf"],
+          "args": ["--coop-keys", "bad-ice-cream"]
         }
       ]
     },
@@ -507,7 +510,8 @@
           "icon": "E77B",
           "offline": true,
           "description": "Campaign, challenges and battles on this PC",
-          "swf": ["${GAMES_DIR}\\TerritoryWar_online.swf"]
+          "swf": ["${GAMES_DIR}\\TerritoryWar_online.swf"],
+          "args": ["--coop-keys", "territory-war"]
         },
         {
           "id": "play",
@@ -585,7 +589,8 @@
           "icon": "E77B",
           "offline": true,
           "description": "VS Computer, practice and bird hunting",
-          "swf": ["${GAMES_DIR}\\BowMan_online.swf"]
+          "swf": ["${GAMES_DIR}\\BowMan_online.swf"],
+          "args": ["--coop-keys", "bow-man"]
         },
         {
           "id": "play",
@@ -698,7 +703,8 @@
           "icon": "E77B",
           "offline": true,
           "description": "The fight on your own",
-          "swf": ["${GAMES_DIR}\\UltimateCrabBattle_online.swf"]
+          "swf": ["${GAMES_DIR}\\UltimateCrabBattle_online.swf"],
+          "args": ["--coop-keys", "ultimate-crab-battle"]
         },
         {
           "id": "play",
@@ -811,7 +817,8 @@
           "icon": "E77B",
           "offline": true,
           "description": "The levels on your own",
-          "swf": ["${GAMES_DIR}\\AirBattle_online.swf"]
+          "swf": ["${GAMES_DIR}\\AirBattle_online.swf"],
+          "args": ["--coop-keys", "air-battle"]
         },
         {
           "id": "play",
@@ -1047,7 +1054,8 @@
           "icon": "E77B",
           "offline": true,
           "description": "The game on your own",
-          "swf": ["${GAMES_DIR}\\DadNMe_online.swf"]
+          "swf": ["${GAMES_DIR}\\DadNMe_online.swf"],
+          "args": ["--coop-keys", "dad-n-me-solo"]
         }
       ]
     },
@@ -1156,7 +1164,8 @@
           "icon": "E77B",
           "offline": true,
           "description": "The game on your own",
-          "swf": ["${GAMES_DIR}\\StealthAssassin_online.swf"]
+          "swf": ["${GAMES_DIR}\\StealthAssassin_online.swf"],
+          "args": ["--coop-keys", "stealth-assassin"]
         }
       ]
     },
@@ -1223,7 +1232,8 @@
           "icon": "E77B",
           "offline": true,
           "description": "Both players on this PC",
-          "swf": ["${GAMES_DIR}\\FireboyWatergirlForestTemple_online.swf"]
+          "swf": ["${GAMES_DIR}\\FireboyWatergirlForestTemple_online.swf"],
+          "args": ["--coop-keys", "fireboy-watergirl"]
         }
       ]
     },
@@ -1346,7 +1356,8 @@
           "icon": "E77B",
           "offline": true,
           "description": "The game on your own",
-          "swf": ["${GAMES_DIR}\\Zombotron_online.swf"]
+          "swf": ["${GAMES_DIR}\\Zombotron_online.swf"],
+          "args": ["--coop-keys", "zombotron-solo"]
         }
       ]
     },
@@ -1456,7 +1467,8 @@
           "icon": "E77B",
           "offline": true,
           "description": "The game on your own",
-          "swf": ["${GAMES_DIR}\\Hobo_online.swf"]
+          "swf": ["${GAMES_DIR}\\Hobo_online.swf"],
+          "args": ["--coop-keys", "hobo-solo"]
         }
       ]
     },
@@ -1607,7 +1619,8 @@
           "icon": "E77B",
           "offline": true,
           "description": "The game on your own",
-          "swf": ["${GAMES_DIR}\\ChaosFaction2_online.swf"]
+          "swf": ["${GAMES_DIR}\\ChaosFaction2_online.swf"],
+          "args": ["--coop-keys", "chaos-faction-2"]
         }
       ]
     },
@@ -1710,7 +1723,8 @@
           "icon": "E77B",
           "offline": true,
           "description": "The game on your own",
-          "swf": ["${GAMES_DIR}\\SmileysWar_online.swf"]
+          "swf": ["${GAMES_DIR}\\SmileysWar_online.swf"],
+          "args": ["--coop-keys", "smileys-war"]
         }
       ]
     },
@@ -1813,7 +1827,8 @@
           "icon": "E77B",
           "offline": true,
           "description": "The game on your own",
-          "swf": ["${GAMES_DIR}\\Intrusion_online.swf"]
+          "swf": ["${GAMES_DIR}\\Intrusion_online.swf"],
+          "args": ["--coop-keys", "intrusion-solo"]
         }
       ]
     },
@@ -1916,7 +1931,8 @@
           "icon": "E77B",
           "offline": true,
           "description": "The game on your own",
-          "swf": ["${GAMES_DIR}\\Intrusion2_online.swf"]
+          "swf": ["${GAMES_DIR}\\Intrusion2_online.swf"],
+          "args": ["--coop-keys", "intrusion-2-solo"]
         }
       ]
     },
