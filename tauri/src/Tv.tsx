@@ -241,13 +241,14 @@ export function TvStarting({ game, lib, label, pad, onBack }: { game: Game; lib:
   )
 }
 
-type HintPlace = 'game' | 'sheet' | 'keys' | 'other'
+type HintPlace = 'game' | 'sheet' | 'keys' | 'field' | 'other'
 const HINTS: Record<HintPlace, { pad: string[][]; keys: string[][] }> = {
   game: {
     pad: [['A', 'Play'], ['Y', 'Game page'], ['X', 'Favorite'], ['B', 'Back'], ['LB RB', 'Sections'], ['Start', 'Leave TV mode']],
     keys: [['Enter', 'Play'], ['Double-click', 'Play'], ['Arrows', 'Move'], ['Esc', 'Back'], ['PgUp PgDn', 'Sections'], ['F11', 'Leave TV mode']],
   },
   sheet: { pad: [['A', 'Choose'], ['B', 'Back']], keys: [['Enter', 'Choose'], ['Arrows', 'Move'], ['Esc', 'Back']] },
+  field: { pad: [['A', 'Type'], ['B', 'Back'], ['LB RB', 'Sections']], keys: [['Letters', 'Type'], ['Arrows', 'Move'], ['Esc', 'Back']] },
   keys: { pad: [['A', 'Type'], ['X', 'Delete'], ['B', 'Back']], keys: [['Letters', 'Type'], ['Backspace', 'Delete'], ['Enter', 'Join'], ['Esc', 'Back']] },
   other: {
     pad: [['A', 'Select'], ['B', 'Back'], ['LB RB', 'Sections'], ['Start', 'Leave TV mode']],
@@ -255,7 +256,7 @@ const HINTS: Record<HintPlace, { pad: string[][]; keys: string[][] }> = {
   },
 }
 const placeOf = (el: Element | null): HintPlace =>
-  el?.closest('.tv-kb') ? 'keys' : el?.closest('[aria-modal="true"]') ? 'sheet' : el?.closest('[data-game]') ? 'game' : 'other'
+  el?.closest('.tv-kb') ? 'keys' : el instanceof HTMLInputElement ? 'field' : el?.closest('[aria-modal="true"]') ? 'sheet' : el?.closest('[data-game]') ? 'game' : 'other'
 
 // The buttons that do something where the focus is: on a game, in a sheet, on the on-screen keyboard, elsewhere.
 export function TvHints({ pad, children }: { pad: boolean; children?: ReactNode }) {

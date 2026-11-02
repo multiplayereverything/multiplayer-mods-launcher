@@ -56,6 +56,8 @@ export interface PadHandlers {
   nextTab: () => void
   x?: () => void
   menu?: () => void
+  // A on this element: true when it was handled (a text field opens the on-screen keyboard), else it is clicked.
+  press?: (el: HTMLElement) => boolean
 }
 
 // Returns whether a controller is connected, for the status bar's hints.
@@ -112,7 +114,7 @@ export function usePad(handlers: PadHandlers): boolean {
           moveFocus(repeatDir)
           repeatAt = now + 120
         }
-        if (pressed(0) && document.activeElement instanceof HTMLElement) document.activeElement.click()
+        if (pressed(0) && document.activeElement instanceof HTMLElement && !h.current.press?.(document.activeElement)) document.activeElement.click()
         if (pressed(1)) h.current.back()
         if (pressed(2)) h.current.x?.()
         if (pressed(3)) h.current.search()

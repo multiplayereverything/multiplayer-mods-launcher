@@ -6,7 +6,7 @@ import { SettingsPage } from './SettingsPage'
 import { SetupPage } from './SetupPage'
 import { Switcher, type SwitchTarget } from './Switcher'
 import { TV_SECTIONS, TvHints, TvHome, TvLibrary, TvRooms, TvStarting, TvTop, type TvCommon, type TvSection } from './Tv'
-import { TvPlaySheet, type SheetPad } from './TvSheet'
+import { TvPlaySheet, TvTextSheet, type SheetPad, type TextRequest } from './TvSheet'
 import {
   downloadGame, launch, live, loadLibrary, loadMods, installPlayer, loadAllRooms, minimizeWindow, modJob, notify, ping, restoreWindow, updatePlayers, onDownloadEnded, onHostStatus,
   onLaunchEnded, onModProgress, pickFile, pickFolder, setFavorite, setFullscreen, setSetting, setTvMode, noteTv, setGameDir, setGameFile, stopSession, windowControl,
@@ -40,6 +40,28 @@ const keep = (key: string, value: string) => {
     localStorage.setItem(key, value)
   } catch {
     // A private or blocked store only means the choice isn't remembered.
+  }
+}
+
+// The on-screen keyboard for a text field: named after its label, and Done puts the text in as typing would (the
+// value setter React listens to, an input event), then leaves the field so a page that saves on blur saves it.
+function textRequest(el: HTMLInputElement): TextRequest {
+  const label = el.getAttribute('aria-label') || (el.id && document.querySelector(`label[for="${el.id}"]`)?.textContent) ||
+    el.closest('.set-row')?.querySelector('b')?.textContent || el.placeholder || 'Type'
+  return {
+    title: label,
+    value: el.value,
+    max: el.maxLength > 0 ? el.maxLength : 40,
+    secret: el.type === 'password',
+    done: (text) => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(el, text)
+      el.dispatchEvent(new Event('input', { bubbles: true }))
+      requestAnimationFrame(() => {
+        el.focus()
+        el.blur()
+        el.focus()
+      })
+    },
   }
 }
 
@@ -179,6 +201,9 @@ export default function App() {
   // An online game's choices (Quick play, host, join with a code) in TV mode, and what the sheet does with B and X.
   const [tvSheet, setTvSheet] = useState('')
   const sheetPad = useRef<SheetPad>({})
+  // A text field being typed with the controller in TV mode.
+  const [tvText, setTvText] = useState<TextRequest | null>(null)
+  const tvField = useRef<HTMLInputElement | null>(null)
   useEffect(() => {
     keep('fl.tv', tv ? '1' : '0')
     setTvMode(tv)
@@ -496,6 +521,7 @@ export default function App() {
     setTv(!tv)
     setTvStart(null)
     setTvSheet('')
+    setTvText(null)
     setSwitcher(false)
   }
   const pad = usePad({
@@ -513,6 +539,12 @@ export default function App() {
       if (g) toggleFav(g.id)
     },
     menu: () => toggleTv('controller Start'),
+    press: (el) => {
+      if (!tv || !(el instanceof HTMLInputElement) || !['text', 'password', 'search', ''].includes(el.type) || el.disabled) return false
+      tvField.current = el
+      setTvText(textRequest(el))
+      return true
+    },
   })
 
   useEffect(() => {
@@ -824,6 +856,7 @@ export default function App() {
           {tvPage}
         </main>
         <TvHints pad={pad} />
+        {tvText && <TvTextSheet req={tvText} pad={pad} padRef={sheetPad} onClose={() => (setTvText(null), tvField.current?.focus())} />}
         {sheetGame && (
           <TvPlaySheet game={sheetGame} lib={lib} rooms={allRooms?.[sheetGame.id]} pad={pad} padRef={sheetPad} onClose={() => setTvSheet('')}
             onRun={(a, code, address) => {

@@ -611,3 +611,6 @@ main.enter-back > * { animation: slideBack .26s var(--ease) both; }
 .tv-tile .badge { height: 1.5em; padding: 0 .55em; border-radius: .75em; font-size: .7em; }
 .tv-tile .st { display: flex; justify-content: space-between; gap: .6em; }
 @media (prefers-reduced-motion: reduce) { .tv-tile:focus .art { transform: none; } }
+.tv-kb-field .addr.text { min-width: 16em; max-width: 100%; overflow: hidden; white-space: pre; }
+.tv-kb .key.space { min-width: 10em; margin-top: .3em; }
+.tv-kb .key[aria-pressed='true'] { box-shadow: inset 0 0 0 .1em var(--ink); }

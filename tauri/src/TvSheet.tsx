@@ -184,3 +184,86 @@ export function TvPlaySheet({ game, lib, rooms, pad, padRef, onRun, onLobby, onP
     </div>
   )
 }
+
+// Any text field with the controller (your name, a room's name or password): A on the field opens this; Done puts
+// the text into the field as typing would, so the page saves it as it always does. Shift switches case.
+export interface TextRequest { title: string; value: string; max: number; secret: boolean; done: (text: string) => void }
+
+const SYMBOLS = '-_.!?'
+
+export function TvTextSheet({ req, pad, padRef, onClose }: { req: TextRequest; pad: boolean; padRef: MutableRefObject<SheetPad>; onClose: () => void }) {
+  const [text, setText] = useState(req.value)
+  const [upper, setUpper] = useState(!req.value)
+  const box = useRef<HTMLDivElement>(null)
+  const latest = useRef({ text, upper })
+  useEffect(() => {
+    latest.current = { text, upper }
+  })
+  const type = (ch: string) => setText((t) => (t.length < req.max ? t + ch : t))
+  const finish = () => {
+    req.done(latest.current.text)
+    onClose()
+  }
+  const doneRef = useRef(finish)
+  useEffect(() => {
+    doneRef.current = finish
+  })
+  useEffect(() => {
+    box.current?.querySelector<HTMLElement>('.key')?.focus({ preventScroll: true })
+    const pr = padRef.current
+    const del = () => setText((t) => t.slice(0, -1))
+    pr.x = () => (del(), true)
+    pr.back = () => (onClose(), true)
+    // A real keyboard types straight in, as on the room code keyboard.
+    const onKey = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.altKey || e.metaKey) return
+      if (e.key.length === 1) setText((t) => (t.length < req.max ? t + e.key : t))
+      else if (e.key === 'Backspace') del()
+      else if (e.key === 'Enter') doneRef.current()
+      else return
+      e.preventDefault()
+      e.stopPropagation()
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => {
+      window.removeEventListener('keydown', onKey, true)
+      pr.x = undefined
+      pr.back = undefined
+    }
+  }, [padRef, onClose, req.max])
+  const shown = req.secret ? '•'.repeat(text.length) : text
+  const ch = (c: string) => (upper ? c : c.toLowerCase())
+  return (
+    <div className="scrim tv-scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="tv-sheet" role="dialog" aria-modal="true" aria-label={`Type: ${req.title}`}>
+        <div className="tv-sheet-h">
+          <span className="kick">Type with the controller</span>
+          <h2>{req.title}</h2>
+        </div>
+        <div className="tv-kb" ref={box}>
+          <div className="tv-kb-field" aria-live="polite" aria-label={req.secret ? `${text.length} characters` : text || 'Nothing typed yet'}>
+            <span className="addr text">{shown}<i className="caret" /></span>
+          </div>
+          <p className="tv-kb-note">{`${text.length} of ${req.max}`}</p>
+          {ROWS.map((row, r) => (
+            <div className="tv-kb-row" key={r}>
+              {row.split('').map((c) => <button key={c} className="key" onClick={() => type(ch(c))}>{ch(c)}</button>)}
+              {r === 2 && SYMBOLS.slice(0, 1).split('').map((c) => <button key={c} className="key" onClick={() => type(c)}>{c}</button>)}
+              {r === 3 && SYMBOLS.slice(1).split('').map((c) => <button key={c} className="key" onClick={() => type(c)}>{c}</button>)}
+            </div>
+          ))}
+          <div className="tv-kb-row">
+            <button className="key wide" aria-pressed={upper} onClick={() => setUpper((u) => !u)}>{upper ? 'ABC' : 'abc'}</button>
+            <button className="key space" onClick={() => type(' ')}>Space</button>
+            <button className="key wide" onClick={() => setText((t) => t.slice(0, -1))}><PadKey k="X" pad={pad} />Delete</button>
+            <button className="key wide done" onClick={finish}>Done</button>
+          </div>
+        </div>
+        <div className="tv-sheet-f">
+          <span><PadKey k="A" pad={pad} />{pad ? 'Type' : 'Click, or type on the keyboard'}</span>
+          <span><PadKey k="B" pad={pad} />Cancel{pad ? '' : ' (Esc)'}</span>
+        </div>
+      </div>
+    </div>
+  )
+}

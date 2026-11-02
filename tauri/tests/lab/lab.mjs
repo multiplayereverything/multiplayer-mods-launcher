@@ -628,6 +628,39 @@ const scenarios = {
     const joined = await launchedWith()
     await check('Enter joins with the typed code', joined.includes('--coop-code') && joined.includes('KX7Q2'), joined.join(' '))
 
+    // A text field with the controller: the page gets a scripted gamepad (the Gamepad API it reads), A on Your name
+    // opens the on-screen keyboard, and Done saves the name as typing would.
+    await key('Escape')  // the joined game's starting screen
+    await wd.click("//button[contains(@class,'tv-tab') and normalize-space(.)='Settings']")
+    await wd.exec(`const pad = { id: 'Lab controller', index: 0, connected: true, mapping: 'standard', axes: [0, 0, 0, 0],
+        buttons: Array.from({ length: 17 }, () => ({ pressed: false, value: 0 })) }
+      window.__labPad = pad
+      navigator.getGamepads = () => [window.__labPad]
+      window.dispatchEvent(new Event('gamepadconnected'))`)
+    const padPress = async (b) => {
+      await wd.exec(`window.__labPad.buttons[${b}] = { pressed: true, value: 1 }`)
+      await new Promise((r) => setTimeout(r, 150))
+      await wd.exec(`window.__labPad.buttons[${b}] = { pressed: false, value: 0 }`)
+      await new Promise((r) => setTimeout(r, 150))
+    }
+    await wd.exec("document.querySelector('.tv-page input.field')?.focus()")
+    await padPress(0)
+    const title = await waitFor(() => wd.exec("return document.querySelector('.tv-sheet h2')?.textContent ?? ''"))
+    await check('A on a text field opens the on-screen keyboard', title === 'Your name', String(title))
+    for (let i = 0; i < 10; i++) await padPress(2)
+    for (const ch of 'Ann') await key(ch)
+    await wd.click("//div[contains(@class,'tv-kb')]//button[normalize-space(.)='Done']")
+    await check('Done saves what was typed', (await waitFor(() => settings().playerName === 'Ann', 5000)) === true, settings().playerName)
+    await check('the focus goes back to the field', await wd.exec("return document.activeElement?.matches('.tv-page input.field') ?? false"))
+    // Put the name back for the scenarios after this one.
+    await padPress(0)
+    await wd.find("//div[contains(@class,'tv-kb')]")
+    for (let i = 0; i < 5; i++) await padPress(2)
+    for (const ch of 'Tester') await key(ch)
+    await key('Enter')
+    await waitFor(() => settings().playerName === 'Tester', 5000)
+    await padPress(1)  // B: Settings back to Home
+
     await key('F11')
     await check('F11 leaves TV mode', !!(await waitFor(async () => (await wd.count("//nav[contains(@class,'navs')]")) > 0)))
     await check('the window gets its size back', (await waitFor(async () => (await fullscreen()) === false)) === true)
