@@ -541,6 +541,10 @@ const scenarios = {
     const tvRun = await launchedWith()
     await check('a game in the row starts with A', tvRun.some((a) => a.includes('.swf')))
     await check('a game started from TV mode gets the player\'s TV options', tvRun.includes('--fullscreen') && tvRun.includes('ENV FAKE_TV=1'), tvRun.join(' '))
+    await check('starting a game shows its TV screen, not the desktop',
+      (await wd.exec("return document.querySelector('.tv-starting h1')?.textContent ?? ''")) === 'Relay Test')
+    await key('Escape')
+    await check('B goes back to TV mode while the game runs', !!(await waitFor(async () => (await wd.count("//div[contains(@class,'tv-starting')]")) === 0)))
 
     await key('PageDown')
     await check('RB goes to Games', !!(await waitFor(async () => (await wd.count("//div[contains(@class,'tv-lib')]")) > 0)))
@@ -553,22 +557,26 @@ const scenarios = {
     await check('a game\'s page opens in TV mode', !!(await waitFor(async () => (await wd.count("//div[@id='tv']//h1[@aria-label]")) > 0)))
     await key('Escape')
 
-    // The game started above closes while TV mode is on: the window stays in TV mode and full screen, also when it
-    // minimized for the game (Minimize while a game runs, the launcher's default).
+    // The game started above closes while TV mode is on: the window stays in TV mode and full screen. With Minimize
+    // while a game runs on (the launcher's default) TV mode doesn't minimize: its starting screen stays behind the game.
     const gameClosed = () => waitFor(async () => !(await wd.exec("return document.querySelector('.island')?.textContent ?? ''")).includes('Playing'), FAKE_MS + 8000)
     const stillTv = async () => (await wd.count("//div[@id='tv']")) > 0 && (await fullscreen()) === true
     await gameClosed()
-    await check('TV mode stays on when the game closes', await waitFor(stillTv, 3000) === true)
+    await check('TV mode stays on when the game closes', await waitFor(stillTv, 3000) === true,
+      (await wd.exec("return JSON.parse(localStorage.getItem('fl.tvLog') ?? '[]')")).slice(-4).join(' | '))
     await wd.click("//button[contains(@class,'tv-tab') and normalize-space(.)='Settings']")
     await wd.click("//button[@role='switch' and contains(@aria-label,'Minimize')]")
     await waitFor(() => settings().minimize === 1 || settings().minimize === true)
     await key('Escape')
     clearArgs()
     await wd.click(`//button[contains(@class,'tv-tile')][.//span[contains(@class,'name') and normalize-space(.)=${q('Relay Test')}]]`)
-    await check('TV mode minimizes for the game when asked to', (await waitFor(async () => (await isMinimized()) === true, 5000)) === true)
-    await waitFor(async () => (await isMinimized()) === false, FAKE_MS + 8000)
+    await new Promise((r) => setTimeout(r, 2500))
+    const behind = [await isMinimized(), await fullscreen(), await wd.count("//div[contains(@class,'tv-starting')]")]
+    await check('TV mode stays full screen behind the game instead of minimizing', behind[0] === false && behind[1] === true && behind[2] > 0,
+      `minimized ${behind[0]}, fullscreen ${behind[1]}, starting screens ${behind[2]}`)
     await gameClosed()
-    await check('TV mode is still on, full screen, after a minimized game', await waitFor(stillTv, 3000) === true,
+    await check('the starting screen goes when the game closes', !!(await waitFor(async () => (await wd.count("//div[contains(@class,'tv-starting')]")) === 0, 3000)))
+    await check('TV mode is still on, full screen, after the game', await waitFor(stillTv, 3000) === true,
       `tv ${await wd.count("//div[@id='tv']")}, fullscreen ${await fullscreen()}`)
     await wd.click("//button[contains(@class,'tv-tab') and normalize-space(.)='Settings']")
     await wd.click("//button[@role='switch' and contains(@aria-label,'Minimize')]")
@@ -583,7 +591,7 @@ const scenarios = {
     await new Promise((r) => setTimeout(r, 400))
     await check('a repeating F11 doesn\'t switch TV mode', (await wd.count("//div[@id='tv']")) === 0)
     const log = await wd.exec("return JSON.parse(localStorage.getItem('fl.tvLog') ?? '[]')")
-    await check('each switch of TV mode is recorded with its cause', log.some((l) => l.endsWith('on: F11')) && log.some((l) => l.endsWith('off: F11')), log.slice(-3).join(' | '))
+    await check('each switch of TV mode is recorded with its cause', log.some((l) => l.includes('on: F11')) && log.some((l) => l.includes('off: F11')), log.slice(-3).join(' | '))
   },
 }
 

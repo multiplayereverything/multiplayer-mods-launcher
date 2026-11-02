@@ -190,6 +190,35 @@ export function TvTop({ lib, section, pad, onSection, onLeave }: { lib: Library;
   )
 }
 
+// Between pressing Play and the game's window: the launcher stays full screen with the game's art instead of
+// dropping to the desktop. Once the game has had time to open it says so, and B (or the button) goes back to TV
+// mode while the game keeps running; it goes by itself when the game closes.
+export function TvStarting({ game, lib, label, pad, onBack }: { game: Game; lib: Library; label: string; pad: boolean; onBack: () => void }) {
+  const [open, setOpen] = useState(false)
+  useEffect(() => {
+    const id = window.setTimeout(() => setOpen(true), 6000)
+    return () => window.clearTimeout(id)
+  }, [])
+  return (
+    <div className="tv-starting" role="status" aria-live="polite">
+      <div className="art"><Cover game={game} className="fill" tall /></div>
+      <h1>{game.name}</h1>
+      <Slots n={game.maxPlayers} colors={lib.branding.playerColors} />
+      {open ? (
+        <>
+          <p>{`${game.name} is running. Close it, or hold Start in it for its menu, to come back here.`}</p>
+          <button className="btn" onClick={onBack}><PadKey k="B" pad={pad} />Back to TV mode</button>
+        </>
+      ) : (
+        <>
+          <p>{label}...</p>
+          <span className="tv-busy" aria-hidden="true"><i /></span>
+        </>
+      )}
+    </div>
+  )
+}
+
 export function TvHints({ pad, children }: { pad: boolean; children?: ReactNode }) {
   const keys = pad
     ? [['A', 'Select'], ['B', 'Back'], ['X', 'Favorite'], ['Y', 'Game page'], ['LB RB', 'Sections'], ['Start', 'Leave TV mode']]

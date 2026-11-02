@@ -5,7 +5,7 @@ import { LobbyPage } from './LobbyPage'
 import { SettingsPage } from './SettingsPage'
 import { SetupPage } from './SetupPage'
 import { Switcher, type SwitchTarget } from './Switcher'
-import { TV_SECTIONS, TvHints, TvHome, TvLibrary, TvRooms, TvTop, type TvCommon, type TvSection } from './Tv'
+import { TV_SECTIONS, TvHints, TvHome, TvLibrary, TvRooms, TvStarting, TvTop, type TvCommon, type TvSection } from './Tv'
 import {
   downloadGame, launch, live, loadLibrary, loadMods, installPlayer, loadAllRooms, minimizeWindow, modJob, notify, ping, restoreWindow, updatePlayers, onDownloadEnded, onHostStatus,
   onLaunchEnded, onModProgress, pickFile, pickFolder, setFavorite, setFullscreen, setSetting, setTvMode, noteTv, setGameDir, setGameFile, stopSession, windowControl,
@@ -172,6 +172,9 @@ export default function App() {
     return on
   })
   const tvShown = useRef(false)
+  // A game starting from TV mode: its screen covers TV mode until the game closes (session 0 until the launcher
+  // answers).
+  const [tvStart, setTvStart] = useState<{ game: string; session: number; label: string } | null>(null)
   useEffect(() => {
     keep('fl.tv', tv ? '1' : '0')
     setTvMode(tv)
@@ -278,6 +281,7 @@ export default function App() {
 
   useEffect(() => {
     const a = onLaunchEnded((e) => {
+      setTvStart((s) => (s?.session === e.session ? null : s))
       setPlaying((p) => {
         const n = new Map(p)
         n.delete(e.session)
@@ -353,13 +357,20 @@ export default function App() {
         say(`${game.name}: ${action.state === 'noPlayer' ? 'no Flash player found' : 'its server program is missing'}.`, 'error')
         return
       }
+      const starting = code ? `Joining room ${code} in ${game.name}` : `Starting ${game.name}`
+      // TV mode stays full screen behind the game with its own screen instead of dropping to the desktop.
+      if (tv) setTvStart({ game: game.id, session: 0, label: starting })
       launch(game.id, action.id, code, address, coopSave)
         .then((session) => {
           setPlaying((p) => new Map(p).set(session, game.id))
-          say(action.hint || (code ? `Joining room ${code} in ${game.name}...` : `Starting ${game.name}...`), action.hint ? 'info' : 'ok')
-          if (lib?.user.minimize) void minimizeWindow()
+          if (tv) setTvStart((s) => (s?.game === game.id && !s.session ? { ...s, session } : s))
+          if (action.hint || !tv) say(action.hint || `${starting}...`, action.hint ? 'info' : 'ok')
+          if (lib?.user.minimize && !tv) void minimizeWindow()
         })
-        .catch((e) => say(String(e), 'error'))
+        .catch((e) => {
+          setTvStart(null)
+          say(String(e), 'error')
+        })
     },
     openLobby: (game, quick) => {
       setLobbyQuick(!!quick)
@@ -435,6 +446,10 @@ export default function App() {
     main.current?.scrollTo({ top: 0 })
   }
   const back = () => {
+    if (tvStart) {
+      setTvStart(null)
+      return
+    }
     // In TV mode B from Games, Rooms or Settings goes Home, as a console's menus do.
     if (tv && (view === 'library' || view === 'rooms' || view === 'settings')) {
       go('home')
@@ -474,6 +489,7 @@ export default function App() {
     if (!tv) go('home')
     noteTv(!tv, cause)
     setTv(!tv)
+    setTvStart(null)
     setSwitcher(false)
   }
   const pad = usePad({
@@ -498,7 +514,7 @@ export default function App() {
       if (e.key === 'F11') {
         // A held key repeats: one press, one switch.
         e.preventDefault()
-        if (!e.repeat) toggleTv('F11')
+        if (!e.repeat) toggleTv(e.isTrusted ? 'F11' : 'F11 (script)')
       } else if (tv && e.key.startsWith('Arrow') && !typing && !e.altKey) {
         // TV mode moves with the arrows everywhere, as the D-pad does.
         e.preventDefault()
@@ -800,6 +816,9 @@ export default function App() {
           {tvPage}
         </main>
         <TvHints pad={pad} />
+        {tvStart && lib.games.some((g) => g.id === tvStart.game) && (
+          <TvStarting game={lib.games.find((g) => g.id === tvStart.game)!} lib={lib} label={tvStart.label} pad={pad} onBack={() => setTvStart(null)} />
+        )}
         {overlays}
       </div>
     )
