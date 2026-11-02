@@ -525,15 +525,24 @@ const scenarios = {
   async tv() {
     const fullscreen = () =>
       wd.execAsync("const done = arguments[arguments.length - 1]; window.__TAURI_INTERNALS__.invoke('plugin:window|is_fullscreen', { label: 'main' }).then(done, () => done(null))")
-    const hero = () => wd.exec("return document.querySelector('.tv-hero h1')?.textContent ?? ''")
+    const hero = () => wd.exec("return document.querySelector('.tv-hero h1')?.getAttribute('aria-label') ?? ''")
     await key('F11')
     await check('F11 opens TV mode', !!(await waitFor(async () => (await wd.count("//div[@id='tv']")) > 0)))
     await check('TV mode fills the screen', (await waitFor(fullscreen)) === true)
     await check('a game has the focus to start from', !!(await waitFor(() => wd.exec("return document.activeElement?.classList.contains('tv-tile')"))))
     const first = await hero()
-    await key('ArrowRight')
+    // The title decodes as the selection moves: scrambled for a moment, then the name.
+    const seen = await wd.execAsync(`const done = arguments[arguments.length - 1], got = []
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }))
+      const id = setInterval(() => got.push(document.querySelector('.tv-hero h1 span')?.textContent ?? ''), 25)
+      setTimeout(() => { clearInterval(id); done(got) }, 900)`)
     const second = await waitFor(async () => { const h = await hero(); return h && h !== first && h })
     await check('moving along the row shows that game at the top', !!second && second === (await wd.exec("return document.activeElement?.querySelector('.name')?.textContent")), `${first} -> ${second}`)
+    await check('the title decodes on a new selection', seen.some((s) => s && s !== second) && seen.at(-1) === second, seen.slice(0, 4).join(' / '))
+    const hints = await wd.exec("return document.querySelector('.tv-hints')?.textContent ?? ''")
+    await check('on a game the hints say what Enter does there', hints.includes('EnterPlay'), hints)
+    const coopCard = await wd.exec("return [...document.querySelectorAll('.tv-row .tv-tile')].find(t => t.querySelector('.name')?.textContent === 'Co-op Test')?.querySelector('.st')?.textContent ?? ''")
+    await check('a card shows how many rooms are open', /\d+ open/.test(coopCard), coopCard)
     await key('ArrowUp')
     await check('up from the row reaches the game\'s buttons', !!(await waitFor(() => wd.exec("return !!document.activeElement?.closest('.tv-hero')"))))
 

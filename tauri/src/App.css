@@ -601,3 +601,13 @@ main.enter-back > * { animation: slideBack .26s var(--ease) both; }
 .tv-kb .key.done { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .tv-kb .key.done:hover:not(:disabled) { background: var(--accent-hover); }
 .tv-kb .key:disabled { opacity: .45; }
+
+/* TV cards: the selected one grows a little (the only pointer on a TV), badges as on the desktop cards. */
+.tv-tile .art { transition: transform .16s var(--ease); }
+.tv-tile:focus .art { transform: scale(1.05); }
+.tv-tile .name { color: var(--muted); transition: color .16s; }
+.tv-tile:focus .name, .tv-tile:hover .name { color: var(--ink); }
+.tv-tile .badges { position: absolute; top: .4em; left: .4em; display: flex; gap: .3em; }
+.tv-tile .badge { height: 1.5em; padding: 0 .55em; border-radius: .75em; font-size: .7em; }
+.tv-tile .st { display: flex; justify-content: space-between; gap: .6em; }
+@media (prefers-reduced-motion: reduce) { .tv-tile:focus .art { transform: none; } }

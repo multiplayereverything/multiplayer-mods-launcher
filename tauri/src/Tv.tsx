@@ -6,6 +6,7 @@ import { Cover } from './Cover'
 import type { Game, Library, ModInfo, Rooms } from './api'
 import { agoText, lastPlayed, leadAction, roomAbout, stateLine } from './model'
 import { Glyph, Pips, Slots } from './ui'
+import { useDecode } from './useDecode'
 
 export type TvSection = 'home' | 'library' | 'rooms' | 'settings'
 export const TV_SECTIONS: { id: TvSection; name: string }[] = [
@@ -38,18 +39,27 @@ function TvTile({ game, c, onFocus }: { game: Game; c: TvCommon; onFocus?: () =>
   const line = stateLine(game, c.lib, c.mods, c.playingIds.has(game.id))
   const ready = leadAction(game)?.state === 'ready'
   const commit = () => (ready ? c.onPlay(game) : c.onOpen(game))
+  const rooms = c.allRooms?.[game.id]?.rooms.length ?? 0
+  const t = (k: string, f: string) => c.lib.text[k] ?? f
   return (
     <button className="tv-tile" data-game={game.id} onFocus={onFocus}
       // detail is 0 for Enter, Space and the controller's A (a click() with no mouse).
       onClick={(e) => (e.detail === 0 ? commit() : onFocus ? undefined : c.onOpen(game))}
       onDoubleClick={() => onFocus && commit()}
-      aria-label={`${game.name}, ${line.text}`}>
+      aria-label={`${game.name}, ${line.text}${rooms ? `, ${rooms} open` : ''}`}>
       <span className="art">
         <Cover game={game} className="fill" />
+        <span className="badges">
+          {game.onlineId && <span className="badge">{t('badge.online', 'Online')}</span>}
+          {game.mod && <span className="badge">{t('badge.pc', 'PC')}</span>}
+        </span>
         {c.favs.has(game.id) && <span className="badge star">{'★'}</span>}
       </span>
       <span className="name">{game.name}</span>
-      <span className={`st tone-${line.tone}`}>{line.text}</span>
+      <span className="st">
+        <span className={`tone-${line.tone}`}>{line.text}</span>
+        {rooms > 0 && <span className="tone-online">{rooms === 1 ? '1 open' : `${rooms} open`}</span>}
+      </span>
     </button>
   )
 }
@@ -61,6 +71,12 @@ function useFirstFocus(box: RefObject<HTMLElement | null>, key: number = 0) {
     if (!b || b.contains(document.activeElement)) return
     ;(b.querySelector<HTMLElement>('.tv-tile') ?? b.querySelector<HTMLElement>('button:not(:disabled)'))?.focus({ preventScroll: true })
   }, [box, key])
+}
+
+// The selected game's name decodes as the selection moves, as the C++ window's title does; readers get the name.
+function HeroTitle({ name }: { name: string }) {
+  const shown = useDecode(name)
+  return <h1 aria-label={name}><span aria-hidden="true">{shown}</span></h1>
 }
 
 export function TvHome({ c, games }: { c: TvCommon; games: Game[] }) {
@@ -85,7 +101,7 @@ export function TvHome({ c, games }: { c: TvCommon; games: Game[] }) {
       <section className="tv-hero" data-game={g.id} key={g.id}>
         <div className="tv-hero-text">
           <span className="tv-kick">{when ? `Played ${agoText(when)}` : g.mod ? 'PC game mod' : g.onlineId ? 'Play online' : 'Play together'}</span>
-          <h1>{g.name}</h1>
+          <HeroTitle name={g.name} />
           <span className="tv-based">
             <Pips n={g.maxPlayers} colors={c.lib.branding.playerColors} />
             <span>{g.mod ? <>Mod for <b>{g.mod.gameName || g.name}</b></> : <b>{g.players}</b>}</span>
@@ -225,10 +241,31 @@ export function TvStarting({ game, lib, label, pad, onBack }: { game: Game; lib:
   )
 }
 
+type HintPlace = 'game' | 'sheet' | 'keys' | 'other'
+const HINTS: Record<HintPlace, { pad: string[][]; keys: string[][] }> = {
+  game: {
+    pad: [['A', 'Play'], ['Y', 'Game page'], ['X', 'Favorite'], ['B', 'Back'], ['LB RB', 'Sections'], ['Start', 'Leave TV mode']],
+    keys: [['Enter', 'Play'], ['Double-click', 'Play'], ['Arrows', 'Move'], ['Esc', 'Back'], ['PgUp PgDn', 'Sections'], ['F11', 'Leave TV mode']],
+  },
+  sheet: { pad: [['A', 'Choose'], ['B', 'Back']], keys: [['Enter', 'Choose'], ['Arrows', 'Move'], ['Esc', 'Back']] },
+  keys: { pad: [['A', 'Type'], ['X', 'Delete'], ['B', 'Back']], keys: [['Letters', 'Type'], ['Backspace', 'Delete'], ['Enter', 'Join'], ['Esc', 'Back']] },
+  other: {
+    pad: [['A', 'Select'], ['B', 'Back'], ['LB RB', 'Sections'], ['Start', 'Leave TV mode']],
+    keys: [['Arrows', 'Move'], ['Enter', 'Select'], ['Esc', 'Back'], ['PgUp PgDn', 'Sections'], ['F11', 'Leave TV mode']],
+  },
+}
+const placeOf = (el: Element | null): HintPlace =>
+  el?.closest('.tv-kb') ? 'keys' : el?.closest('[aria-modal="true"]') ? 'sheet' : el?.closest('[data-game]') ? 'game' : 'other'
+
+// The buttons that do something where the focus is: on a game, in a sheet, on the on-screen keyboard, elsewhere.
 export function TvHints({ pad, children }: { pad: boolean; children?: ReactNode }) {
-  const keys = pad
-    ? [['A', 'Select'], ['B', 'Back'], ['X', 'Favorite'], ['Y', 'Game page'], ['LB RB', 'Sections'], ['Start', 'Leave TV mode']]
-    : [['Arrows', 'Move'], ['Enter', 'Select'], ['Double-click', 'Play'], ['Esc', 'Back'], ['PgUp PgDn', 'Sections'], ['F11', 'Leave TV mode']]
+  const [place, setPlace] = useState<HintPlace>(() => placeOf(document.activeElement))
+  useEffect(() => {
+    const onFocus = () => setPlace(placeOf(document.activeElement))
+    document.addEventListener('focusin', onFocus)
+    return () => document.removeEventListener('focusin', onFocus)
+  }, [])
+  const keys = pad ? HINTS[place].pad : HINTS[place].keys
   return (
     <footer className="tv-hints">
       {keys.map(([k, l]) => <span key={k}>{k.split(' ').map((x) => <kbd key={x} className="pk">{x}</kbd>)}{l}</span>)}

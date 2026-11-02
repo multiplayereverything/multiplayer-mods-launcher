@@ -8,33 +8,7 @@ import {
   roomAbout, stateLine,
 } from './model'
 import { Glyph, PanelButton, SiteBlock, Slots, Switch } from './ui'
-
-const SCRAMBLE = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789#%&'
-const reduceMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches
-
-// The title decodes on a new page: one of the few moves tied to a real event.
-function useDecode(text: string): string {
-  const [shown, setShown] = useState(text)
-  useEffect(() => {
-    if (reduceMotion()) {
-      setShown(text)
-      return
-    }
-    let frame = 0
-    const total = 14
-    const id = window.setInterval(() => {
-      frame++
-      const settled = Math.floor((frame / total) * text.length)
-      setShown(text.split('').map((ch, i) => (i < settled || ch === ' ' ? ch : SCRAMBLE[Math.floor(Math.random() * SCRAMBLE.length)])).join(''))
-      if (frame >= total) {
-        window.clearInterval(id)
-        setShown(text)
-      }
-    }, 28)
-    return () => window.clearInterval(id)
-  }, [text])
-  return shown
-}
+import { useDecode } from './useDecode'
 
 function Dialog({ title, children, onClose }: { title: string; children: ReactNode; onClose: () => void }) {
   const box = useRef<HTMLDivElement>(null)
