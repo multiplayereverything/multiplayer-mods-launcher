@@ -464,8 +464,10 @@ export default function App() {
     const id = document.activeElement instanceof HTMLElement ? document.activeElement.closest('[data-game]')?.getAttribute('data-game') : null
     return lib?.games.find((g) => g.id === id) ?? (view === 'game' ? lib?.games.find((g) => g.id === gameId) : undefined)
   }
+  // TV mode always starts on Home, with a game to stand on; leaving it keeps the page you're on.
   const toggleTv = () => {
-    setTv((v) => !v)
+    if (!tv) go('home')
+    setTv(!tv)
     setSwitcher(false)
   }
   const pad = usePad({
