@@ -31,13 +31,18 @@ function Items({ items }: { items: Item[] }) {
 
 const ROWS = ['1234567890', 'QWERTYUIOP', 'ASDFGHJKL', 'ZXCVBNM']
 
+// A code stops at five; it grows past that only as an address, once it has a '.' or ':' (192.168.1.20:7790).
+function grow(t: string, ch: string, address: boolean): string {
+  const isAddress = address && /[.:]/.test(t + ch)
+  return t.length < (isAddress ? 40 : 5) ? t + ch : t
+}
+
 // A room code is five letters and digits; with `address` the host's IP and port can be typed instead.
 function CodeKeyboard({ address, pad, padRef, onJoin }: { address: boolean; pad: boolean; padRef: MutableRefObject<SheetPad>; onJoin: (text: string) => void }) {
   const [text, setText] = useState('')
   const isAddress = address && looksLikeAddress(text)
   const ok = isAddress ? text.trim().length > 3 : text.length === 5
-  const max = address ? 40 : 5
-  const type = (ch: string) => setText((t) => (t.length < max ? t + ch : t))
+  const type = (ch: string) => setText((t) => grow(t, ch, address))
   const del = () => setText((t) => t.slice(0, -1))
   const box = useRef<HTMLDivElement>(null)
   const latest = useRef({ text, ok, onJoin })
@@ -47,7 +52,7 @@ function CodeKeyboard({ address, pad, padRef, onJoin }: { address: boolean; pad:
   useEffect(() => {
     box.current?.querySelector<HTMLElement>('button')?.focus({ preventScroll: true })
     const pr = padRef.current
-    const add = (ch: string) => setText((t) => (t.length < max ? t + ch : t))
+    const add = (ch: string) => setText((t) => grow(t, ch, address))
     const back = () => setText((t) => t.slice(0, -1))
     pr.x = () => (back(), true)
     // A real keyboard types straight in; Enter joins once the code is whole.
@@ -67,7 +72,7 @@ function CodeKeyboard({ address, pad, padRef, onJoin }: { address: boolean; pad:
       window.removeEventListener('keydown', onKey, true)
       pr.x = undefined
     }
-  }, [address, max, padRef])
+  }, [address, padRef])
 
   return (
     <div className="tv-kb" ref={box}>
