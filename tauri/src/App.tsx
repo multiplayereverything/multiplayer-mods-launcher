@@ -8,7 +8,7 @@ import { Switcher, type SwitchTarget } from './Switcher'
 import { TV_SECTIONS, TvHints, TvHome, TvLibrary, TvRooms, TvTop, type TvCommon, type TvSection } from './Tv'
 import {
   downloadGame, launch, live, loadLibrary, loadMods, installPlayer, loadAllRooms, minimizeWindow, modJob, notify, ping, restoreWindow, updatePlayers, onDownloadEnded, onHostStatus,
-  onLaunchEnded, onModProgress, pickFile, pickFolder, setFavorite, setFullscreen, setSetting, setGameDir, setGameFile, stopSession, windowControl,
+  onLaunchEnded, onModProgress, pickFile, pickFolder, setFavorite, setFullscreen, setSetting, setTvMode, setGameDir, setGameFile, stopSession, windowControl,
   type Game, type Library, type ModInfo, type RelayStatus, type Room, type Rooms, type Settings,
 } from './api'
 import { agoText, isCoop, roomAbout, joinByCode, lastPlayed, leadAction, playersShort, statusOf } from './model'
@@ -170,6 +170,7 @@ export default function App() {
   const tvShown = useRef(false)
   useEffect(() => {
     keep('fl.tv', tv ? '1' : '0')
+    setTvMode(tv)
     if (tv || tvShown.current) void setFullscreen(tv)
     tvShown.current = tv
   }, [tv])

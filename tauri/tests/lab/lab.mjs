@@ -55,7 +55,7 @@ const fails = join(work, 'fails')
 const env = {
   ...process.env,
   FL_LAUNCHER_EXE: launcher, FL_LAUNCHER_CONFIG: box.config, FL_FAKE_OUT: box.args, FL_FAKE_MS: String(FAKE_MS),
-  FL_NO_NAME_PROMPT: '1', FL_NO_DISCORD: '1',
+  FL_NO_NAME_PROMPT: '1', FL_NO_DISCORD: '1', FL_FAKE_ENV: 'FAKE_TV',
 }
 const driverProc = spawn('tauri-driver', ['--port', '4444', '--native-driver', edgeDriver], { env, stdio: 'ignore' })
 const wd = new Driver('http://127.0.0.1:4444')
@@ -512,7 +512,8 @@ const scenarios = {
   async stats() {
     // A game played and closed, so the play is counted.
     await openGame('Relay Test')
-    await launch('Play')
+    const plain = await launch('Play')
+    await check('outside TV mode a game gets no TV options', plain.length > 0 && !plain.includes('--fullscreen') && !plain.some((a) => a.startsWith('ENV ')), plain.join(' '))
     await waitFor(() => (settings().games?.relaygame?.plays ?? 0) > 0, FAKE_MS + 8000)
     await openGame('Relay Test')
     const played = await wd.exec("return [...document.querySelectorAll('.stats > div')].find(d => d.querySelector('span')?.textContent === 'Played')?.querySelector('b')?.textContent")
@@ -537,7 +538,9 @@ const scenarios = {
     // A on a ready game starts it, through the same launch as the window's Play.
     clearArgs()
     await wd.click(`//button[contains(@class,'tv-tile')][.//span[contains(@class,'name') and normalize-space(.)=${q('Relay Test')}]]`)
-    await check('a game in the row starts with A', (await launchedWith()).some((a) => a.includes('.swf')))
+    const tvRun = await launchedWith()
+    await check('a game in the row starts with A', tvRun.some((a) => a.includes('.swf')))
+    await check('a game started from TV mode gets the player\'s TV options', tvRun.includes('--fullscreen') && tvRun.includes('ENV FAKE_TV=1'), tvRun.join(' '))
 
     await key('PageDown')
     await check('RB goes to Games', !!(await waitFor(async () => (await wd.count("//div[contains(@class,'tv-lib')]")) > 0)))

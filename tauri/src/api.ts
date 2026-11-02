@@ -153,8 +153,14 @@ export async function loadMods(): Promise<Record<string, ModInfo>> {
 export const loadRooms = (game: string): Promise<Rooms> =>
   live ? invoke<Rooms>('rooms', { game }) : Promise.resolve({ server: 'sample', onServer: true, error: '', rooms: [] })
 
+// Games started while TV mode is on start as from TV mode (--tv: the player's full-screen and controller options).
+let tvMode = false
+export const setTvMode = (on: boolean) => {
+  tvMode = on
+}
+
 export const launch = (game: string, action: string, code?: string, address?: string, coopSave?: string): Promise<number> =>
-  live ? invoke<number>('launch', { game, action, code, address, coopSave }) : Promise.resolve(0)
+  live ? invoke<number>('launch', { game, action, code, address, coopSave, tv: tvMode }) : Promise.resolve(0)
 export const setGameSetting = (game: string, id: string, value: string): Promise<void> =>
   live ? invoke('set_game_setting', { game, id, value }) : Promise.resolve()
 export const setGamePlayer = (game: string, player: string): Promise<void> =>
@@ -281,7 +287,7 @@ export type LobbyMessage =
   | { t: 'ended' }
 
 export const lobbyStart = (game: string, request: LobbyRequest): Promise<void> =>
-  live ? invoke('lobby_start', { game, request }) : Promise.reject(new Error('The lobby needs the Tauri window'))
+  live ? invoke('lobby_start', { game, request, tv: tvMode }) : Promise.reject(new Error('The lobby needs the Tauri window'))
 export const lobbySend = (command: LobbyCommand): Promise<void> => (live ? invoke('lobby_send', { command }) : Promise.resolve())
 
 export interface LaunchEnded { session: number; game: string; code: number; message: string }

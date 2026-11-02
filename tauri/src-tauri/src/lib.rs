@@ -95,12 +95,16 @@ fn launch(
     code: Option<String>,
     address: Option<String>,
     coop_save: Option<String>,
+    tv: Option<bool>,
 ) -> Result<u32, String> {
     static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
     let session = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     // --wait: the launcher stays until the game exits, so the window knows it is running, its time is counted and
     // Discord shows it.
     let mut args = vec!["--launch".to_string(), format!("{game}:{action}"), "--json".into(), "--wait".into()];
+    if tv == Some(true) {
+        args.push("--tv".into());
+    }
     if let Some(s) = coop_save.filter(|s| !s.is_empty() && s != "continue") {
         args.extend(["--coop-save".into(), s]);
     }
@@ -347,11 +351,15 @@ struct LobbyEvent {
 /// Opens a lobby room: runs `--lobby-session <game>`, hands it the host or join request, and passes each line it
 /// prints to the window as a `lobby` event (snapshots, the game starting and exiting, the room closing).
 #[tauri::command]
-fn lobby_start(app: AppHandle, shared: State<'_, Shared>, game: String, request: serde_json::Value) -> Result<(), String> {
+fn lobby_start(app: AppHandle, shared: State<'_, Shared>, game: String, request: serde_json::Value, tv: Option<bool>) -> Result<(), String> {
     if shared.lobby.lock().unwrap().is_some() {
         return Err("A room is already open".into());
     }
-    let mut child = engine::spawn(&["--lobby-session".into(), game.clone()], true)?;
+    let mut args = vec!["--lobby-session".to_string(), game.clone()];
+    if tv == Some(true) {
+        args.push("--tv".into());
+    }
+    let mut child = engine::spawn(&args, true)?;
     let mut input = child.stdin.take().ok_or("No input to the lobby")?;
     writeln!(input, "{request}").map_err(|e| e.to_string())?;
     let stdout = child.stdout.take();

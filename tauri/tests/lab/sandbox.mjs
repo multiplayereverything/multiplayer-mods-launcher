@@ -73,7 +73,8 @@ export function makeSandbox(work, fakePlayer) {
     downloads: { catalog: `http://127.0.0.1:${PORTS.http}/catalog.json`, modsInfo: `http://127.0.0.1:${PORTS.http}/` },
     rooms: { server: `127.0.0.1:${PORTS.rooms}`, refreshSeconds: 10 },
     players: [
-      { id: 'fake', name: 'Fake Player', paths: [fakePlayer], args: ['--fake-player'], flashvarArg: '-P${KEY}=${VALUE}', coopSaveArg: '--coop-save' },
+      { id: 'fake', name: 'Fake Player', paths: [fakePlayer], args: ['--fake-player'], flashvarArg: '-P${KEY}=${VALUE}', coopSaveArg: '--coop-save',
+        tv: { args: ['--fullscreen'], env: { FAKE_TV: '1' } } },
       { id: 'second', name: 'Second Player', paths: [fakePlayer], args: ['--fake-player', '--second-player'] },
       { id: 'ruffle', name: 'Ruffle Together', paths: ['${PLAYERS_DIR}\\ruffle\\ruffle.exe'],
         install: { url: `http://127.0.0.1:${PORTS.http}/ruffle.zip`, sha256: sha256(ruffleZip), dir: '${PLAYERS_DIR}\\ruffle', exe: 'ruffle.exe' } },
