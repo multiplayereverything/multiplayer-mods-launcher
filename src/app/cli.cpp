@@ -67,6 +67,7 @@ Args parseArgs(int argc, wchar_t** argv) {
         else if (k == L"--update-players") a.updatePlayers = true;
         else if (k == L"--wait") a.wait = true;
         else if (k == L"--tv") a.tv = true;
+        else if (k == L"--check") a.check = true;
         else if (k == L"--lobby-session") {
             value(tmp);
             a.lobbySession = narrow(tmp);
@@ -118,6 +119,8 @@ launcher.json next to the exe.
                          online game, with --json)
   --update               Install the newest launcher release now, if there is one
   --update-players       Bring the players the launcher installed up to their newest release
+    --check              ...only say whether a newer release exists, install nothing
+                         (with --json, a download prints {"progress":...} lines first)
   --mods                 List the PC game mods: game found, installed version, newest version
   --install-mod <id>     Install (or update) a PC game mod into its game's folder
   --repair-mod <id>      Put back missing or damaged files of an installed mod

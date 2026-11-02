@@ -372,7 +372,8 @@ InstallResult installPlayer(const PlayerSpec& player, const Vars& vars, const In
     return r;
 }
 
-PlayerUpdate updateInstalledPlayer(const PlayerSpec& player, const Vars& vars, const std::atomic<bool>* cancel) {
+PlayerUpdate updateInstalledPlayer(const PlayerSpec& player, const Vars& vars, const std::atomic<bool>* cancel,
+                                   bool install, const InstallProgress& progress) {
     PlayerUpdate u;
     const InstallSpec& spec = player.install;
     if (spec.github.empty()) return u;  // only a player the launcher installed from a release is kept current
@@ -391,9 +392,12 @@ PlayerUpdate updateInstalledPlayer(const PlayerSpec& player, const Vars& vars, c
     std::string installed;
     fs::readText(fs::join(target, kPlayerVersionFile), installed);
     std::wstring have = trim(widen(installed));
+    u.installed = have;
     if (!have.empty() && compareVersions(bareVersion(asset.version), bareVersion(have)) <= 0) return u;
+    u.available = true;
+    if (!install) return u;
     logger().info(player.name + L" " + (have.empty() ? std::wstring(L"(unknown version)") : have) + L" -> " + asset.version);
-    InstallResult r = installPlayer(player, vars, nullptr, cancel);
+    InstallResult r = installPlayer(player, vars, progress, cancel);
     u.updated = r.ok;
     if (!r.ok) u.error = r.error;
     return u;

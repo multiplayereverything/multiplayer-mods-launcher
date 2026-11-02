@@ -37,14 +37,18 @@ InstallResult installPlayer(const PlayerSpec& player, const Vars& vars, const In
 inline constexpr const wchar_t* kPlayerVersionFile = L".version";
 
 struct PlayerUpdate {
-    bool checked = false;  // the newest release was looked up
-    bool updated = false;  // a newer release is now installed
-    std::wstring version;  // the newest release's tag
+    bool checked = false;    // the newest release was looked up
+    bool available = false;  // it is newer than the installed copy
+    bool updated = false;    // a newer release is now installed
+    std::wstring version;    // the newest release's tag
+    std::wstring installed;  // the installed copy's tag (empty: not recorded)
     std::wstring error;
 };
 // When the launcher installed `player` from a GitHub release and a newer release exists, installs it over the old
-// one. A player the launcher didn't install (not in install.dir) is left alone. Needs the player not to be running.
-PlayerUpdate updateInstalledPlayer(const PlayerSpec& player, const Vars& vars, const std::atomic<bool>* cancel);
+// one (`install` false: only says whether there is one, so a front end can ask first). A player the launcher didn't
+// install (not in install.dir) is left alone. Needs the player not to be running.
+PlayerUpdate updateInstalledPlayer(const PlayerSpec& player, const Vars& vars, const std::atomic<bool>* cancel,
+                                   bool install = true, const InstallProgress& progress = nullptr);
 
 // One downloadable game file from the game catalog (catalog.json in the
 // flash-games repository): `name` is the file name in the games folder and

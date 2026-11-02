@@ -483,8 +483,15 @@ TEST(a_player_the_launcher_installed_is_updated_only_when_a_newer_release_exists
     writeText(marker, "v1.0.1");
     api.version = L"1.0.1";
     PlayerUpdate same = updateInstalledPlayer(p, vars, nullptr);
-    CHECK(same.checked && !same.updated && same.error.empty());
+    CHECK(same.checked && !same.available && !same.updated && same.error.empty() && same.installed == L"v1.0.1");
     CHECK(readText(exe) == "old");
+
+    // Only asked (a front end asks the player first): the newer release is reported, nothing is downloaded.
+    api.version = L"1.0.2";
+    PlayerUpdate asked = updateInstalledPlayer(p, vars, nullptr, false);
+    CHECK(asked.checked && asked.available && !asked.updated && asked.error.empty() && !asked.version.empty());
+    CHECK(readText(exe) == "old");
+    CHECK(readText(marker) == "v1.0.1");
 
     // A newer release exists but can't be downloaded here: the installed copy stays exactly as it was.
     api.version = L"1.0.2";

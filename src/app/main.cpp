@@ -353,18 +353,40 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         json::Value list = json::Value::array();
         int failed = 0;
         for (const auto& p : cfg.players) {
-            PlayerUpdate u = updateInstalledPlayer(p, lib.vars(), nullptr);
+            // A front end draws its own progress bar: one line per whole percent while a release downloads.
+            int lastPct = -1;
+            InstallProgress progress;
+            if (a.json) {
+                progress = [&](const InstallStatus& s) {
+                    if (s.stage != InstallStatus::Stage::Downloading || !s.total) return;
+                    int pct = static_cast<int>(s.done * 100 / s.total);
+                    if (pct == lastPct) return;
+                    lastPct = pct;
+                    json::Value pr = json::Value::object();
+                    pr.set("id", p.id);
+                    pr.set("done", static_cast<double>(s.done));
+                    pr.set("total", static_cast<double>(s.total));
+                    json::Value line = json::Value::object();
+                    line.set("progress", std::move(pr));
+                    out(widen(json::serialize(line, false)) + L"\n");
+                };
+            }
+            PlayerUpdate u = updateInstalledPlayer(p, lib.vars(), nullptr, !a.check, progress);
             if (!u.error.empty()) failed++;
             if (a.json) {
                 json::Value o = json::Value::object();
                 o.set("id", p.id);
                 o.set("checked", u.checked);
+                o.set("available", u.available);
                 o.set("updated", u.updated);
+                o.set("installed", narrow(u.installed));
                 o.set("version", narrow(u.version));
                 o.set("error", narrow(u.error));
                 list.push(std::move(o));
             } else if (u.updated) {
                 out(p.name + L" updated to " + u.version + L"\n");
+            } else if (u.available) {
+                out(p.name + L" " + u.version + L" is available (installed: " + (u.installed.empty() ? std::wstring(L"unknown") : u.installed) + L")\n");
             } else if (u.checked) {
                 out(p.name + L" is up to date (" + u.version + L")\n");
             } else if (!u.error.empty()) {
