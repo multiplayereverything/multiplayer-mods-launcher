@@ -21,6 +21,7 @@
         "minWidth": 900,
         "minHeight": 560,
         "center": true,
+        "backgroundColor": "#15171c",
         "devtools": false
       }
     ],

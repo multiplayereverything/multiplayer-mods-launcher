@@ -6,6 +6,7 @@
 use std::collections::BTreeMap;
 
 use super::config::{Config, GameSpec, parse_color};
+use super::http;
 use super::json::{self, Value};
 use super::paths;
 use super::text::to_lower;
@@ -165,6 +166,85 @@ pub fn save_site_cache(path: &str, cache: &SiteCache) -> bool {
     let text = serde_json::to_string_pretty(&serde_json::json!({ "at": cache.fetched_at, "games": cache.raw })).unwrap_or_default();
     paths::ensure_dir(&paths::parent(path));
     paths::write_file(path, format!("{text}\n").as_bytes())
+}
+
+/// How long a copy of games.json is used before the website is asked again.
+pub const MAX_AGE_SECONDS: i64 = 3600;
+
+fn now_unix() -> i64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0)
+}
+
+fn fetchable(url: &str) -> bool {
+    let low = to_lower(url);
+    low.starts_with("https://") || low.starts_with("http://127.0.0.1")
+}
+
+/// games.json from the website, unless the saved copy is under an hour old (old/src/core/site.cpp `loadSite`). Ok(true)
+/// when a copy that differs from the saved one came; Ok(false) when the saved copy is still fresh or the same. A failed
+/// fetch keeps the saved copy and says why.
+pub fn refresh_site_cache(url: &str, cache_path: &str) -> Result<bool, String> {
+    let saved = load_site_cache(cache_path).filter(|c| parse_site(c.raw.as_bytes()).is_some());
+    let now = now_unix();
+    if saved.as_ref().is_some_and(|c| c.fresh(now, MAX_AGE_SECONDS)) {
+        return Ok(false);
+    }
+    if !fetchable(url) {
+        return Err("No https address for the website's data".into());
+    }
+    let body = http::get_text(url)?;
+    if parse_site(&body).is_none() {
+        return Err("The website's data isn't in the expected shape".into());
+    }
+    let raw = String::from_utf8_lossy(&body).to_string();
+    let changed = saved.as_ref().is_none_or(|c| c.raw != raw);
+    save_site_cache(cache_path, &SiteCache { fetched_at: now, raw });
+    Ok(changed)
+}
+
+/// A cover picture from the website, kept only when it is a PNG, JPEG or WebP of at most 3 MB (install.cpp
+/// `downloadImage`); written beside its place first, so a cut-off download never shows.
+pub fn download_image(url: &str, dest: &str) -> Result<(), String> {
+    if !fetchable(url) {
+        return Err("Pictures are only fetched over https".into());
+    }
+    let data = http::get(url, 3 * 1024 * 1024).map_err(|e| if e.starts_with("Could not write") { "The picture is too large".into() } else { e })?;
+    let png = data.len() > 8 && data.starts_with(&[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]);
+    let jpg = data.len() > 3 && data.starts_with(&[0xFF, 0xD8]);
+    let webp = data.len() > 12 && data.starts_with(b"RIFF") && &data[8..12] == b"WEBP";
+    if !png && !jpg && !webp {
+        return Err("That isn't a PNG, JPEG or WebP picture".into());
+    }
+    let part = format!("{dest}.part");
+    paths::ensure_dir(&paths::parent(dest));
+    if !paths::write_file(&part, &data) || paths::move_file(&part, dest, true).is_err() {
+        paths::delete_file(&part);
+        return Err(format!("Cannot write {dest}"));
+    }
+    Ok(())
+}
+
+/// The covers a merged list shows from the website and doesn't have yet (site.cpp `fetchSiteCovers`), fetched from
+/// beside games.json; how many came.
+pub fn fetch_site_covers(merged: &Config, list: &[SiteGame], site_url: &str, cover_dir: &str) -> usize {
+    let Some(slash) = site_url.rfind('/') else { return 0 };
+    let base = &site_url[..=slash];
+    let mut got = 0;
+    for g in &merged.games {
+        let Some(k) = find_site(list, &g.site_id, &g.id, &g.online_id) else { continue };
+        let s = &list[k];
+        if s.cover.is_empty() {
+            continue;
+        }
+        let dest = site_cover_file(cover_dir, s);
+        if g.image != dest || paths::is_file(&dest) {
+            continue; // not using the website's cover, or already has it
+        }
+        if download_image(&format!("{base}{}", s.cover), &dest).is_ok() {
+            got += 1;
+        }
+    }
+    got
 }
 
 /// Where the cover of site game `s` is kept: <coverDir>\site-<id>.png (or .jpg, .webp).

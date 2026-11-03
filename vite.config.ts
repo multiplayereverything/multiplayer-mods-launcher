@@ -5,5 +5,11 @@ import { defineConfig } from 'vite'
 export default defineConfig({
   plugins: [react()],
   clearScreen: false,
-  server: { port: 1420, strictPort: true },
+  server: {
+    port: 1420,
+    strictPort: true,
+    // Only src/ is the page. Watching the Rust build output, the old C++ tree and the other projects in this folder
+    // (tens of thousands of files) held the first page back by 20 seconds or more on every start.
+    watch: { ignored: ['**/src-tauri/**', '**/old/**', '**/reports-api/**', '**/trailer/**', '**/graphify-out/**', '**/tests/**', '**/launcher/**', '**/docs/**'] },
+  },
 })

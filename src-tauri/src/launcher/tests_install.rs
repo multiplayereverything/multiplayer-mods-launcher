@@ -395,3 +395,57 @@ fn unknown_ids_exit_3_as_the_cpp_launcher_did() {
     assert!(paths::is_dir(&dir.join("games")) && paths::is_dir(&dir.join("players")), "the folders exist from the first command");
     unsafe { std::env::remove_var("FL_LAUNCHER_CONFIG") };
 }
+
+#[test]
+fn the_websites_games_json_is_fetched_at_most_once_an_hour() {
+    use super::site::{SiteCache, load_site_cache, refresh_site_cache, save_site_cache};
+    let dir = TempDir::new("site-fetch");
+    let cache = dir.join("site.json");
+    let s = Server::new();
+    let first = br#"{"games":[{"id":"gunmayhem2","name":"Gun Mayhem 2"}]}"#;
+    s.set("/games.json", first);
+    // No copy yet: it is fetched and kept.
+    assert_eq!(refresh_site_cache(&s.url("/games.json"), &cache), Ok(true));
+    assert_eq!(load_site_cache(&cache).unwrap().raw.as_bytes(), first);
+    // Under an hour old: the website isn't asked again, even when it changed.
+    s.set("/games.json", br#"{"games":[{"id":"newgame","name":"New Game"}]}"#);
+    assert_eq!(refresh_site_cache(&s.url("/games.json"), &cache), Ok(false));
+    assert_eq!(s.hits("/games.json"), 1);
+    // An hour old: fetched again, and the change is reported.
+    let old = load_site_cache(&cache).unwrap();
+    save_site_cache(&cache, &SiteCache { fetched_at: old.fetched_at - 3600, raw: old.raw });
+    assert_eq!(refresh_site_cache(&s.url("/games.json"), &cache), Ok(true));
+    assert!(load_site_cache(&cache).unwrap().raw.contains("newgame"));
+    // The same answer again is not a change.
+    let old = load_site_cache(&cache).unwrap();
+    save_site_cache(&cache, &SiteCache { fetched_at: old.fetched_at - 3600, raw: old.raw });
+    assert_eq!(refresh_site_cache(&s.url("/games.json"), &cache), Ok(false));
+    // A broken answer or a dead website keeps the copy it had.
+    let old = load_site_cache(&cache).unwrap();
+    save_site_cache(&cache, &SiteCache { fetched_at: old.fetched_at - 3600, raw: old.raw.clone() });
+    s.set("/games.json", b"<html>maintenance</html>");
+    assert_eq!(refresh_site_cache(&s.url("/games.json"), &cache).unwrap_err(), "The website's data isn't in the expected shape");
+    assert!(refresh_site_cache(&s.url("/gone.json"), &cache).unwrap_err().contains("404"));
+    assert_eq!(load_site_cache(&cache).unwrap().raw, old.raw);
+    // Only https (or loopback, for tests).
+    assert_eq!(refresh_site_cache("http://example.com/games.json", &dir.join("other.json")).unwrap_err(), "No https address for the website's data");
+}
+
+#[test]
+fn website_covers_are_pictures_or_nothing() {
+    use super::site::download_image;
+    let dir = TempDir::new("site-covers");
+    let s = Server::new();
+    let png = [&[0x89u8, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A][..], &[0u8; 32][..]].concat();
+    s.set("/covers/a.png", &png);
+    s.set("/covers/page.png", b"<html>not a picture</html>");
+    s.set("/covers/big.png", &vec![0u8; 3 * 1024 * 1024 + 10]);
+    let dest = dir.join("covers/site-a.png");
+    download_image(&s.url("/covers/a.png"), &dest).unwrap();
+    assert_eq!(std::fs::read(&dest).unwrap(), png);
+    assert_eq!(download_image(&s.url("/covers/page.png"), &dir.join("covers/x.png")).unwrap_err(), "That isn't a PNG, JPEG or WebP picture");
+    assert_eq!(download_image(&s.url("/covers/big.png"), &dir.join("covers/y.png")).unwrap_err(), "The picture is too large");
+    assert!(!paths::exists(&dir.join("covers/x.png")) && !paths::exists(&dir.join("covers/y.png")));
+    assert!(!paths::exists(&dir.join("covers/site-a.png.part")));
+    assert_eq!(download_image("http://example.com/a.png", &dir.join("z.png")).unwrap_err(), "Pictures are only fetched over https");
+}

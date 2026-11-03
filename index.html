@@ -4,10 +4,19 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>tauri</title>
+    <title>Multiplayer Everything</title>
+    <!-- Painted before any script or stylesheet loads, so the window is never white: the dark sidebar and page of the
+         boot screen (App.tsx), with the same colors as index.css. React replaces it on its first render. -->
+    <style>
+      html, body, #root { height: 100%; margin: 0; }
+      body { background: #15171c; }
+      .pre { height: 100%; display: flex; font: 12px 'Segoe UI', system-ui, sans-serif; color: #9aa1ac; }
+      .pre aside { width: 264px; flex: none; background: #0e1014; }
+      .pre main { padding: 40px 32px; }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root"><div class="pre" aria-busy="true"><aside></aside><main>Starting the launcher...</main></div></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

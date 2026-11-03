@@ -12,7 +12,7 @@ use super::embedded::{LAUNCHER_VERSION, read_embedded};
 use super::library::Library;
 use super::paths;
 use super::settings::{UserData, load_user_data};
-use super::site::{SiteGame, find_site, load_site_cache, merge_site, parse_site};
+use super::site::{SiteGame, fetch_site_covers, find_site, load_site_cache, merge_site, parse_site, refresh_site_cache};
 use super::text::atoi;
 use super::vars::Vars;
 
@@ -79,6 +79,31 @@ pub fn library_json() -> Result<Value, String> {
         }
     }
     Ok(build(&listed, &lib, &user, &site_list))
+}
+
+/// The website's games.json brought up to date in the data folder (at most once an hour), with any new covers it
+/// points at: true when the library should be read again. The C++ window did this on its own thread at start.
+pub fn refresh_site() -> Result<bool, String> {
+    let cfg = load_launcher_config()?;
+    if cfg.downloads.site.is_empty() || std::env::var_os("FL_NO_SITE").is_some() {
+        return Ok(false);
+    }
+    let (lib, _) = open_library(&cfg);
+    let cache = paths::join(&lib.data_dir(), "site.json");
+    let changed = refresh_site_cache(&cfg.downloads.site, &cache);
+    // Covers are looked for even when games.json didn't change: one that failed last time may come now.
+    let mut covers = 0;
+    if let Some(list) = load_site_cache(&cache).and_then(|c| parse_site(c.raw.as_bytes())) {
+        let cover_dir = paths::join(&lib.data_dir(), "covers");
+        let mut merged = cfg.clone();
+        merge_site(&mut merged, &list, &cover_dir);
+        covers = fetch_site_covers(&merged, &list, &cfg.downloads.site, &cover_dir);
+    }
+    match changed {
+        Ok(c) => Ok(c || covers > 0),
+        Err(_) if covers > 0 => Ok(true),
+        Err(e) => Err(e),
+    }
 }
 
 /// Where a game's cover is on disk: its own file, or the built-in one written out once under the data folder.

@@ -448,6 +448,13 @@ fn lobby_send(shared: State<'_, Shared>, command: serde_json::Value) -> Result<(
     input.flush().map_err(|e| e.to_string())
 }
 
+/// The website's games.json and its covers brought up to date (at most once an hour): true when the library should be
+/// read again, for a game the website added or a status that changed.
+#[tauri::command]
+async fn refresh_site() -> Result<bool, String> {
+    blocking(launcher::library_json::refresh_site).await
+}
+
 /// "How did it run?": the player's answer, sent to the central server with this PC's parts (src/launcher/reports.rs).
 #[tauri::command]
 async fn send_report(shared: State<'_, Shared>, game: String, verdict: String, version: String, mins: u64, note: String) -> Result<(), String> {
@@ -495,7 +502,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             library, mods, rooms, launch, stop_session, mod_job, download_game, set_favorite, set_setting, set_game_dir,
             set_game_file, lobby_start, lobby_send, open, install_player, set_game_setting, set_game_player,
-            check_players, update_players, ping, all_rooms, send_report, reports
+            check_players, update_players, ping, all_rooms, send_report, reports, refresh_site
         ])
         .run(tauri::generate_context!())
         .expect("error while building tauri application");

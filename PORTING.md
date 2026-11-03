@@ -37,8 +37,9 @@ The PC-mod engine is late on purpose: it writes into players' game folders, so i
 
 ## Found while porting (kept as the C++ does it, for later)
 
-- Part 1: the window never downloads the website's games.json; the library only reads the copy the C++ window
-  saved (data\site.json). The Rust side should fetch it, at most once an hour, as the C++ window did.
+- Part 1: the window never downloaded the website's games.json; the library only read the copy the C++ window
+  saved (data\site.json). Fixed: `refresh_site` (library_json.rs, site.rs) fetches it and its covers at start and
+  every hour, using the saved copy for an hour, as the C++ window did.
 - Part 1: with no "minimize" in settings.json, `user.minimize` reads true even when launcher.json's
   `behavior.minimizeOnLaunch` is false.
 - Part 1: the launcher version comes from old/CMakeLists.txt (src-tauri/build.rs); give it a home before old/ goes.

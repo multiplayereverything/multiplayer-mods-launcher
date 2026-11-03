@@ -10,7 +10,7 @@ import { TV_SECTIONS, TvHints, TvHome, TvLibrary, TvRooms, TvStarting, TvTop, ty
 import { TvPlaySheet, TvTextSheet, type SheetPad, type TextRequest } from './TvSheet'
 import {
   checkPlayers, downloadGame, launch, live, loadLibrary, loadMods, installPlayer, loadAllRooms, minimizeWindow, modJob, notify, ping, restoreWindow, updatePlayers, onDownloadEnded, onHostStatus,
-  loadReports, onLaunchEnded, onModProgress, onPlayerProgress, pickFile, pickFolder, setFavorite, setFullscreen, setSetting, setTvMode, noteTv, setGameDir, setGameFile, stopSession, windowControl,
+  loadReports, refreshSite, onLaunchEnded, onModProgress, onPlayerProgress, pickFile, pickFolder, setFavorite, setFullscreen, setSetting, setTvMode, noteTv, setGameDir, setGameFile, stopSession, windowControl,
   type Game, type Library, type ModInfo, type RelayStatus, type Room, type Rooms, type Settings,
 } from './api'
 import { agoText, isCoop, needsPlayMenu, roomAbout, joinByCode, lastPlayed, leadAction, playersShort, statusOf } from './model'
@@ -250,6 +250,15 @@ export default function App() {
     refresh()
     refreshMods()
   }, [refresh, refreshMods])
+
+  // What the website says: games it added show as Coming soon, and status and grades change. Asked at start and every
+  // hour (the copy on disk is used for an hour, so the website isn't asked more often than that).
+  useEffect(() => {
+    const ask = () => refreshSite().then((changed) => { if (changed) void refresh() }).catch(() => {})
+    ask()
+    const id = window.setInterval(ask, 3600000)
+    return () => window.clearInterval(id)
+  }, [refresh])
 
   // Coming back to the window: whether a modded game is still open may have changed (the C++ window polls it).
   // At most every 30 seconds, since each look asks mods-info.
