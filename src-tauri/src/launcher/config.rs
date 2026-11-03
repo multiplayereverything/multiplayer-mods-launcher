@@ -507,6 +507,8 @@ pub struct Config {
     pub behavior: Behavior,
     pub downloads: Downloads,
     pub rooms: Rooms,
+    /// Where "How did it run?" reports go and come from (reports-api/, src/launcher/reports.rs); empty = no reports.
+    pub reports_url: String,
     pub discord_client_id: String,
     pub updates: InstallSpec,
     pub players: Vec<PlayerSpec>,
@@ -529,6 +531,7 @@ impl Default for Config {
                 site: "https://www.multiplayereverything.com/games.json".into(),
             },
             rooms: Rooms { servers: String::new(), server: String::new(), refresh_seconds: 30 },
+            reports_url: String::new(),
             discord_client_id: String::new(),
             updates: InstallSpec::default(),
             players: Vec::new(),
@@ -1130,6 +1133,13 @@ pub fn load_config(text: &[u8], config_dir: &str) -> LoadResult {
             rs.integer("refreshSeconds", &mut c.rooms.refresh_seconds, 10, 3600);
             if !c.rooms.servers.is_empty() && !is_https_or_local(&c.rooms.servers) {
                 rs.error("servers", "must be an https:// address");
+            }
+        }
+        {
+            let s = Section::new(top.get("reports", Type::Object), "reports", &issues);
+            s.str("url", &mut c.reports_url);
+            if !c.reports_url.is_empty() && !is_https_or_local(&c.reports_url) && !starts_with_i(&c.reports_url, "http://localhost") {
+                s.error("url", "must be an https:// address");
             }
         }
         {

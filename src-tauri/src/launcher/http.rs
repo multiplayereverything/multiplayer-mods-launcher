@@ -52,6 +52,11 @@ pub fn is_rate_limit_message(text: &str) -> bool {
     text.starts_with("GitHub only allows 60 requests")
 }
 
+/// A WinHTTP text buffer up to its NUL.
+fn until_nul(b: &[u16]) -> String {
+    from_wide(&b[..b.iter().position(|&c| c == 0).unwrap_or(b.len())])
+}
+
 struct Handle(*mut core::ffi::c_void);
 
 impl Drop for Handle {
@@ -76,11 +81,16 @@ pub fn get(url: &str, limit: usize) -> Result<Vec<u8>, String> {
     Ok(body)
 }
 
-/// GET `url`, following redirects (GitHub sends downloads to its CDN), handing the body to `sink` as it arrives; a
-/// sink that answers false stops it ("Could not write the download to disk", the C++ wording whether the disk or a
-/// size limit refused); it is also told the Content-Length header (0 without one). `cancel` is looked at before each
-/// read.
-pub fn get_to(url: &str, sink: &mut dyn FnMut(&[u8], u64) -> bool, cancel: Option<&AtomicBool>) -> Result<(), String> {
+/// A request sent and its answer's headers read: the open handles (the request first, so it closes first) and the host.
+struct Open {
+    req: Handle,
+    _conn: Handle,
+    _session: Handle,
+    host: String,
+}
+
+/// Sends `verb` to `url` with `headers` and `body`, through the system's proxy, and reads the status code.
+fn open(url: &str, verb: &str, headers: &str, body: &[u8]) -> Result<(Open, u32), String> {
     let mut host = [0u16; 256];
     let mut path = [0u16; 4096];
     let mut extra = [0u16; 2048];
@@ -98,7 +108,6 @@ pub fn get_to(url: &str, sink: &mut dyn FnMut(&[u8], u64) -> bool, cancel: Optio
     if unsafe { WinHttpCrackUrl(wurl.as_ptr(), 0, 0, &mut uc) } == 0 {
         return Err(format!("Bad download address: {url}"));
     }
-    let until_nul = |b: &[u16]| from_wide(&b[..b.iter().position(|&c| c == 0).unwrap_or(b.len())]);
     let host_s = until_nul(&host);
     let agent = wide("MultiplayerEverything-Launcher/1.0");
     let session = Handle(unsafe {
@@ -111,7 +120,7 @@ pub fn get_to(url: &str, sink: &mut dyn FnMut(&[u8], u64) -> bool, cancel: Optio
     let conn = Handle(unsafe { WinHttpConnect(session.0, whost.as_ptr(), uc.nPort, 0) });
     let object = wide(&(until_nul(&path) + &until_nul(&extra)));
     let flags = if uc.nScheme == WINHTTP_INTERNET_SCHEME_HTTPS { WINHTTP_FLAG_SECURE } else { 0 };
-    let verb = wide("GET");
+    let verb = wide(verb);
     let req = Handle(if conn.0.is_null() {
         std::ptr::null_mut()
     } else {
@@ -120,9 +129,9 @@ pub fn get_to(url: &str, sink: &mut dyn FnMut(&[u8], u64) -> bool, cancel: Optio
     if req.0.is_null() {
         return Err(last_error(&format!("Connecting to {host_s}")));
     }
-    // GitHub's API answers JSON only to clients that send an Accept header.
-    let headers = wide("Accept: application/vnd.github+json, */*\r\n");
-    if unsafe { WinHttpSendRequest(req.0, headers.as_ptr(), u32::MAX, std::ptr::null(), 0, 0, 0) } == 0
+    let headers = wide(headers);
+    let len = body.len() as u32;
+    if unsafe { WinHttpSendRequest(req.0, headers.as_ptr(), u32::MAX, body.as_ptr().cast(), len, len, 0) } == 0
         || unsafe { WinHttpReceiveResponse(req.0, std::ptr::null_mut()) } == 0
     {
         return Err(last_error(&format!("Downloading from {host_s}")));
@@ -139,6 +148,45 @@ pub fn get_to(url: &str, sink: &mut dyn FnMut(&[u8], u64) -> bool, cancel: Optio
             std::ptr::null_mut(),
         )
     };
+    Ok((Open { req, _conn: conn, _session: session, host: host_s }, status))
+}
+
+/// The rest of an answer, at most `limit` bytes.
+fn read_all(req: &Handle, limit: usize) -> Result<Vec<u8>, String> {
+    let mut out = Vec::new();
+    let mut buf = vec![0u8; 64 * 1024];
+    loop {
+        let mut got = 0u32;
+        if unsafe { WinHttpReadData(req.0, buf.as_mut_ptr().cast(), buf.len() as u32, &mut got) } == 0 {
+            return Err(last_error("The answer was interrupted"));
+        }
+        if got == 0 || out.len() >= limit {
+            out.truncate(limit);
+            return Ok(out);
+        }
+        out.extend_from_slice(&buf[..got as usize]);
+    }
+}
+
+/// A JSON request to a web service of ours (the reports, src/launcher/reports.rs): the status code and the body, which
+/// carries the service's own reason when it refuses. GET when `body` is None.
+pub fn json_request(url: &str, body: Option<&str>) -> Result<(u32, Vec<u8>), String> {
+    let (verb, data) = match body {
+        Some(b) => ("POST", b.as_bytes()),
+        None => ("GET", &[][..]),
+    };
+    let (r, status) = open(url, verb, "Accept: application/json\r\nContent-Type: application/json\r\n", data)?;
+    Ok((status, read_all(&r.req, 1024 * 1024)?))
+}
+
+/// GET `url`, following redirects (GitHub sends downloads to its CDN), handing the body to `sink` as it arrives; a
+/// sink that answers false stops it ("Could not write the download to disk", the C++ wording whether the disk or a
+/// size limit refused); it is also told the Content-Length header (0 without one). `cancel` is looked at before each
+/// read.
+pub fn get_to(url: &str, sink: &mut dyn FnMut(&[u8], u64) -> bool, cancel: Option<&AtomicBool>) -> Result<(), String> {
+    // GitHub's API answers JSON only to clients that send an Accept header.
+    let (r, status) = open(url, "GET", "Accept: application/vnd.github+json, */*\r\n", &[])?;
+    let (req, host_s) = (&r.req, &r.host);
     if status != 200 {
         let mut error = format!("{host_s} answered HTTP {status}");
         // GitHub allows 60 requests an hour without signing in: say how long until it answers again.

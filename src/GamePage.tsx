@@ -7,6 +7,7 @@ import {
   agoText, fileAction, hostChoices, isCoop, joinByAddress, joinByCode, lastPlayed, looksLikeAddress, mainActions, moreActions, newer,
   roomAbout, stateLine,
 } from './model'
+import { HowItRuns } from './Reports'
 import { Glyph, PanelButton, SiteBlock, Slots, Switch } from './ui'
 import { useDecode } from './useDecode'
 
@@ -135,6 +136,7 @@ export interface PageActions {
   download: (game: Game) => void
   locate: (game: Game, action: Action) => void
   chooseFolder: (game: Game) => void
+  report: (game: Game) => void  // "How did it run?" asked from the page
 }
 
 // While this PC hosts with the built-in relay: where friends connect, who has, and Stop hosting.
@@ -343,6 +345,7 @@ export function GamePage({
               <>
                 <div className="stats">{stats.map(([k, v]) => <div key={k}><span>{k}</span><b>{v}</b></div>)}</div>
                 <p className="blurb">{game.description}</p>
+                {!game.comingSoon && lib.user.online && <HowItRuns game={game} onReport={u?.plays ? () => actions.report(game) : undefined} />}
                 {g.steps.length > 0 && (
                   <div className="card">
                     <h3>How to play</h3>

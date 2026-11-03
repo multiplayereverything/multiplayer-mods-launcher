@@ -26,6 +26,12 @@
     "server": "165.232.82.11:25569"
   },
 
+  // "How did it run?" reports: asked after a long session, shown on each game's page.
+  // The service is reports-api/ in this repository (a Cloudflare Worker).
+  "reports": {
+    "url": "https://multiplayer-everything-reports.multiplayereverythingofficial.workers.dev"
+  },
+
   // The launcher updates itself from the newest release of its repository
   // (the file is checked against the SHA-256 GitHub publishes for it).
   "updates": { "github": "multiplayereverything/multiplayer-mods-launcher", "asset": "MultiplayerEverythingLauncher.exe" },

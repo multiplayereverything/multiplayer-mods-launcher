@@ -19,6 +19,7 @@ pub mod log;
 pub mod paths;
 pub mod process;
 pub mod relay;
+pub mod reports;
 pub mod rooms;
 pub mod settings;
 pub mod site;

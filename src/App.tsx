@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { Cover } from './Cover'
 import { GamePage, type PageActions } from './GamePage'
 import { LobbyPage } from './LobbyPage'
+import { ASK_AFTER_SECS, RunAsk, markAsked, reportVersion, wasAsked, type RunAskRequest } from './Reports'
 import { SettingsPage } from './SettingsPage'
 import { SetupPage } from './SetupPage'
 import { Switcher, type SwitchTarget } from './Switcher'
@@ -9,7 +10,7 @@ import { TV_SECTIONS, TvHints, TvHome, TvLibrary, TvRooms, TvStarting, TvTop, ty
 import { TvPlaySheet, TvTextSheet, type SheetPad, type TextRequest } from './TvSheet'
 import {
   checkPlayers, downloadGame, launch, live, loadLibrary, loadMods, installPlayer, loadAllRooms, minimizeWindow, modJob, notify, ping, restoreWindow, updatePlayers, onDownloadEnded, onHostStatus,
-  onLaunchEnded, onModProgress, onPlayerProgress, pickFile, pickFolder, setFavorite, setFullscreen, setSetting, setTvMode, noteTv, setGameDir, setGameFile, stopSession, windowControl,
+  loadReports, onLaunchEnded, onModProgress, onPlayerProgress, pickFile, pickFolder, setFavorite, setFullscreen, setSetting, setTvMode, noteTv, setGameDir, setGameFile, stopSession, windowControl,
   type Game, type Library, type ModInfo, type RelayStatus, type Room, type Rooms, type Settings,
 } from './api'
 import { agoText, isCoop, needsPlayMenu, roomAbout, joinByCode, lastPlayed, leadAction, playersShort, statusOf } from './model'
@@ -224,6 +225,10 @@ export default function App() {
   hostingRef.current = hosting
   const libRef = useRef(lib)
   libRef.current = lib
+  const modsRef = useRef(mods)
+  modsRef.current = mods
+  // "How did it run?" after a long session, once per game and version (src/Reports.tsx).
+  const [runAsk, setRunAsk] = useState<RunAskRequest | null>(null)
   const search = useRef<HTMLInputElement>(null)
   const main = useRef<HTMLElement>(null)
 
@@ -344,6 +349,19 @@ export default function App() {
         return n
       })
       if (e.code !== 0) say(e.message || `The launcher stopped (exit ${e.code})`, 'error')
+      const l = libRef.current
+      const g = l?.games.find((x) => x.id === e.game)
+      if (l && g && l.user.online && !g.comingSoon && e.secs >= ASK_AFTER_SECS) {
+        const version = reportVersion(g, l, modsRef.current)
+        // Only when the reports service answers: with reports.url unset or the service down, nothing is asked.
+        if (!wasAsked(g.id, version))
+          loadReports(g.id)
+            .then(() => {
+              markAsked(g.id, version)
+              setRunAsk({ game: g, version, mins: Math.round(e.secs / 60) })
+            })
+            .catch(() => {})
+      }
       refresh()  // play counts and last played
     })
     const b = onModProgress((e) => {
@@ -459,6 +477,7 @@ export default function App() {
         .then(() => say(`${game.name} uses ${file}.`, 'ok'))
         .catch((e) => say(String(e), 'error'))
     },
+    report: (game) => setRunAsk({ game, version: reportVersion(game, lib!, mods), mins: Math.round((lib?.user.games[game.id]?.seconds ?? 0) / 60) }),
     chooseFolder: async (game) => {
       const name = game.mod?.gameName || game.name
       const dir = await pickFolder(`Where is ${name} installed?`)
@@ -836,6 +855,13 @@ export default function App() {
               if (t.id === 'library') setCat('all')
               go(t.id as View)
             }
+          }} />
+      )}
+      {runAsk && (
+        <RunAsk ask={runAsk} tv={tv} onClose={() => setRunAsk(null)}
+          onSent={(text, ok) => {
+            setRunAsk(null)
+            say(text, ok ? 'ok' : 'error')
           }} />
       )}
       <div className="island" aria-live="polite">

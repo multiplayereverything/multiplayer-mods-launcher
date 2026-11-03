@@ -76,6 +76,8 @@ struct LaunchEnded {
     game: String,
     code: i32,
     message: String,
+    /// How long the game ran, for "How did it run?" after a long session.
+    secs: u64,
 }
 
 #[derive(Clone, Serialize)]
@@ -122,6 +124,7 @@ fn launch(
     let stops = shared.stops.clone();
     stops.lock().unwrap().insert(session, stop.clone());
     std::thread::spawn(move || {
+        let started = std::time::Instant::now();
         let (code, message) = launcher::launch::run(
             &req,
             &mut |line| {
@@ -134,7 +137,7 @@ fn launch(
         // Stop hosting already took it out: that ends the session quietly, as killing the C++ launcher did.
         let stopped = stops.lock().unwrap().remove(&session).is_none();
         let (code, message) = if stopped { (0, String::new()) } else { (code, message) };
-        let _ = app.emit("launch-ended", LaunchEnded { session, game, code, message });
+        let _ = app.emit("launch-ended", LaunchEnded { session, game, code, message, secs: started.elapsed().as_secs() });
     });
     Ok(session)
 }
@@ -151,6 +154,7 @@ fn launch_mod(app: AppHandle, shared: &Shared, session: u32, game: String, actio
     let sessions = shared.sessions.clone();
     sessions.lock().unwrap().insert(session, child);
     std::thread::spawn(move || {
+        let started = std::time::Instant::now();
         let err_reader = std::thread::spawn(move || {
             let mut text = String::new();
             if let Some(s) = stderr {
@@ -174,7 +178,7 @@ fn launch_mod(app: AppHandle, shared: &Shared, session: u32, game: String, actio
             None => 0,
         };
         let message = if code == 0 { message } else { err.trim().to_string() };
-        let _ = app.emit("launch-ended", LaunchEnded { session, game, code, message });
+        let _ = app.emit("launch-ended", LaunchEnded { session, game, code, message, secs: started.elapsed().as_secs() });
     });
     Ok(session)
 }
@@ -444,6 +448,19 @@ fn lobby_send(shared: State<'_, Shared>, command: serde_json::Value) -> Result<(
     input.flush().map_err(|e| e.to_string())
 }
 
+/// "How did it run?": the player's answer, sent to the central server with this PC's parts (src/launcher/reports.rs).
+#[tauri::command]
+async fn send_report(shared: State<'_, Shared>, game: String, verdict: String, version: String, mins: u64, note: String) -> Result<(), String> {
+    let dir = shared.data_dir.lock().unwrap().clone().ok_or("The library hasn't been read yet")?;
+    blocking(move || launcher::reports::send(&dir, &game, &verdict, &version, mins, &note)).await
+}
+
+/// What players reported about a game: counts and the newest reports.
+#[tauri::command]
+async fn reports(game: String) -> Result<serde_json::Value, String> {
+    blocking(move || launcher::reports::game_reports(&game)).await
+}
+
 /// Opens a folder or file's folder in Explorer, or a link in the browser.
 #[tauri::command]
 fn open(target: String) -> Result<(), String> {
@@ -478,7 +495,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             library, mods, rooms, launch, stop_session, mod_job, download_game, set_favorite, set_setting, set_game_dir,
             set_game_file, lobby_start, lobby_send, open, install_player, set_game_setting, set_game_player,
-            check_players, update_players, ping, all_rooms
+            check_players, update_players, ping, all_rooms, send_report, reports
         ])
         .run(tauri::generate_context!())
         .expect("error while building tauri application");

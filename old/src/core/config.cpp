@@ -1063,6 +1063,13 @@ LoadResult loadConfig(std::string_view jsonText, const std::wstring& configDir) 
             rs.error(L"servers", L"must be an https:// address");
     }
     {
+        // The app's "How did it run?" reports (src-tauri/src/launcher/reports.rs); this exe has none, but the file is
+        // shared, so the key is known here rather than warned about.
+        Section s(top.get("reports", Type::Object), L"reports", issues);
+        std::wstring url;
+        s.str("url", url);
+    }
+    {
         Section s(top.get("updates", Type::Object), L"updates", issues);
         s.str("github", c.updates.source.github);
         s.str("asset", c.updates.source.asset);

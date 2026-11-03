@@ -196,6 +196,15 @@ export const setFavorite = (game: string, on: boolean): Promise<void> => (live ?
 export const open = (target: string): Promise<void> => (live ? invoke('open', { target }) : (window.open(target, '_blank'), Promise.resolve()))
 
 export const stopSession = (session: number): Promise<void> => (live ? invoke('stop_session', { session }) : Promise.resolve())
+// "How did it run?" reports on the central server (src-tauri/src/launcher/reports.rs).
+export type Verdict = 'runs' | 'issues' | 'broken'
+export type VerdictCounts = Record<Verdict, number>
+export interface Report { verdict: Verdict; version: string; mins: number; note: string; os: string; gpu: string; cpu: string; ram_gb: number; at: number }
+export interface Reports { total: number; counts: VerdictCounts; versions: Record<string, VerdictCounts>; recent: Report[] }
+export const sendReport = (game: string, verdict: Verdict, version: string, mins: number, note: string): Promise<void> =>
+  live ? invoke('send_report', { game, verdict, version, mins, note }) : Promise.resolve()
+export const loadReports = (game: string): Promise<Reports> => (live ? invoke<Reports>('reports', { game }) : Promise.resolve(sampleReports()))
+
 export const downloadGame = (game: string): Promise<void> => (live ? invoke('download_game', { game }) : Promise.resolve())
 export const setSetting = (key: keyof Settings, value: string | boolean): Promise<void> =>
   live ? invoke('set_setting', { key, value }) : Promise.resolve()
@@ -306,7 +315,7 @@ export const lobbyStart = (game: string, request: LobbyRequest): Promise<void> =
   live ? invoke('lobby_start', { game, request, tv: tvMode }) : Promise.reject(new Error('The lobby needs the Tauri window'))
 export const lobbySend = (command: LobbyCommand): Promise<void> => (live ? invoke('lobby_send', { command }) : Promise.resolve())
 
-export interface LaunchEnded { session: number; game: string; code: number; message: string }
+export interface LaunchEnded { session: number; game: string; code: number; message: string; secs: number }
 export interface ModProgress { game: string; line: string; done: boolean; ok: boolean }
 export interface RelayStatus { port: number; addresses: { address: string; adapter: string }[]; peers: { name: string; address: string; host: boolean }[] }
 export interface HostStatus { session: number; game: string; relay: RelayStatus }
@@ -366,6 +375,16 @@ function sampleLibrary(): Library {
       games: { gunmayhem2: { favorite: false, plays: 3, seconds: 900, lastPlayed: now - 11 * 3600 } },
     },
     text: { 'status.ready': 'Ready', 'status.noSwf': 'Game file missing', 'status.noPlayer': 'No Flash player found', 'status.comingSoon': 'Coming soon' },
+  }
+}
+
+function sampleReports(): Reports {
+  const now = Date.now() / 1000
+  const r = (verdict: Verdict, version: string, ago: number, note = '', gpu = 'NVIDIA GeForce RTX 3060'): Report =>
+    ({ verdict, version, mins: 25, note, os: 'Windows 11 26200', gpu, cpu: 'AMD Ryzen 5 5600X', ram_gb: 16, at: now - ago })
+  return {
+    total: 15, counts: { runs: 13, issues: 0, broken: 2 }, versions: { '1.0.5': { runs: 9, issues: 0, broken: 1 }, '1.0.4': { runs: 4, issues: 0, broken: 1 } },
+    recent: [r('runs', '1.0.5', 3600), r('runs', '1.0.5', 7200, 'Four of us, no lag at all.', 'AMD Radeon RX 6700 XT'), r('broken', '1.0.4', 90000, 'Black screen after the menu.', 'Intel(R) UHD Graphics 620')],
   }
 }
 
