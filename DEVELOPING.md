@@ -7,7 +7,8 @@ Prototype status: the same layout as the C++ launcher's Quiver-style one, and it
 engine until each part is rewritten in Rust (`src-tauri/src/engine.rs`).
 
 - The library, every action's state, the UI texts and your stats are built in Rust (`src-tauri/src/launcher`, what
-  `--list --json` printed); the PC mods come from `--mods --json`; open rooms from `--rooms <id> --json`.
+  `--list --json` printed), and so are the open rooms (what `--rooms <id> --json` and `--rooms all --json` printed);
+  the PC mods come from `--mods --json`.
 - Play, Host (players and room code or IP), Join (room code or address), the rooms' Join buttons, and mod
   Install / Update / Launch / Repair / Uninstall run `--launch`, `--join`, `--address` and the mod commands.
 - Favorites are written to the launcher's own `settings.json`, so both windows agree.

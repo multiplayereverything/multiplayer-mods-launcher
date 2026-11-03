@@ -13,11 +13,11 @@ use windows_sys::Win32::Storage::FileSystem::{
 
 use super::text::{iequals, trim};
 
-fn wide(s: &str) -> Vec<u16> {
+pub(crate) fn wide(s: &str) -> Vec<u16> {
     std::ffi::OsStr::new(s).encode_wide().chain(std::iter::once(0)).collect()
 }
 
-fn from_wide(w: &[u16]) -> String {
+pub(crate) fn from_wide(w: &[u16]) -> String {
     OsString::from_wide(w).to_string_lossy().into_owned()
 }
 

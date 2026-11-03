@@ -61,10 +61,11 @@ async fn install_player(player: String) -> Result<(), String> {
     Err(text.trim().lines().last().unwrap_or("The player couldn't be installed").to_string())
 }
 
-/// A game's open rooms on the central server (`--rooms <id> --json`).
+/// A game's open rooms on the central server: what `--rooms <id> --json` printed, now asked here (src/launcher/rooms).
+/// The window reads the answer whether or not the list came, as it read the C++ launcher's output.
 #[tauri::command]
 async fn rooms(game: String) -> Result<serde_json::Value, String> {
-    blocking(move || engine::run_json(&["--rooms".into(), game, "--json".into()])).await
+    blocking(move || launcher::rooms::game_rooms(&game).map(|(answer, _listed)| answer)).await
 }
 
 #[derive(Clone, Serialize)]
@@ -306,10 +307,10 @@ fn set_game_player(shared: State<'_, Shared>, game: String, player: String) -> R
     })
 }
 
-/// Every online game's open rooms in one call (`--rooms all --json`), for the cards' room counts.
+/// Every online game's open rooms in one call (what `--rooms all --json` printed), for the cards' room counts.
 #[tauri::command]
 async fn all_rooms() -> Result<serde_json::Value, String> {
-    blocking(|| engine::run_json(&["--rooms".into(), "all".into(), "--json".into()])).await
+    blocking(launcher::rooms::all_rooms).await
 }
 
 /// Whether a player the launcher installed has a newer release, without installing it

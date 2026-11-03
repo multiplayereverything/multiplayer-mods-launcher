@@ -23,7 +23,7 @@ a temporary name, and a failed or cancelled mod install leaves the game folder b
 | # | Part | C++ today | Window commands it replaces | Status |
 |---|---|---|---|---|
 | 1 | launcher.json, variables, settings.json, the library (players, game files, command lines), the website's games.json merge | `config`, `vars`, `settings`, `library`, `site`, `embedded`, `cli_json` | `--list --json`, the settings writes, favorites, located files | Done: `src-tauri/src/launcher`, same JSON on every input of `tests/parity/library.mjs` |
-| 2 | Open rooms and the central server's address and ping | `rooms` | `--rooms all --json`, `--rooms <id>`, ping | |
+| 2 | Open rooms and the central server's address and ping | `rooms` | `--rooms all --json`, `--rooms <id>`, ping | Done: `src-tauri/src/launcher/rooms.rs` (and `http.rs` for servers.json), same JSON, exit codes, errors and server requests on every case of `tests/parity/rooms.mjs`; ping was already Rust |
 | 3 | Starting a game: the command line, host options, TV options, the relay, the HTML5 web server, Discord, play time | `library`, `process`, `relay`, `webserver`, `discord`, `game_options`, `launcher_headless` | `--launch ... --wait [--tv] [--coop-save]` | |
 | 4 | Players and game files: GitHub releases, downloads with SHA-256, unzip, updates with progress | `install` | `--install-player`, `--update-players [--check]`, `--download-game` | |
 | 5 | The lobby and the game bridge | `lobby`, `lobby_cli` | `--lobby-session` | |
@@ -43,3 +43,17 @@ The PC-mod engine is late on purpose: it writes into players' game folders, so i
   `behavior.minimizeOnLaunch` is false.
 - Part 1: the launcher version comes from old/CMakeLists.txt (src-tauri/build.rs); give it a home before old/ goes.
 - Part 1: games added from the website are not validated (mergeSite runs after validation).
+- Part 2: `--rooms all` and `--rooms <id>` disagree on a bare "E|" answer: the single game's error is empty, while
+  `all` fills it with why servers.json couldn't be read (main.cpp's `e.empty() ? err : e`). Kept in both.
+- Part 2: why servers.json failed is only shown when there's no `rooms.server` to fall back on; with one, a broken
+  servers.json is silent.
+- Part 2: an "online" server in servers.json whose address is empty wins over `rooms.server`, so no rooms are
+  listed; a `status` that isn't text counts as online.
+- Part 2: WinHTTP's errors read "Unknown error (code 12029)": FormatMessage is asked without winhttp.dll's
+  message table.
+- Part 2: the room errors ("Cannot reach ...", "Server address needs a port: ...", "No answer from ...") are English
+  in the code, not texts from launcher.json.
+- Part 2: a server that answered RELAY|2 with "unsupported" is asked with RELAY|1 for as long as the process runs;
+  in the app that is until it is closed, as in the C++ window.
+- Part 2: the room's `version` is parsed but not in the JSON; `--rooms <id>` lists a coming-soon game, `all`
+  skips it.
