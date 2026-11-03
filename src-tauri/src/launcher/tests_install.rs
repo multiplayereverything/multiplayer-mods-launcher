@@ -555,6 +555,130 @@ fn a_record_built_from_the_websites_form_is_installable_too() {
     assert!(read_rec(&r).is_err(), "no app id and steam://rungameid/${{STEAM_APP_ID}} can't be launched");
 }
 
+/// A mod moved from launcher.json keeps what its card showed (guide, colours, players) and where its install record
+/// lives, so an install made before the move is still found.
+#[test]
+fn a_record_written_by_the_team_keeps_its_card_and_its_install_record() {
+    let mut r = record();
+    r["description"] = "Four players in one lab.".into();
+    r["players"] = "2-4 players (online co-op)".into();
+    r["color"] = "#6BA83A".into();
+    r["colorEnd"] = "#17250C".into();
+    r["guide"] = serde_json::json!({
+        "needs": ["Your own copy of Lab Game."],
+        "steps": ["Press Install.", "Press Launch."],
+        "tips": ["It is a beta."],
+        "keys": [{ "key": "F2", "does": "Invites friends." }],
+        "links": [{ "label": "Discord", "url": "https://discord.com/invite/x" }]
+    });
+    r["mod"]["install"]["stateDir"] = "${INSTALL_DIR}\\.installer".into();
+    r["mod"]["game"]["detection"][0]["subPath"] = "Atlas\\Binaries\\Win64".into();
+    let g = read_rec(&r).unwrap();
+    assert_eq!(g.description, "Four players in one lab.");
+    assert_eq!((g.player_count.as_str(), g.max_players), ("2-4 players (online co-op)", 4));
+    assert_eq!(g.guide.steps, ["Press Install.", "Press Launch."]);
+    assert_eq!(g.guide.keys, [("F2".to_string(), "Invites friends.".to_string())]);
+    assert!(g.guide.tips[0].starts_with("Made by someone, not by Multiplayer Everything"), "the credit comes first");
+    assert_eq!(g.guide.tips[1], "It is a beta.");
+    let links: Vec<&str> = g.guide.links.iter().map(|l| l.url.as_str()).collect();
+    assert_eq!(links, ["https://discord.com/invite/x", "https://github.com/someone/lab-coop"], "the repository comes last");
+    let m = g.mod_spec.as_ref().unwrap();
+    assert_eq!(m.install.state_dir, "${INSTALL_DIR}\\.installer");
+}
+
+/// A mod with an installer of its own, or none yet: the card links to its page and installs nothing.
+#[test]
+fn a_link_record_is_a_card_with_one_button_to_the_mods_page() {
+    let link = || {
+        serde_json::json!({
+            "id": "lab-link",
+            "kind": "link",
+            "repo": "someone/lab-link",
+            "author": "someone",
+            "approved_at": "2026-11-04",
+            "approved_by": "Multiplayer Everything Team",
+            "link": { "game": "Lab Link", "url": "https://github.com/someone/lab-link/releases" },
+            "players": "2-16 players (alpha)",
+            "maxPlayers": 4,
+            "guide": { "steps": ["Open the mod's page."] }
+        })
+    };
+    let g = read_rec(&link()).unwrap();
+    assert_eq!((g.name.as_str(), g.categories.as_slice()), ("Lab Link", ["community".to_string()].as_slice()));
+    assert!(g.mod_spec.is_none(), "nothing to install");
+    assert_eq!(g.max_players, 4);
+    assert_eq!(g.actions.len(), 1);
+    assert_eq!((g.actions[0].label.as_str(), g.actions[0].link.as_str()), ("Open the mod's page", "https://github.com/someone/lab-link/releases"));
+    assert!(g.guide.tips[0].contains("The launcher doesn't install, update or support it"));
+    assert_eq!(g.guide.links.last().unwrap().url, "https://github.com/someone/lab-link");
+
+    let mut cases: Vec<(serde_json::Value, &str)> = Vec::new();
+    let mut add = |f: &dyn Fn(&mut serde_json::Value), want: &'static str| {
+        let mut r = link();
+        f(&mut r);
+        cases.push((r, want));
+    };
+    add(&|r| r["link"]["url"] = "https://github.com/other/repo".into(), "link.url must be on https://github.com/someone/lab-link");
+    add(&|r| r["link"]["url"] = "https://github.com/someone/lab-link-evil".into(), "link.url must be on");
+    add(&|r| r["link"]["url"] = "https://evil.example/someone/lab-link".into(), "link.url must be on");
+    add(&|r| r["link"]["game"] = "".into(), "link.game is missing");
+    add(&|r| r["mod"] = serde_json::json!({}), "record.mod: not allowed");
+    add(&|r| r["sha256"] = SHA.into(), "record.sha256: not allowed");
+    add(&|r| r["link"]["exe"] = "x.exe".into(), "link.exe: not allowed");
+    add(&|r| r["kind"] = "flash".into(), "kind \"flash\" isn't known to this launcher");
+    for (r, want) in cases {
+        let e = read_rec(&r).map(|g| g.id).unwrap_err();
+        assert!(e.contains(want), "wanted {want:?}, got {e:?}");
+    }
+}
+
+/// FL_TEST_COMMUNITY_DIR=<a mods-info checkout>: every record in its community/ passes. One whose id launcher.json
+/// still has makes the same card as that entry (how the community entries moved to mods-info was checked).
+#[test]
+fn the_records_in_a_mods_info_checkout_pass() {
+    let Ok(dir) = std::env::var("FL_TEST_COMMUNITY_DIR") else { return };
+    let index = std::fs::read(format!("{dir}\\community\\index.json")).unwrap();
+    let ids = super::community::parse_index(&index).unwrap();
+    let shipped = shipped_config();
+    for id in &ids {
+        let text = std::fs::read_to_string(format!("{dir}\\community\\{id}.json")).unwrap();
+        let mut cfg = shipped.clone();
+        let before = cfg.games.iter().position(|g| &g.id == id).map(|i| cfg.games.remove(i));
+        let g = super::community::read_record(&text, &cfg, false).unwrap_or_else(|e| panic!("{id}: {e}"));
+        let Some(b) = before else { continue };
+        assert_eq!((&g.name, &g.description, &g.player_count, g.max_players), (&b.name, &b.description, &b.player_count, b.max_players), "{id}");
+        assert_eq!((g.color, g.color_end), (b.color, b.color_end), "{id}");
+        assert_eq!((&g.guide.needs, &g.guide.steps, &g.guide.keys), (&b.guide.needs, &b.guide.steps, &b.guide.keys), "{id}");
+        // The credit comes first now; the other tips keep their order.
+        let others = |x: &super::config::GameSpec| x.guide.tips.iter().filter(|t| !t.starts_with("Made by ")).cloned().collect::<Vec<_>>();
+        assert_eq!(others(&g), others(&b), "{id}: the tips besides the credit");
+        assert_eq!(g.guide.tips.iter().filter(|t| t.starts_with("Made by ")).count(), 1, "{id}: one credit");
+        assert!(g.guide.tips[0].starts_with("Made by "), "{id}");
+        let urls = |x: &super::config::GameSpec| x.guide.links.iter().map(|l| l.url.clone()).collect::<std::collections::BTreeSet<_>>();
+        let mut want = urls(&b);
+        want.insert(format!("https://github.com/{}", text.split("\"repo\": \"").nth(1).unwrap().split('"').next().unwrap()));
+        assert_eq!(urls(&g), want, "{id}: links");
+        match (&g.mod_spec, &b.mod_spec) {
+            (Some(m), Some(n)) => {
+                assert_eq!(format!("{:?}", m.game), format!("{:?}", n.game), "{id}: the game");
+                assert_eq!(format!("{:?}", m.install), format!("{:?}", n.install), "{id}: where it installs");
+                assert_eq!(format!("{:?}", m.components), format!("{:?}", n.components), "{id}: what it installs");
+                assert_eq!(format!("{:?}", m.launch), format!("{:?}", n.launch), "{id}: how it starts");
+                assert_eq!((&m.package.version, &m.package.url, &m.package.sha256), (&n.package.version, &n.package.url, &n.package.sha256), "{id}");
+                assert_eq!((&m.info.publisher, &m.info.website), (&n.info.publisher, &n.info.website), "{id}");
+                let ops = |x: &super::config::GameSpec| x.actions.iter().filter(|a| !a.mod_op.is_empty()).map(|a| a.mod_op.clone()).collect::<Vec<_>>();
+                assert_eq!(ops(&g), ops(&b), "{id}: the mod's buttons");
+            }
+            (None, None) => {
+                let links = |x: &super::config::GameSpec| x.actions.iter().map(|a| (a.label.clone(), a.link.clone())).collect::<Vec<_>>();
+                assert_eq!(links(&g), links(&b), "{id}: the page button");
+            }
+            _ => panic!("{id}: one installs and the other doesn't"),
+        }
+    }
+    assert!(!ids.is_empty());
+}
+
 #[test]
 fn a_community_record_that_could_do_more_than_it_shows_is_refused_whole() {
     let mut cases: Vec<(serde_json::Value, &str)> = Vec::new();
@@ -571,6 +695,16 @@ fn a_community_record_that_could_do_more_than_it_shows_is_refused_whole() {
     add(&|r| r["mod"]["install"]["targetDir"] = "C:/Windows".into(), "targetDir must be inside");
     add(&|r| r["mod"]["install"]["targetDir"] = "${GAME_DIR}/../..".into(), "targetDir must be inside");
     add(&|r| r["mod"]["components"][0]["target"] = "%APPDATA%".into(), "target must be inside");
+    add(&|r| r["mod"]["install"]["stateDir"] = "%APPDATA%\\x".into(), "stateDir must be inside");
+    add(&|r| r["mod"]["install"]["stateDir"] = "${GAME_DIR}\\..\\x".into(), "stateDir must be inside");
+    add(&|r| r["mod"]["game"]["detection"][0]["subPath"] = "..\\Other".into(), "subPath: a folder inside");
+    add(&|r| r["mod"]["game"]["detection"][0]["subPath"] = "C:\\Windows".into(), "subPath: a folder inside");
+    add(&|r| r["mod"]["game"]["detection"][0]["subPath"] = "${env:TEMP}".into(), "subPath: a folder inside");
+    add(&|r| r["guide"] = serde_json::json!({ "script": ["x"] }), "guide.script: not allowed");
+    add(&|r| r["guide"] = serde_json::json!({ "links": [{ "label": "a", "url": "http://plain.example" }] }), "https://");
+    add(&|r| r["guide"] = serde_json::json!({ "links": [{ "label": "a", "url": "https://a" }, { "label": "b", "url": "https://b" }, { "label": "c", "url": "https://c" }, { "label": "d", "url": "https://d" }] }), "up to 3");
+    add(&|r| r["description"] = "x".repeat(601).into(), "description: text, at most 600");
+    add(&|r| r["color"] = "red".into(), "color");
     // The engine looks for a requirement under the game folder: with ${GAME_DIR} in front, Install would never turn on.
     add(&|r| r["mod"]["install"]["requires"] = serde_json::json!([{ "path": "${GAME_DIR}\\BepInEx\\core", "message": "x" }]), "without ${GAME_DIR}");
     add(&|r| r["mod"]["components"][0]["source"] = "../secret".into(), "source: a path inside the package");

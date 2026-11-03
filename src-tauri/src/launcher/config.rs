@@ -763,6 +763,64 @@ fn read_icon(s: &Section, out: &mut String) {
     }
 }
 
+/// What a card shows besides its name: launcher.json's games[] and a community record (community.rs) read it alike.
+fn read_card(s: &Section, g: &mut GameSpec, issues: &Issues) {
+    s.str("description", &mut g.description);
+    s.str("players", &mut g.player_count);
+    s.integer("maxPlayers", &mut g.max_players, 0, 16);
+    if g.max_players == 0 {
+        // "1-4 players" -> 4: the highest number in the text.
+        let units: Vec<char> = g.player_count.chars().collect();
+        for k in 0..units.len() {
+            if units[k].is_ascii_digit() {
+                let rest: String = units[k..].iter().collect();
+                g.max_players = g.max_players.max(super::text::atoi(&rest));
+            }
+        }
+    }
+    if let Some(gv) = s.get("guide", Type::Object) {
+        let gs = Section::new(Some(gv), s.child("guide"), issues);
+        gs.str_list("needs", &mut g.guide.needs, None);
+        gs.str_list("steps", &mut g.guide.steps, None);
+        gs.str_list("tips", &mut g.guide.tips, None);
+        if let Some(keys) = gs.get("keys", Type::Array) {
+            for (k, item) in keys.items().iter().enumerate() {
+                let ks = Section::new(Some(item), format!("{}[{k}]", gs.child("keys")), issues);
+                let (mut key, mut does) = (String::new(), String::new());
+                ks.str("key", &mut key);
+                ks.str("does", &mut does);
+                if key.is_empty() || does.is_empty() {
+                    ks.error("key", "give both \"key\" and \"does\"");
+                } else {
+                    g.guide.keys.push((key, does));
+                }
+            }
+        }
+        if let Some(links) = gs.get("links", Type::Array) {
+            for (k, item) in links.items().iter().enumerate() {
+                let ls = Section::new(Some(item), format!("{}[{k}]", gs.child("links")), issues);
+                let mut link = GuideLink { label: String::new(), url: String::new() };
+                ls.str("label", &mut link.label);
+                ls.str("url", &mut link.url);
+                if link.label.is_empty() || !starts_with_i(&link.url, "https://") {
+                    ls.error("url", "give a \"label\" and an https:// \"url\"");
+                } else if g.guide.links.len() >= GUIDE_MAX_LINKS {
+                    ls.error("url", "at most four links");
+                } else {
+                    g.guide.links.push(link);
+                }
+            }
+        }
+    }
+    s.color("color", &mut g.color);
+    s.color("colorEnd", &mut g.color_end);
+}
+
+/// The same for a value of its own (a community record's top level).
+pub(crate) fn read_card_of(v: &Value, place: &str, issues: &Issues, g: &mut GameSpec) {
+    read_card(&Section::new(Some(v), place.to_string(), issues), g, issues);
+}
+
 fn index_path(list: &str, i: usize) -> String {
     format!("{list}[{i}]")
 }
@@ -1256,9 +1314,7 @@ pub fn load_config(text: &[u8], config_dir: &str) -> LoadResult {
                 let s = Section::new(Some(item), place.clone(), &issues);
                 s.str("id", &mut g.id);
                 s.str("name", &mut g.name);
-                s.str("description", &mut g.description);
-                s.str("players", &mut g.player_count);
-                s.integer("maxPlayers", &mut g.max_players, 0, 16);
+                read_card(&s, &mut g, &issues);
                 if let Some(on) = s.get("online", Type::Object) {
                     let os = Section::new(Some(on), s.child("online"), &issues);
                     os.str("id", &mut g.online_id);
@@ -1271,61 +1327,15 @@ pub fn load_config(text: &[u8], config_dir: &str) -> LoadResult {
                         ls.integer("port", &mut g.lobby.port, 1, 65535);
                     }
                 }
-                if g.max_players == 0 {
-                    // "1-4 players" -> 4: the highest number in the text.
-                    let units: Vec<char> = g.player_count.chars().collect();
-                    for k in 0..units.len() {
-                        if units[k].is_ascii_digit() {
-                            let rest: String = units[k..].iter().collect();
-                            g.max_players = g.max_players.max(super::text::atoi(&rest));
-                        }
-                    }
-                }
                 s.str("controls", &mut g.controls);
                 s.str("image", &mut g.image);
                 s.str("site", &mut g.site_id);
-                if let Some(gv) = s.get("guide", Type::Object) {
-                    let gs = Section::new(Some(gv), s.child("guide"), &issues);
-                    gs.str_list("needs", &mut g.guide.needs, None);
-                    gs.str_list("steps", &mut g.guide.steps, None);
-                    gs.str_list("tips", &mut g.guide.tips, None);
-                    if let Some(keys) = gs.get("keys", Type::Array) {
-                        for (k, item) in keys.items().iter().enumerate() {
-                            let ks = Section::new(Some(item), format!("{}[{k}]", gs.child("keys")), &issues);
-                            let (mut key, mut does) = (String::new(), String::new());
-                            ks.str("key", &mut key);
-                            ks.str("does", &mut does);
-                            if key.is_empty() || does.is_empty() {
-                                ks.error("key", "give both \"key\" and \"does\"");
-                            } else {
-                                g.guide.keys.push((key, does));
-                            }
-                        }
-                    }
-                    if let Some(links) = gs.get("links", Type::Array) {
-                        for (k, item) in links.items().iter().enumerate() {
-                            let ls = Section::new(Some(item), format!("{}[{k}]", gs.child("links")), &issues);
-                            let mut link = GuideLink { label: String::new(), url: String::new() };
-                            ls.str("label", &mut link.label);
-                            ls.str("url", &mut link.url);
-                            if link.label.is_empty() || !starts_with_i(&link.url, "https://") {
-                                ls.error("url", "give a \"label\" and an https:// \"url\"");
-                            } else if g.guide.links.len() >= GUIDE_MAX_LINKS {
-                                ls.error("url", "at most four links");
-                            } else {
-                                g.guide.links.push(link);
-                            }
-                        }
-                    }
-                }
                 s.real("imageFocus", &mut g.image_focus, 0.0, 1.0);
                 s.boolean("comingSoon", &mut g.coming_soon);
                 if let Some(st) = s.get("settings", Type::Array) {
                     g.settings = read_settings(st, &s.child("settings"), &issues);
                 }
                 s.id_list("categories", &mut g.categories);
-                s.color("color", &mut g.color);
-                s.color("colorEnd", &mut g.color_end);
                 if let Some(actions) = s.get("actions", Type::Array) {
                     for (j, item) in actions.items().iter().enumerate() {
                         g.actions.push(read_action(item, &format!("{place}.{}", index_path("actions", j)), &issues));

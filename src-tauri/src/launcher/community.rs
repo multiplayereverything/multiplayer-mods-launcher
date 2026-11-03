@@ -1,14 +1,15 @@
 //! Community mods the owner approved for the launcher (docs/COMMUNITY_MODS.md). A developer describes their mod in a
-//! manifest in their own GitHub release; at approval the website pins the release and opens a pull request on
-//! mods-info, and only the owner's merge publishes it: community/index.json lists the ids, community/<id>.json holds
-//! each one's pinned release and install recipe. The launcher adds those games without an update of its own.
+//! manifest in their own GitHub release; at approval the website pins the release and, when the owner offers it,
+//! writes it to mods-info: community/index.json lists the ids, community/<id>.json holds each one's pinned release and
+//! install recipe. Records the team writes by hand may also carry the card's text, or be a card that only links to
+//! the mod's page ("kind": "link"). The launcher adds those games without an update of its own.
 //!
 //! The rules are old/src/core/config.cpp's `readCommunityMod`: a record may only use the keys listed here (anything
 //! else is refused, not ignored), writes only inside the game folder, downloads only its pinned github.com release
 //! with a SHA-256, and starts only through steam://. Then it gets every check a launcher.json mod gets. A record that
 //! fails is left out whole. The copy kept in the data folder (community.json) is what the C++ mod commands read too.
 
-use super::config::{ConfigIssue, Issues, Severity, add_mod_actions, read_mod, validate_config};
+use super::config::{ConfigIssue, Issues, Severity, add_mod_actions, read_card_of, read_mod, validate_config};
 use super::config::{Config, GameSpec};
 use super::http;
 use super::json::{self, Value};
@@ -181,7 +182,13 @@ fn check_shape(r: &Value, id: &str, repo: &str) -> Result<(), String> {
                 return Err(format!("{place}: must be an object"));
             }
             match text(rule, "type") {
-                "steam" => only_keys(rule, &["type", "appId", "installDir"], &place)?,
+                "steam" => {
+                    only_keys(rule, &["type", "appId", "installDir", "subPath"], &place)?;
+                    // The game's folder inside its Steam folder (Atlas\Binaries\Win64): it may only go further in.
+                    if rule.find("subPath").is_some() && !inside_package(text(rule, "subPath")) {
+                        return Err(format!("{place}.subPath: a folder inside the game's Steam folder"));
+                    }
+                }
                 "path" => only_keys(rule, &["type", "path"], &place)?,
                 _ => return Err(format!("{place}: only \"steam\" and \"path\" rules")),
             }
@@ -191,10 +198,14 @@ fn check_shape(r: &Value, id: &str, repo: &str) -> Result<(), String> {
         if !inst.is_object() {
             return Err("mod.install must be an object".into());
         }
-        only_keys(inst, &["targetDir", "preserve", "requires", "uninstallCleanup"], "mod.install")?;
+        only_keys(inst, &["targetDir", "stateDir", "preserve", "requires", "uninstallCleanup"], "mod.install")?;
         let target = text(inst, "targetDir");
         if !target.is_empty() && (!starts_with_i(target, "${GAME_DIR}") || target.contains("..")) {
             return Err("mod.install.targetDir must be inside ${GAME_DIR}".into());
+        }
+        // Where the install record is kept: a mod moved from launcher.json keeps its old place, so installs stay found.
+        if inst.find("stateDir").is_some() && !inside_game(text(inst, "stateDir")) {
+            return Err("mod.install.stateDir must be inside ${GAME_DIR} or ${INSTALL_DIR}".into());
         }
         if let Some(req) = inst.find("requires").filter(|r| r.is_array()) {
             for r in req.items() {
@@ -237,15 +248,33 @@ pub fn read_record(text_: &str, cfg: &Config, local_release: bool) -> Result<Gam
     if !r.is_object() {
         return Err("not a JSON object".into());
     }
-    only_keys(&r, &["id", "repo", "tag", "version", "asset", "url", "sha256", "manifest_sha256", "author", "authorUrl", "approved_at", "approved_by", "mod"], "record")?;
-    let (id, repo, tag, asset) = (text(&r, "id"), text(&r, "repo"), text(&r, "tag"), text(&r, "asset"));
-    let (version, url, sha) = (text(&r, "version"), text(&r, "url"), text(&r, "sha256"));
+    // "pc" (the default): a mod the launcher installs. "link": a card that only links to the mod's page. A kind this
+    // launcher doesn't know (a Flash record, later) is left out whole, so an older launcher never shows half of one.
+    let kind = r.find("kind").map(|_| text(&r, "kind")).unwrap_or("pc");
+    let (id, repo) = (text(&r, "id"), text(&r, "repo"));
     if !id_ok(id) {
         return Err("id: lowercase letters, digits and '-', up to 48".into());
     }
     if !repo_name(repo) {
         return Err("repo must be \"owner/name\"".into());
     }
+    match kind {
+        "pc" => only_keys(&r, &[RECORD_KEYS, CARD_KEYS, &["tag", "version", "asset", "url", "sha256", "manifest_sha256", "mod"]].concat(), "record")?,
+        "link" => only_keys(&r, &[RECORD_KEYS, CARD_KEYS, &["link"]].concat(), "record")?,
+        _ => return Err(format!("kind \"{kind}\" isn't known to this launcher")),
+    }
+    if cfg.games.iter().any(|g| g.id == id || g.site_id == id || g.mod_spec.as_ref().is_some_and(|m| m.info.id == id)) {
+        return Err(format!("launcher.json already has \"{id}\""));
+    }
+    let issues: Issues = Default::default();
+    let mut g = GameSpec { id: id.to_string(), site_id: id.to_string(), categories: vec!["community".into()], ..Default::default() };
+    check_card(&r)?;
+    read_card_of(&r, &format!("community.{id}"), &issues, &mut g);
+    if kind == "link" {
+        return read_link(&r, cfg, g, issues);
+    }
+    let (tag, asset) = (text(&r, "tag"), text(&r, "asset"));
+    let (version, url, sha) = (text(&r, "version"), text(&r, "url"), text(&r, "sha256"));
     if !plain_segment(tag) || !plain_segment(asset) {
         return Err("tag and asset must be plain names".into());
     }
@@ -264,20 +293,10 @@ pub fn read_record(text_: &str, cfg: &Config, local_release: bool) -> Result<Gam
     if !url_ok {
         return Err(format!("url must be https://github.com{path}"));
     }
-    if cfg.games.iter().any(|g| g.id == id || g.site_id == id || g.mod_spec.as_ref().is_some_and(|m| m.info.id == id)) {
-        return Err(format!("launcher.json already has \"{id}\""));
-    }
     check_shape(&r, id, repo)?;
 
     let m = r.find("mod").unwrap();
-    let mut g = GameSpec {
-        id: id.to_string(),
-        site_id: id.to_string(),
-        name: text(m.find("game").unwrap(), "name").to_string(), // a community card is named after the game
-        categories: vec!["community".into()],
-        ..Default::default()
-    };
-    let issues: Issues = Default::default();
+    g.name = text(m.find("game").unwrap(), "name").to_string(); // a community card is named after the game
     let mut spec = read_mod(m, &g, &format!("community.{id}.mod"), &issues);
     // The package is the one the approval pinned, never the record's to choose.
     spec.package.version = version.to_string();
@@ -292,18 +311,105 @@ pub fn read_record(text_: &str, cfg: &Config, local_release: bool) -> Result<Gam
     // The author's credit, as every community entry in launcher.json gives it. The description comes from the website
     // (library_json.rs), or says whose mod it is.
     let author = if spec.info.publisher.is_empty() { repo.split('/').next().unwrap_or(repo).to_string() } else { spec.info.publisher.clone() };
-    g.guide.tips.push(format!(
+    credit(&mut g, repo, &author, &format!(
         "Made by {author}, not by Multiplayer Everything. We install the exact version we looked at ({version}) and update it only after we have looked at the new one. Report problems to its author."
     ));
-    g.guide.links.push(super::config::GuideLink { label: format!("{} by {author} on GitHub", repo.split('/').nth(1).unwrap_or(repo)), url: format!("https://github.com/{repo}") });
     g.mod_spec = Some(spec);
     add_mod_actions(&mut g);
-    // Then every check a launcher.json mod gets.
+    // A loopback release (only accepted above when mods-info is loopback too: the tests) isn't https.
+    let test_release = local_release && url.starts_with("http://127.0.0.1:");
+    checked(g, cfg, issues, test_release)
+}
+
+/// Keys every record may have, and the card's own text (what launcher.json's games[] give a card besides its name).
+/// Card text is for records the team writes by hand; the website's form never writes it (docs/COMMUNITY_MODS.md).
+const RECORD_KEYS: &[&str] = &["id", "repo", "kind", "author", "authorUrl", "approved_at", "approved_by"];
+const CARD_KEYS: &[&str] = &["description", "players", "maxPlayers", "color", "colorEnd", "guide"];
+
+/// The card text a record may carry: plain text and https links only, short enough to fit on the card.
+fn check_card(r: &Value) -> Result<(), String> {
+    for key in ["description", "players"] {
+        if r.find(key).is_some_and(|v| v.as_str().is_none_or(|s| s.chars().count() > 600)) {
+            return Err(format!("{key}: text, at most 600 characters"));
+        }
+    }
+    let Some(gd) = r.find("guide") else { return Ok(()) };
+    if !gd.is_object() {
+        return Err("guide must be an object".into());
+    }
+    only_keys(gd, &["needs", "steps", "tips", "keys", "links"], "guide")?;
+    for key in ["needs", "steps", "tips"] {
+        if gd.find(key).is_some_and(|l| !l.is_array() || l.items().len() > 12 || l.items().iter().any(|t| t.as_str().is_none_or(|s| s.chars().count() > 600))) {
+            return Err(format!("guide.{key}: up to 12 texts of at most 600 characters"));
+        }
+    }
+    if let Some(keys) = gd.find("keys") {
+        if !keys.is_array() || keys.items().len() > 12 {
+            return Err("guide.keys: up to 12".into());
+        }
+        for k in keys.items() {
+            only_keys(k, &["key", "does"], "guide.keys")?;
+        }
+    }
+    // The launcher adds the mod's own repository as the last link, so three are left for the record.
+    if let Some(links) = gd.find("links") {
+        if !links.is_array() || links.items().len() > 3 {
+            return Err("guide.links: up to 3 (the repository's link is added)".into());
+        }
+        for l in links.items() {
+            only_keys(l, &["label", "url"], "guide.links")?;
+        }
+    }
+    Ok(())
+}
+
+/// Who made it, first among the tips, and their repository as the card's last link.
+fn credit(g: &mut GameSpec, repo: &str, author: &str, tip: &str) {
+    g.guide.tips.insert(0, tip.to_string());
+    let name = repo.split('/').nth(1).unwrap_or(repo);
+    g.guide.links.push(super::config::GuideLink { label: format!("{name} by {author} on GitHub"), url: format!("https://github.com/{repo}") });
+}
+
+/// A link card: a mod with its own installer, or none yet. It installs nothing and has one button, to the mod's page
+/// in the record's own repository.
+fn read_link(r: &Value, cfg: &Config, mut g: GameSpec, issues: Issues) -> Result<GameSpec, String> {
+    let repo = text(r, "repo");
+    let l = r.find("link").filter(|l| l.is_object()).ok_or("no \"link\" object")?;
+    only_keys(l, &["game", "url", "label"], "link")?;
+    g.name = text(l, "game").to_string();
+    if g.name.is_empty() {
+        return Err("link.game is missing".into());
+    }
+    let url = text(l, "url");
+    let home = format!("https://github.com/{repo}");
+    if !(url == home || url.strip_prefix(&home).is_some_and(|rest| rest.starts_with(['/', '#', '?']))) {
+        return Err(format!("link.url must be on {home}"));
+    }
+    let author = match text(r, "author") {
+        "" => repo.split('/').next().unwrap_or(repo).to_string(),
+        a => a.to_string(),
+    };
+    credit(&mut g, repo, &author, &format!("Made by {author}, not by Multiplayer Everything. The launcher doesn't install, update or support it."));
+    let label = match text(l, "label") {
+        "" => "Open the mod's page",
+        s => s,
+    };
+    g.actions.push(super::config::ActionSpec {
+        id: "page".into(),
+        label: label.to_string(),
+        icon: "E774".into(),
+        description: format!("github.com/{repo}"),
+        link: url.to_string(),
+        ..Default::default()
+    });
+    checked(g, cfg, issues, false)
+}
+
+/// Every check a launcher.json game gets, on top of the record's own.
+fn checked(g: GameSpec, cfg: &Config, issues: Issues, test_release: bool) -> Result<GameSpec, String> {
     let mut all: Vec<ConfigIssue> = issues.into_inner();
     let one = Config { games: vec![g.clone()], ..cfg.clone() };
     validate_config(&one, &mut all);
-    // A loopback release (only accepted above when mods-info is loopback too: the tests) isn't https.
-    let test_release = local_release && url.starts_with("http://127.0.0.1:");
     if let Some(e) = all.iter().find(|i| i.severity == Severity::Error && !(test_release && i.place.ends_with(".package.url"))) {
         return Err(format!("{}: {}", e.place, e.message));
     }

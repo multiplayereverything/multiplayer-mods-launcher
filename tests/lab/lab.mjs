@@ -137,10 +137,10 @@ const scenarios = {
   async library() {
     const counts = await waitFor(async () => {
       const c = await wd.exec("return Object.fromEntries([...document.querySelectorAll('.navs .nav')].map(b => [b.querySelector('.lbl')?.textContent, b.querySelector('.n')?.textContent ?? '']))")
-      return c['All games'] === '10' && c
+      return c['All games'] === '11' && c
     })
     await check('the sidebar counts every game', !!counts, JSON.stringify(counts))
-    await check('the sidebar counts each category', counts && counts['Flash mods'] === '5' && counts['PC mods'] === '1' && counts['Online multiplayer'] === '3' && counts['Community mods'] === '2' && counts['Coming soon'] === '1', JSON.stringify(counts))
+    await check('the sidebar counts each category', counts && counts['Flash mods'] === '5' && counts['PC mods'] === '1' && counts['Online multiplayer'] === '3' && counts['Community mods'] === '3' && counts['Coming soon'] === '1', JSON.stringify(counts))
     await wd.click(nav('Flash mods'))
     await check('a category shows its games', (await waitFor(async () => (await wd.count("//button[contains(@class,'card-c')]")) === 5)) === true)
     await wd.click(nav('All games'))
@@ -151,7 +151,7 @@ const scenarios = {
     await wd.click(button('A to Z'))
     const names = await waitFor(async () => {
       const n = await wd.exec("return [...document.querySelectorAll('.card-c .name')].map(e => e.textContent)")
-      return n.length === 10 && n
+      return n.length === 11 && n
     })
     await check('A to Z sorts by name', !!names && names.join('|') === [...names].sort((a, b) => a.localeCompare(b)).join('|'), names?.join(', '))
     await wd.click(button('Compact'))
@@ -504,6 +504,19 @@ const scenarios = {
     await check('a listed project has no Install button', (await wd.exec("return [...document.querySelectorAll('.dpanel .pbtn')].filter(b => /Install/.test(b.textContent)).length")) === 0)
     await key('Escape')
 
+    // community/lab-link.json: a card the team wrote by hand, with its own text and one button to the mod's page.
+    await openGame('Lab Link')
+    const linkPage = await wd.exec("return document.querySelector('.gp')?.innerText ?? ''")
+    await check('a link card shows its own description and players', linkPage.includes('A mod with an installer of its own.') && linkPage.includes('2-16 players'), linkPage.slice(0, 300))
+    await check('a link card has the mod\'s page and no Install', (await wd.exec("return [...document.querySelectorAll('.dpanel .pbtn')].map(b => b.textContent).join('|')")).includes("Open the mod's page") &&
+      (await wd.exec("return [...document.querySelectorAll('.dpanel .pbtn')].filter(b => /Install/.test(b.textContent)).length")) === 0,
+      await wd.exec("return [...document.querySelectorAll('.dpanel .pbtn')].map(b => b.textContent).join('|')"))
+    await wd.click("//div[@role='tablist']//button[normalize-space(.)='How to play']")
+    const linkGuide = await wd.exec("return document.querySelector('.gp')?.innerText ?? ''")
+    await check('a link card\'s guide has its steps, its tips and the credit', linkGuide.includes("Download the zip from the mod's page.") && linkGuide.includes('It is an alpha.') &&
+      linkGuide.includes("The launcher doesn't install, update or support it"), linkGuide.slice(0, 400))
+    await key('Escape')
+
     // Ctrl+F5: a mod approved a minute ago comes now, not when the saved copy's hour is up; one taken down goes again.
     const www = join(work, 'www', 'community')
     const indexBefore = readFileSync(join(www, 'index.json'), 'utf8')
@@ -668,7 +681,7 @@ const scenarios = {
 
     await key('PageDown')
     await check('RB goes to Games', !!(await waitFor(async () => (await wd.count("//div[contains(@class,'tv-lib')]")) > 0)))
-    await check('Games shows every game', (await waitFor(async () => (await wd.count("//div[contains(@class,'tv-grid')]//button[contains(@class,'tv-tile')]")) === 10)) === true)
+    await check('Games shows every game', (await waitFor(async () => (await wd.count("//div[contains(@class,'tv-grid')]//button[contains(@class,'tv-tile')]")) === 11)) === true)
     await wd.click("//button[contains(@class,'tv-chip')][starts-with(normalize-space(.),'PC mods')]")
     await check('a filter narrows the games', (await waitFor(async () => (await wd.count("//div[contains(@class,'tv-grid')]//button[contains(@class,'tv-tile')]")) === 1)) === true)
     await key('Escape')

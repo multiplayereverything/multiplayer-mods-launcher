@@ -51,7 +51,7 @@ int mergeCommunity(Config& cfg, const CommunityCache& cache) {
         GameSpec g;
         std::wstring why;
         if (!readCommunityMod(raw, cfg, local, g, why)) {
-            logger().warn(L"Community mod left out: " + why);
+            if (!why.empty()) logger().warn(L"Community mod left out: " + why);
             continue;
         }
         cfg.games.push_back(std::move(g));

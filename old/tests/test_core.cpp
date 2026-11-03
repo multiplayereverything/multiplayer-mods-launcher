@@ -738,6 +738,46 @@ TEST(community_record_that_reaches_further_is_refused) {
     CHECK(readCommunityMod(communityRecord("", local), cfg, true, g, why));
 }
 
+// The record with one piece of its text replaced.
+void swapIn(std::string& s, const std::string& from, const std::string& to) {
+    size_t at = s.find(from);
+    REQUIRE(at != std::string::npos);
+    s.replace(at, from.size(), to);
+}
+
+TEST(community_record_written_by_the_team_installs_where_it_did) {
+    // A mod moved from launcher.json: its card text is the app's, its Steam sub-folder and install record stay.
+    Config cfg = shippedConfig();
+    GameSpec g;
+    std::wstring why;
+    std::string r = communityRecord(R"("publisher": "someone",)");
+    swapIn(r, R"("installDir": "Lab Game" })", R"("installDir": "Lab Game", "subPath": "Atlas\\Binaries\\Win64" })");
+    swapIn(r, R"("targetDir")", R"("stateDir": "${INSTALL_DIR}\\.installer", "targetDir")");
+    swapIn(r, R"("author")", R"("description": "Four players.", "players": "2-4 players", "color": "#6BA83A", "guide": { "steps": ["Install."] }, "author")");
+    REQUIRE(readCommunityMod(r, cfg, false, g, why));
+    REQUIRE(g.mod != nullptr);
+    CHECK(g.mod->game.detection.size() == 1 && g.mod->game.detection[0].subPath == L"Atlas\\Binaries\\Win64");
+    CHECK(g.mod->install.stateDir == L"${INSTALL_DIR}\\.installer");
+
+    std::string out = r;
+    swapIn(out, R"("stateDir": "${INSTALL_DIR})", R"("stateDir": "%APPDATA%\\x)");
+    CHECK(!readCommunityMod(out, cfg, false, g, why));
+    CHECK(why.find(L"stateDir must be inside") != std::wstring::npos);
+    std::string up = r;
+    swapIn(up, R"("subPath": "Atlas)", R"("subPath": "..\\Other)");
+    CHECK(!readCommunityMod(up, cfg, false, g, why));
+    CHECK(why.find(L"subPath") != std::wstring::npos);
+
+    // A link card has nothing to install: the engine skips it without a reason. A kind it doesn't know has one.
+    std::string link = R"({ "id": "lab-link", "kind": "link", "repo": "someone/lab-link",
+      "link": { "game": "Lab Link", "url": "https://github.com/someone/lab-link" } })";
+    CHECK(!readCommunityMod(link, cfg, false, g, why));
+    CHECK(why.empty());
+    std::string flash = R"({ "id": "lab-flash", "kind": "flash", "repo": "someone/lab-flash" })";
+    CHECK(!readCommunityMod(flash, cfg, false, g, why));
+    CHECK(why.find(L"isn't known") != std::wstring::npos);
+}
+
 TEST(community_mods_come_from_the_apps_saved_copy) {
     TempDir dir("community");
     std::wstring path = fs::join(dir.path(), L"community.json");

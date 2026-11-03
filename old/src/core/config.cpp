@@ -1548,7 +1548,10 @@ bool checkCommunityShape(const Value& r, const std::wstring& id, const std::wstr
             if (!rule.isObject()) return refuse(error, where + L": must be an object");
             std::wstring type = strOf(rule, "type");
             if (type == L"steam") {
-                if (!onlyKeys(rule, {"type", "appId", "installDir"}, where, error)) return false;
+                if (!onlyKeys(rule, {"type", "appId", "installDir", "subPath"}, where, error)) return false;
+                // The game's folder inside its Steam folder (Atlas\Binaries\Win64): it may only go further in.
+                if (rule.find("subPath") && !insidePackage(strOf(rule, "subPath")))
+                    return refuse(error, where + L".subPath: a folder inside the game's Steam folder");
             } else if (type == L"path") {
                 if (!onlyKeys(rule, {"type", "path"}, where, error)) return false;
             } else {
@@ -1559,10 +1562,13 @@ bool checkCommunityShape(const Value& r, const std::wstring& id, const std::wstr
 
     if (const Value* in = m->find("install")) {
         if (!in->isObject()) return refuse(error, L"mod.install must be an object");
-        if (!onlyKeys(*in, {"targetDir", "preserve", "requires", "uninstallCleanup"}, L"mod.install", error)) return false;
+        if (!onlyKeys(*in, {"targetDir", "stateDir", "preserve", "requires", "uninstallCleanup"}, L"mod.install", error)) return false;
         std::wstring target = strOf(*in, "targetDir");
         if (!target.empty() && (!startsWithI(target, L"${GAME_DIR}") || target.find(L"..") != std::wstring::npos))
             return refuse(error, L"mod.install.targetDir must be inside ${GAME_DIR}");
+        // Where the install record is kept: a mod moved from launcher.json keeps its old place, so installs stay found.
+        if (in->find("stateDir") && !insideGame(strOf(*in, "stateDir")))
+            return refuse(error, L"mod.install.stateDir must be inside ${GAME_DIR} or ${INSTALL_DIR}");
         if (const Value* req = in->find("requires"); req && req->isArray())
             for (size_t i = 0; i < req->size(); ++i) {
                 if (!req->at(i).isObject()) return refuse(error, L"mod.install.requires: objects with path and message");
@@ -1598,8 +1604,13 @@ bool readCommunityMod(std::string_view text, const Config& cfg, bool localReleas
     std::string perr;
     Value r = json::parse(text, &perr);
     if (!r.isObject()) return refuse(error, L"not a JSON object" + (perr.empty() ? std::wstring() : L" (" + widen(perr) + L")"));
-    if (!onlyKeys(r, {"id", "repo", "tag", "version", "asset", "url", "sha256", "manifest_sha256", "author", "authorUrl",
-                      "approved_at", "approved_by", "mod"},
+    // "pc" (the default) installs; "link" is a card for the app with nothing to install, so the engine skips it without
+    // a reason (an empty error). The card's text (description, guide, colours) is the app's (src-tauri community.rs).
+    std::wstring kind = r.find("kind") ? strOf(r, "kind") : L"pc";
+    if (kind == L"link") return refuse(error, L"");
+    if (kind != L"pc") return refuse(error, L"kind \"" + kind + L"\" isn't known to this launcher");
+    if (!onlyKeys(r, {"id", "repo", "kind", "tag", "version", "asset", "url", "sha256", "manifest_sha256", "author", "authorUrl",
+                      "approved_at", "approved_by", "mod", "description", "players", "maxPlayers", "color", "colorEnd", "guide"},
                   L"record", error))
         return false;
     std::wstring id = strOf(r, "id"), repo = strOf(r, "repo"), tag = strOf(r, "tag"), asset = strOf(r, "asset");

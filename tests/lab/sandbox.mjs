@@ -91,7 +91,14 @@ export function makeSandbox(work, fakePlayer) {
   const labZip = join(work, 'www', 'someone', 'lab-coop', 'releases', 'download', 'v1.2.0', 'LabCoop-1.2.0.zip')
   mkdirSync(join(labZip, '..'), { recursive: true })
   execFileSync('powershell', ['-NoProfile', '-Command', `Compress-Archive -Path '${labPkg}\\*' -DestinationPath '${labZip}'`])
-  write(join(work, 'www', 'community', 'index.json'), JSON.stringify({ mods: ['lab-coop', 'lab-solo'] }))
+  write(join(work, 'www', 'community', 'index.json'), JSON.stringify({ mods: ['lab-coop', 'lab-link', 'lab-solo'] }))
+  // A card the team wrote by hand that only links to the mod's page (its own installer), with the card's own text.
+  write(join(work, 'www', 'community', 'lab-link.json'), JSON.stringify({
+    id: 'lab-link', kind: 'link', repo: 'someone/lab-link', author: 'someone', approved_at: '2026-11-04', approved_by: 'lab',
+    link: { game: 'Lab Link', url: 'https://github.com/someone/lab-link/releases' },
+    description: 'A mod with an installer of its own.', players: '2-16 players (alpha)', maxPlayers: 4,
+    guide: { steps: ['Download the zip from the mod\'s page.'], tips: ['It is an alpha.'] },
+  }))
   write(join(work, 'www', 'community', 'lab-coop.json'), JSON.stringify({
     id: 'lab-coop', repo: 'someone/lab-coop', tag: 'v1.2.0', version: '1.2.0', asset: 'LabCoop-1.2.0.zip',
     url: `http://127.0.0.1:${PORTS.http}/someone/lab-coop/releases/download/v1.2.0/LabCoop-1.2.0.zip`, sha256: sha256(labZip),
