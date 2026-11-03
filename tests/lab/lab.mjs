@@ -137,10 +137,10 @@ const scenarios = {
   async library() {
     const counts = await waitFor(async () => {
       const c = await wd.exec("return Object.fromEntries([...document.querySelectorAll('.navs .nav')].map(b => [b.querySelector('.lbl')?.textContent, b.querySelector('.n')?.textContent ?? '']))")
-      return c['All games'] === '7' && c
+      return c['All games'] === '9' && c
     })
     await check('the sidebar counts every game', !!counts, JSON.stringify(counts))
-    await check('the sidebar counts each category', counts && counts['Flash mods'] === '5' && counts['PC mods'] === '1' && counts['Online multiplayer'] === '3')
+    await check('the sidebar counts each category', counts && counts['Flash mods'] === '5' && counts['PC mods'] === '1' && counts['Online multiplayer'] === '3' && counts['Community mods'] === '1' && counts['Coming soon'] === '1', JSON.stringify(counts))
     await wd.click(nav('Flash mods'))
     await check('a category shows its games', (await waitFor(async () => (await wd.count("//button[contains(@class,'card-c')]")) === 5)) === true)
     await wd.click(nav('All games'))
@@ -151,7 +151,7 @@ const scenarios = {
     await wd.click(button('A to Z'))
     const names = await waitFor(async () => {
       const n = await wd.exec("return [...document.querySelectorAll('.card-c .name')].map(e => e.textContent)")
-      return n.length === 7 && n
+      return n.length === 9 && n
     })
     await check('A to Z sorts by name', !!names && names.join('|') === [...names].sort((a, b) => a.localeCompare(b)).join('|'), names?.join(', '))
     await wd.click(button('Compact'))
@@ -448,6 +448,44 @@ const scenarios = {
     await check('the status bar measures the server', /Server online \(\d+ ms\)/.test(await waitFor(() => wd.exec("return document.querySelector('.srv')?.textContent ?? ''").then((x) => /ms/.test(x) && x), 15000) || ''))
   },
 
+  // A community mod approved into mods-info (community/lab-coop.json): it arrives without a launcher update, installs
+  // its pinned release and uninstalls cleanly. The website's second project, with no record, is listed but can't install.
+  async communitymods() {
+    const labBefore = snapshot(box.labGame)
+    await wd.click(nav('All games'))
+    const arrived = await waitFor(async () => (await wd.count(card('Lab Game'))) === 1 && (await wd.count(card('Listed Only'))) === 1, 20000)
+    await check('approved community mods and listed projects come from mods-info and the website', arrived === true)
+    if (!arrived) return
+    const saved = existsSync(join(work, 'data', 'community.json')) ? readFileSync(join(work, 'data', 'community.json'), 'utf8') : ''
+    await check('the records are kept in the data folder for the mod commands', saved.includes('lab-coop'))
+    await openGame('Lab Game')
+    const page = await wd.exec("return document.querySelector('.gp')?.innerText ?? ''")
+    await check('the card has the website\'s description', page.includes('Four players in one lab.'), page.slice(0, 200))
+    await check('the card says whose mod it is', page.includes('by someone'), page.slice(0, 300))
+    await wd.click("//div[@role='tablist']//button[normalize-space(.)='How to play']")
+    const guide = await wd.exec("return document.querySelector('.gp')?.innerText ?? ''")
+    await check('its guide credits the author and links the repository', guide.includes('Made by someone, not by Multiplayer Everything') && guide.includes('lab-coop by someone on GitHub'), guide.slice(0, 300))
+    await wd.click("//div[@role='tablist']//button[normalize-space(.)='Overview']")
+    const ready = await waitFor(async () => wd.exec("return [...document.querySelectorAll('.dpanel .pbtn')].some(b => b.textContent.includes('Install') && !b.disabled)"), 20000)
+    const modsNow = ready === true ? '' : await wd.exec("return window.__TAURI_INTERNALS__.invoke('mods').then(m => JSON.stringify(m.map(x => [x.id, x.error])))").catch((e) => String(e))
+    await check('the community mod finds its game and offers Install', ready === true, `${await pill()} ${modsNow}`)
+    if (!ready) return
+    await wd.click(panel('Install Lab Game'))
+    const dll = join(box.labGame, 'BepInEx', 'plugins', 'LabCoop', 'LabCoop.dll')
+    await check('Install puts the pinned release in the game folder', (await waitFor(() => existsSync(dll), 30000)) === true)
+    await check('the community mod shows as installed', (await waitFor(async () => (await pill()).includes('Installed'), 15000)) === true, await pill())
+    await waitFor(async () => (await wd.count(panel('Uninstall'))) === 1, 30000)
+    await wd.click(panel('Uninstall'))
+    await wd.click(inDialog('Uninstall'))
+    await waitFor(async () => wd.exec("return [...document.querySelectorAll('.dpanel .pbtn')].some(b => b.textContent.includes('Install'))"), 30000)
+    await check('Uninstall leaves the community game folder exactly as it was', snapshot(box.labGame) === labBefore)
+    await key('Escape')
+    await openGame('Listed Only')
+    const listed = await wd.exec("return document.querySelector('.gp')?.innerText ?? ''")
+    await check('a listed project says it can\'t be installed yet', listed.includes("can't be installed from the launcher yet") || listed.includes('On the website, not in mods-info.'), listed.slice(0, 200))
+    await check('a listed project has no Install button', (await wd.exec("return [...document.querySelectorAll('.dpanel .pbtn')].filter(b => /Install/.test(b.textContent)).length")) === 0)
+  },
+
   async keys() {
     await wd.click(nav('All games'))
     await wd.find("//button[contains(@class,'card-c')]")
@@ -590,7 +628,7 @@ const scenarios = {
 
     await key('PageDown')
     await check('RB goes to Games', !!(await waitFor(async () => (await wd.count("//div[contains(@class,'tv-lib')]")) > 0)))
-    await check('Games shows every game', (await waitFor(async () => (await wd.count("//div[contains(@class,'tv-grid')]//button[contains(@class,'tv-tile')]")) === 7)) === true)
+    await check('Games shows every game', (await waitFor(async () => (await wd.count("//div[contains(@class,'tv-grid')]//button[contains(@class,'tv-tile')]")) === 9)) === true)
     await wd.click("//button[contains(@class,'tv-chip')][starts-with(normalize-space(.),'PC mods')]")
     await check('a filter narrows the games', (await waitFor(async () => (await wd.count("//div[contains(@class,'tv-grid')]//button[contains(@class,'tv-tile')]")) === 1)) === true)
     await key('Escape')

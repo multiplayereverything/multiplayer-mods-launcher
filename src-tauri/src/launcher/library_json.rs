@@ -6,13 +6,14 @@ use std::collections::BTreeSet;
 
 use serde_json::{Map, Value, json};
 
+use super::community;
 use super::catalog::{GameOptions, cached_catalog_settings, coop_save_game, installed_player_version, outdated_game_files, parse_catalog};
 use super::config::{ActionSpec, Config, ConfigIssue, GameSpec, format_issues, load_config, load_config_file};
 use super::embedded::{LAUNCHER_VERSION, read_embedded};
 use super::library::Library;
 use super::paths;
 use super::settings::{UserData, load_user_data};
-use super::site::{SiteGame, fetch_site_covers, find_site, load_site_cache, merge_site, parse_site, refresh_site_cache};
+use super::site::{SiteGame, fetch_site_covers, find_site, load_site_cache, mark_community, merge_projects, merge_site, parse_site, projects_url, refresh_site_cache};
 use super::text::atoi;
 use super::vars::Vars;
 
@@ -48,6 +49,31 @@ pub fn load_launcher_config_issues() -> Result<(Config, Vec<ConfigIssue>), Strin
     Ok((cfg, issues))
 }
 
+/// The data folder launcher.json names (settings.json, site.json, community.json live there).
+fn data_dir_of(cfg: &Config) -> String {
+    let mut base = Vars::default();
+    base.set("LAUNCHER_DIR", &cfg.config_dir);
+    paths::normalize(&base.expand(&cfg.paths.data))
+}
+
+/// Adds the community mods from the copy of mods-info's community/ kept in the data folder (src/launcher/community.rs),
+/// as the C++ mod commands do from the same file. FL_NO_COMMUNITY leaves them out.
+pub fn add_community(cfg: &mut Config) {
+    if std::env::var_os("FL_NO_COMMUNITY").is_some() {
+        return;
+    }
+    if let Some(cache) = community::load_cache(&paths::join(&data_dir_of(cfg), "community.json")) {
+        community::merge(cfg, &cache);
+    }
+}
+
+/// launcher.json with the community mods added: what the window lists and what Launch looks a game up in.
+pub fn load_with_community() -> Result<Config, String> {
+    let mut cfg = load_launcher_config()?;
+    add_community(&mut cfg);
+    Ok(cfg)
+}
+
 /// The library and the user's settings, as the C++ launcher sets them up before any command.
 pub fn open_library(cfg: &Config) -> (Library<'_>, UserData) {
     let mut base = Vars::default();
@@ -69,28 +95,65 @@ pub fn library_json() -> Result<Value, String> {
     let cfg = load_launcher_config()?;
     let (lib, user) = open_library(&cfg);
 
-    // As the window lists them: the website's copy from the last run adds its games and fills gaps.
+    // As the window lists them: the approved community mods, then the website's copy from the last run, which adds
+    // its games and fills gaps.
     let mut listed = cfg.clone();
+    add_community(&mut listed);
     let mut site_list = Vec::new();
     if !cfg.downloads.site.is_empty() && std::env::var_os("FL_NO_SITE").is_none() {
-        if let Some(list) = load_site_cache(&paths::join(&lib.data_dir(), "site.json")).and_then(|c| parse_site(c.raw.as_bytes())) {
-            merge_site(&mut listed, &list, &paths::join(&lib.data_dir(), "covers"));
+        let covers = paths::join(&lib.data_dir(), "covers");
+        // The website's community projects first, so an approved mod's card gets its description before games.json
+        // could add a second card for it.
+        if let Some(mut list) = load_site_cache(&paths::join(&lib.data_dir(), "projects.json")).and_then(|c| parse_site(c.raw.as_bytes())) {
+            mark_community(&mut list);
+            merge_projects(&mut listed, &list, &covers);
             site_list = list;
+        }
+        if let Some(list) = load_site_cache(&paths::join(&lib.data_dir(), "site.json")).and_then(|c| parse_site(c.raw.as_bytes())) {
+            merge_site(&mut listed, &list, &covers);
+            site_list.extend(list);
+        }
+    }
+    for g in &mut listed.games {
+        if let Some(m) = g.mod_spec.as_ref().filter(|_| g.description.is_empty() && g.categories == ["community"]) {
+            g.description = format!("A co-op mod for {} by {}.", m.game.name, m.info.publisher);
         }
     }
     Ok(build(&listed, &lib, &user, &site_list))
 }
 
-/// The website's games.json brought up to date in the data folder (at most once an hour), with any new covers it
-/// points at: true when the library should be read again. The C++ window did this on its own thread at start.
-pub fn refresh_site() -> Result<bool, String> {
+/// What the launcher reads from the internet about its games, brought up to date (each at most once an hour): mods-info's
+/// community mods, and the website's games.json with any new covers it points at. True when the library should be read
+/// again. The C++ window fetched games.json on its own thread at start.
+pub fn refresh_online_lists() -> Result<bool, String> {
     let cfg = load_launcher_config()?;
+    let community = if std::env::var_os("FL_NO_COMMUNITY").is_some() {
+        Ok(false)
+    } else {
+        community::refresh_cache(&community::mods_info_base(&cfg), &paths::join(&data_dir_of(&cfg), "community.json"))
+    };
+    let site = refresh_site(&cfg);
+    match (community, site) {
+        (Ok(a), Ok(b)) => Ok(a || b),
+        (Ok(true), _) | (_, Ok(true)) => Ok(true),
+        (Err(e), _) | (_, Err(e)) => Err(e),
+    }
+}
+
+fn refresh_site(cfg: &Config) -> Result<bool, String> {
+    let cfg = cfg.clone();
     if cfg.downloads.site.is_empty() || std::env::var_os("FL_NO_SITE").is_some() {
         return Ok(false);
     }
     let (lib, _) = open_library(&cfg);
     let cache = paths::join(&lib.data_dir(), "site.json");
     let changed = refresh_site_cache(&cfg.downloads.site, &cache);
+    let projects = refresh_site_cache(&projects_url(&cfg.downloads.site), &paths::join(&lib.data_dir(), "projects.json"));
+    let changed = match (changed, projects) {
+        (Ok(a), Ok(b)) => Ok(a || b),
+        (Ok(true), _) | (_, Ok(true)) => Ok(true),
+        (Err(e), _) | (_, Err(e)) => Err(e),
+    };
     // Covers are looked for even when games.json didn't change: one that failed last time may come now.
     let mut covers = 0;
     if let Some(list) = load_site_cache(&cache).and_then(|c| parse_site(c.raw.as_bytes())) {

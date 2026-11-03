@@ -43,6 +43,7 @@ add_library(launcher_core STATIC
   src/core/relay.cpp
   src/core/rooms.cpp
   src/core/site.cpp
+  src/core/community.cpp
   src/core/guide.cpp
   src/core/settings.cpp
   src/core/strings.cpp

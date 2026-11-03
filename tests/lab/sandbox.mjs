@@ -79,11 +79,39 @@ export function makeSandbox(work, fakePlayer) {
     assets: [{ name: 'rt-1.0.1.zip', browser_download_url: `http://127.0.0.1:${PORTS.http}/rt-1.0.1.zip`, digest: `sha256:${sha256(rtZip)}` }],
   }))
 
+  // A community mod the owner approved into mods-info (community/<id>.json), its release on a stand-in for github.com,
+  // and the fake game it goes into. The website lists it too (/api/projects), with a second project that has no record.
+  const labGame = join(work, 'LabGame')
+  write(join(labGame, 'LabGame.exe'), 'lab game binary')
+  const labPkg = join(work, 'labpkg')
+  write(join(labPkg, 'LabCoop.dll'), 'lab coop 1.2.0')
+  const labZip = join(work, 'www', 'someone', 'lab-coop', 'releases', 'download', 'v1.2.0', 'LabCoop-1.2.0.zip')
+  mkdirSync(join(labZip, '..'), { recursive: true })
+  execFileSync('powershell', ['-NoProfile', '-Command', `Compress-Archive -Path '${labPkg}\\*' -DestinationPath '${labZip}'`])
+  write(join(work, 'www', 'community', 'index.json'), JSON.stringify({ mods: ['lab-coop'] }))
+  write(join(work, 'www', 'community', 'lab-coop.json'), JSON.stringify({
+    id: 'lab-coop', repo: 'someone/lab-coop', tag: 'v1.2.0', version: '1.2.0', asset: 'LabCoop-1.2.0.zip',
+    url: `http://127.0.0.1:${PORTS.http}/someone/lab-coop/releases/download/v1.2.0/LabCoop-1.2.0.zip`, sha256: sha256(labZip),
+    author: 'someone', approved_at: '2026-11-03', approved_by: 'lab',
+    mod: {
+      id: 'lab-coop',
+      game: { name: 'Lab Game', executable: 'LabGame.exe', validationFiles: ['${GAME_EXE}'], processNames: ['LabGame-not-running.exe'],
+        detection: [{ type: 'path', path: labGame }] },
+      install: { targetDir: '${GAME_DIR}\\BepInEx\\plugins\\LabCoop' },
+      components: [{ id: 'mod', name: 'LabCoop', source: 'LabCoop.dll', target: '${INSTALL_DIR}', required: true }],
+      launch: { uri: 'steam://rungameid/123456', hint: 'Host from the pause menu.' },
+    },
+  }))
+  write(join(work, 'www', 'api', 'projects'), JSON.stringify({ games: [
+    { id: 'lab-coop', kind: 'pc', name: 'Lab Game', maintainer: 'someone', repo: 'someone/lab-coop', players: '1-4 players', description: 'Four players in one lab.' },
+    { id: 'listed-only', kind: 'pc', name: 'Listed Only', maintainer: 'another', repo: 'another/listed-only', description: 'On the website, not in mods-info.' },
+  ], attach: {} }))
+
   const swf = (name) => [`\${GAMES_DIR}\\${name}`]
   const config = {
     branding: { title: 'Multiplayer Everything', subtitle: 'Test lab' },
     paths: { games: '${LAUNCHER_DIR}\\games', players: '${LAUNCHER_DIR}\\players', data: '${LAUNCHER_DIR}\\data', flashpoint: [] },
-    downloads: { catalog: `http://127.0.0.1:${PORTS.http}/catalog.json`, modsInfo: `http://127.0.0.1:${PORTS.http}/` },
+    downloads: { catalog: `http://127.0.0.1:${PORTS.http}/catalog.json`, modsInfo: `http://127.0.0.1:${PORTS.http}/`, site: `http://127.0.0.1:${PORTS.http}/games.json` },
     rooms: { server: `127.0.0.1:${PORTS.rooms}`, refreshSeconds: 10 },
     players: [
       { id: 'fake', name: 'Fake Player', paths: [fakePlayer], args: ['--fake-player'], flashvarArg: '-P${KEY}=${VALUE}', coopSaveArg: '--coop-save',
@@ -97,7 +125,7 @@ export function makeSandbox(work, fakePlayer) {
     ],
     categories: [
       { id: 'flash', name: 'Flash mods', group: 'platform' }, { id: 'pc', name: 'PC mods', group: 'platform' },
-      { id: 'online', name: 'Online multiplayer' }, { id: 'coop', name: 'Co-op' },
+      { id: 'online', name: 'Online multiplayer' }, { id: 'coop', name: 'Co-op' }, { id: 'community', name: 'Community mods' },
     ],
     games: [
       {
@@ -164,7 +192,8 @@ export function makeSandbox(work, fakePlayer) {
       synced: { see: 'synced', story: 'partly' } }],
   }
   write(join(work, 'data', 'site.json'), JSON.stringify({ at: Math.floor(Date.now() / 1000), games: JSON.stringify(siteGames) }))
+  write(join(work, 'www', 'games.json'), JSON.stringify(siteGames))
   // A name and no minimizing, so nothing waits on a prompt and the window stays where WebDriver can see it.
   write(join(work, 'data', 'settings.json'), JSON.stringify({ playerName: 'Tester', online: true, minimize: 0 }))
-  return { config: join(work, 'launcher.json'), gameDir, args: join(work, 'args.txt'), settings: join(work, 'data', 'settings.json') }
+  return { config: join(work, 'launcher.json'), gameDir, labGame, args: join(work, 'args.txt'), settings: join(work, 'data', 'settings.json') }
 }

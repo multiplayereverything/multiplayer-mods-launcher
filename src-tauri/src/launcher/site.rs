@@ -132,6 +132,38 @@ pub fn parse_site(text: &[u8]) -> Option<Vec<SiteGame>> {
     Some(out)
 }
 
+/// Where the website lists the community projects it published: /api/projects beside games.json, in the same shape.
+pub fn projects_url(site_url: &str) -> String {
+    site_url.rfind('/').map(|i| format!("{}api/projects", &site_url[..=i])).unwrap_or_default()
+}
+
+/// The website's community projects (/api/projects) as site entries: every one is someone else's mod, credited to its
+/// maintainer and repository.
+pub fn mark_community(list: &mut [SiteGame]) {
+    for s in list {
+        s.community = true;
+        if s.author.is_empty() {
+            s.author = s.maintainer.clone();
+        }
+        if s.author_url.is_empty() && !s.repo.is_empty() {
+            s.author_url = format!("https://github.com/{}", s.repo);
+        }
+    }
+}
+
+/// A project the website lists that the launcher can't install yet (no approved record in mods-info) becomes a
+/// Community card that says so; one it can install gets the project's description, players and cover.
+pub fn merge_projects(cfg: &mut Config, list: &[SiteGame], cover_dir: &str) {
+    let before = cfg.games.len();
+    merge_site(cfg, list, cover_dir);
+    for g in &mut cfg.games[before..] {
+        g.categories = vec!["community".into()];
+        if g.description == "A multiplayer mod we are planning." {
+            g.description = "A community mod listed on the website. It can't be installed from the launcher yet.".into();
+        }
+    }
+}
+
 /// The entry for a launcher game: its own `site` id, else its id, else the id its mod has on the server.
 pub fn find_site<'a>(list: &'a [SiteGame], site_id: &str, game_id: &str, mod_id: &str) -> Option<usize> {
     let by = |id: &str, by_mod: bool| {

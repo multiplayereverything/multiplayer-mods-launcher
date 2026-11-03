@@ -28,7 +28,7 @@ a temporary name, and a failed or cancelled mod install leaves the game folder b
 | 4 | Players and game files: GitHub releases, downloads with SHA-256, unzip, updates with progress | `install` | `--install-player`, `--update-players [--check]`, `--download-game` | Done: `src-tauri/src/launcher/install.rs` (with `http.rs`'s streamed downloads); same exit codes, stdout and progress lines, messages, requests, and players, games and data folders (names, sizes, SHA-256, launcher.log) on every case of `tests/parity/downloads.mjs`. Unzipping is still Windows' tar.exe, as in C++ |
 | 5 | The lobby and the game bridge | `lobby`, `lobby_cli` | `--lobby-session` | |
 | 6 | The PC-mod engine: detection, the install record, the journaled install / update / repair / uninstall, packages | `mod/*` | `--mods --json`, `--install-mod`, `--repair-mod`, `--uninstall-mod` | |
-| 7 | Community mods approved into mods-info (`community/<id>.json`); the C++ draft of the rules is on branch `wip/community-mods-cpp` | (new) | | |
+| 7 | Community mods approved into mods-info (`community/<id>.json`, docs/COMMUNITY_MODS.md), and the website's listed projects | (new) | the mod commands read the app's saved copy | Done: `community.rs` fetches and checks them; `old/src/core/community.cpp` reads the same copy for the C++ mod engine until part 6; lab `communitymods` installs one |
 | 8 | The app updating itself: Tauri's updater with a signature from an offline key | `install` (`updateSelf`) | `--update` | |
 | 9 | Delete `old/`, ship the app alone | | | |
 

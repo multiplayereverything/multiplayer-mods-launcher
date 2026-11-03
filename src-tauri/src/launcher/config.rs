@@ -590,7 +590,7 @@ impl LoadResult {
     }
 }
 
-type Issues = RefCell<Vec<ConfigIssue>>;
+pub(crate) type Issues = RefCell<Vec<ConfigIssue>>;
 
 fn type_name(t: Type) -> &'static str {
     match t {
@@ -887,7 +887,7 @@ fn read_action(v: &Value, place: &str, issues: &Issues) -> ActionSpec {
     a
 }
 
-fn read_mod(v: &Value, game: &GameSpec, place: &str, issues: &Issues) -> ModSpec {
+pub(crate) fn read_mod(v: &Value, game: &GameSpec, place: &str, issues: &Issues) -> ModSpec {
     let mut m = ModSpec {
         info: ModInfo { id: game.id.clone(), name: game.name.clone(), description: game.description.clone(), ..Default::default() },
         game: ModGame::default(),
@@ -1040,7 +1040,7 @@ fn read_mod(v: &Value, game: &GameSpec, place: &str, issues: &Issues) -> ModSpec
 }
 
 /// The buttons of a mod game; the window shows the ones that fit its state. The top one is the first shown.
-fn add_mod_actions(g: &mut GameSpec) {
+pub(crate) fn add_mod_actions(g: &mut GameSpec) {
     for op in ["update", "install", "launch", "repair", "uninstall"] {
         g.actions.push(ActionSpec { id: op.into(), mod_op: op.into(), label: op.into(), ..Default::default() });
     }

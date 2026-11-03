@@ -6,6 +6,7 @@
 //! (`--install-player`, `--update-players [--check]`, `--download-game`): releases, SHA-256-checked downloads, unzip.
 
 pub mod catalog;
+pub mod community;
 pub mod config;
 pub mod discord;
 pub mod embedded;

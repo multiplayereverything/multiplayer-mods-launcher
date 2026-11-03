@@ -7,6 +7,7 @@
 
 #include <map>
 
+#include "core/community.h"
 #include "core/config.h"
 #include "core/embedded.h"
 #include "core/fs.h"
@@ -277,6 +278,16 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     for (const auto& i : lr.issues) logger().warn(i.where + L": " + i.message);
 
     if (a.relayPort) return runRelay(a.relayPort);
+
+    // The community mods the app downloaded from mods-info (community.json in the data folder), each checked again
+    // here, so --mods, --install-mod and --launch know the same ones as the window. FL_NO_COMMUNITY leaves them out.
+    if (!getenv("FL_NO_COMMUNITY")) {
+        CommunityCache community;
+        if (loadCommunityCache(fs::join(dataDir, L"community.json"), community)) {
+            int added = mergeCommunity(lr.config, community);
+            if (added) logger().info(L"Community mods: " + std::to_wstring(added));
+        }
+    }
 
     Library lib(cfg, base);
     std::wstring userPath = fs::join(lib.dataDir(), L"settings.json");

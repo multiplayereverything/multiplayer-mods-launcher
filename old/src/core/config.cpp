@@ -1461,4 +1461,197 @@ std::wstring formatIssues(const std::vector<ConfigIssue>& issues) {
     return out;
 }
 
+// ---- community mods the owner approved into mods-info (docs/COMMUNITY_MODS.md) -----------------------------------
+
+namespace {
+
+// A community record may only use what is listed here: anything else (a package, extras, an executable to run,
+// registry rules, roots outside the game folder) is refused, not ignored, so a record can't do more than it shows.
+bool onlyKeys(const Value& o, std::initializer_list<const char*> keys, const std::wstring& where, std::wstring& error) {
+    for (size_t i = 0; i < o.size(); ++i) {
+        const std::string& k = o.keyAt(i);
+        if (std::none_of(keys.begin(), keys.end(), [&](const char* a) { return k == a; })) {
+            error = where + L"." + widen(k) + L": not allowed in a community mod";
+            return false;
+        }
+    }
+    return true;
+}
+
+std::wstring strOf(const Value& o, const char* key) {
+    const Value* v = o.find(key);
+    return v && v->isString() ? widen(v->str()) : std::wstring();
+}
+
+// A path the mod writes to: inside the game folder (or the mod's own folder in it), never climbing out.
+bool insideGame(const std::wstring& p) {
+    return (startsWithI(p, L"${GAME_DIR}") || startsWithI(p, L"${INSTALL_DIR}")) && p.find(L"..") == std::wstring::npos;
+}
+
+// A path inside the package: relative, no variables, no climbing out.
+bool insidePackage(const std::wstring& p) {
+    return !p.empty() && p.find(L"..") == std::wstring::npos && p.find_first_of(L":$") == std::wstring::npos &&
+           p[0] != L'/' && p[0] != L'\\';
+}
+
+// One URL path segment of a release: an owner, a repository, a tag or a file name.
+bool plainSegment(const std::wstring& s) {
+    if (s.empty() || s.size() > 120 || s == L"." || s == L"..") return false;
+    for (wchar_t ch : s)
+        if (!(iswalnum(ch) || ch == L'-' || ch == L'_' || ch == L'.' || ch == L'+')) return false;
+    return true;
+}
+
+bool sha256Hex(const std::wstring& s) {
+    return s.size() == 64 &&
+           std::all_of(s.begin(), s.end(), [](wchar_t ch) { return (ch >= L'0' && ch <= L'9') || (ch >= L'a' && ch <= L'f'); });
+}
+
+bool repoName(const std::wstring& repo) {
+    size_t slash = repo.find(L'/');
+    return slash != std::wstring::npos && slash > 0 && repo.find(L'/', slash + 1) == std::wstring::npos &&
+           plainSegment(repo.substr(0, slash)) && plainSegment(repo.substr(slash + 1));
+}
+
+bool allDigits(const std::wstring& s) {
+    return std::all_of(s.begin(), s.end(), [](wchar_t ch) { return ch >= L'0' && ch <= L'9'; });
+}
+
+bool refuse(std::wstring& error, const std::wstring& why) {
+    error = why;
+    return false;
+}
+
+bool checkCommunityShape(const Value& r, const std::wstring& id, const std::wstring& repo, std::wstring& error) {
+    const Value* m = r.find("mod");
+    if (!m || !m->isObject()) return refuse(error, L"no \"mod\" object");
+    if (!onlyKeys(*m, {"id", "publisher", "website", "game", "install", "components", "launch"}, L"mod", error)) return false;
+    if (strOf(*m, "id") != id) return refuse(error, L"mod.id must be the record's id");
+    std::wstring site = strOf(*m, "website");
+    if (!site.empty() && site != L"https://github.com/" + repo) return refuse(error, L"mod.website must be https://github.com/" + repo);
+
+    const Value* g = m->find("game");
+    if (!g || !g->isObject()) return refuse(error, L"no mod.game");
+    if (!onlyKeys(*g, {"name", "executable", "steamAppId", "validationFiles", "processNames", "detection"}, L"mod.game", error))
+        return false;
+    if (strOf(*g, "name").empty()) return refuse(error, L"mod.game.name is missing");
+    if (strOf(*g, "executable").find_first_of(L"/\\:$") != std::wstring::npos) return refuse(error, L"mod.game.executable must be a file name");
+    if (!allDigits(strOf(*g, "steamAppId"))) return refuse(error, L"mod.game.steamAppId must be digits");
+    if (const Value* d = g->find("detection"); d && d->isArray()) {
+        for (size_t i = 0; i < d->size(); ++i) {
+            const Value& rule = d->at(i);
+            std::wstring where = L"mod.game.detection[" + std::to_wstring(i) + L"]";
+            if (!rule.isObject()) return refuse(error, where + L": must be an object");
+            std::wstring type = strOf(rule, "type");
+            if (type == L"steam") {
+                if (!onlyKeys(rule, {"type", "appId", "installDir"}, where, error)) return false;
+            } else if (type == L"path") {
+                if (!onlyKeys(rule, {"type", "path"}, where, error)) return false;
+            } else {
+                return refuse(error, where + L": only \"steam\" and \"path\" rules");
+            }
+        }
+    }
+
+    if (const Value* in = m->find("install")) {
+        if (!in->isObject()) return refuse(error, L"mod.install must be an object");
+        if (!onlyKeys(*in, {"targetDir", "preserve", "requires", "uninstallCleanup"}, L"mod.install", error)) return false;
+        std::wstring target = strOf(*in, "targetDir");
+        if (!target.empty() && (!startsWithI(target, L"${GAME_DIR}") || target.find(L"..") != std::wstring::npos))
+            return refuse(error, L"mod.install.targetDir must be inside ${GAME_DIR}");
+        if (const Value* req = in->find("requires"); req && req->isArray())
+            for (size_t i = 0; i < req->size(); ++i) {
+                if (!req->at(i).isObject()) return refuse(error, L"mod.install.requires: objects with path and message");
+                if (!onlyKeys(req->at(i), {"path", "message"}, L"mod.install.requires", error)) return false;
+            }
+    }
+
+    const Value* cs = m->find("components");
+    if (!cs || !cs->isArray() || cs->size() == 0) return refuse(error, L"mod.components: at least one");
+    for (size_t i = 0; i < cs->size(); ++i) {
+        const Value& c = cs->at(i);
+        std::wstring where = L"mod.components[" + std::to_wstring(i) + L"]";
+        if (!c.isObject()) return refuse(error, where + L": must be an object");
+        if (!onlyKeys(c, {"id", "name", "source", "target", "targetName", "required"}, where, error)) return false;
+        if (!insidePackage(strOf(c, "source"))) return refuse(error, where + L".source: a path inside the package");
+        std::wstring target = strOf(c, "target");
+        if (!target.empty() && !insideGame(target)) return refuse(error, where + L".target must be inside ${GAME_DIR}");
+    }
+
+    const Value* l = m->find("launch");
+    if (!l || !l->isObject()) return refuse(error, L"mod.launch is missing");
+    if (!onlyKeys(*l, {"uri", "hint"}, L"mod.launch", error)) return false;
+    std::wstring uri = strOf(*l, "uri");
+    std::wstring tail = startsWithI(uri, L"steam://rungameid/") ? uri.substr(18) : L"";
+    if (!(tail == L"${STEAM_APP_ID}" || (!tail.empty() && allDigits(tail))))
+        return refuse(error, L"mod.launch.uri must be steam://rungameid/<app id>");
+    return true;
+}
+
+}  // namespace
+
+bool readCommunityMod(std::string_view text, const Config& cfg, bool localRelease, GameSpec& out, std::wstring& error) {
+    std::string perr;
+    Value r = json::parse(text, &perr);
+    if (!r.isObject()) return refuse(error, L"not a JSON object" + (perr.empty() ? std::wstring() : L" (" + widen(perr) + L")"));
+    if (!onlyKeys(r, {"id", "repo", "tag", "version", "asset", "url", "sha256", "manifest_sha256", "author", "authorUrl",
+                      "approved_at", "approved_by", "mod"},
+                  L"record", error))
+        return false;
+    std::wstring id = strOf(r, "id"), repo = strOf(r, "repo"), tag = strOf(r, "tag"), asset = strOf(r, "asset");
+    std::wstring version = strOf(r, "version"), url = strOf(r, "url"), sha = strOf(r, "sha256");
+    if (id.empty() || id.size() > 48 ||
+        !std::all_of(id.begin(), id.end(), [](wchar_t ch) { return (ch >= L'a' && ch <= L'z') || (ch >= L'0' && ch <= L'9') || ch == L'-'; }))
+        return refuse(error, L"id: lowercase letters, digits and '-', up to 48");
+    if (!repoName(repo)) return refuse(error, L"repo must be \"owner/name\"");
+    if (!plainSegment(tag) || !plainSegment(asset)) return refuse(error, L"tag and asset must be plain names");
+    if (!plainSegment(version)) return refuse(error, L"version is missing");
+    if (!sha256Hex(sha)) return refuse(error, L"sha256 must be 64 lower-case hex digits");
+    // The download is the pinned release asset on github.com, under the record's own repository. A local test server
+    // stands in for github.com only when mods-info itself is one (tests/e2e.ps1).
+    std::wstring path = L"/" + repo + L"/releases/download/" + tag + L"/" + asset;
+    bool urlOk = url == L"https://github.com" + path;
+    if (!urlOk && localRelease && startsWithI(url, L"http://127.0.0.1:")) {
+        size_t at = url.find(L'/', 17);
+        urlOk = at != std::wstring::npos && url.substr(at) == path;
+    }
+    if (!urlOk) return refuse(error, L"url must be https://github.com" + path);
+    std::string sid = narrow(id);
+    for (const auto& g : cfg.games)
+        if (g.id == sid || g.siteId == sid || (g.mod && g.mod->mod.id == id)) return refuse(error, L"launcher.json already has \"" + id + L"\"");
+    if (!checkCommunityShape(r, id, repo, error)) return false;
+
+    // The recipe as launcher.json would hold it, with the package the approval pinned.
+    Value m = *r.find("mod");
+    Value pkg = Value::object();
+    pkg.set("version", narrow(version));
+    pkg.set("url", narrow(url));
+    pkg.set("sha256", narrow(sha));
+    m.set("package", std::move(pkg));
+    if (!m.find("publisher")) m.set("publisher", narrow(strOf(r, "author")));
+    if (!m.find("website")) m.set("website", narrow(L"https://github.com/" + repo));
+
+    GameSpec g;
+    g.id = sid;
+    g.siteId = sid;
+    g.name = strOf(*m.find("game"), "name");  // a community card is named after the game
+    g.categories = {"community"};
+    std::vector<ConfigIssue> issues;
+    g.mod = std::make_shared<const mod::Spec>(readMod(m, g, L"community." + id + L".mod", issues));
+    addModActions(g);
+    // Then every check a launcher.json mod gets.
+    Config one = cfg;
+    one.games = {g};
+    validateConfig(one, issues);
+    // A loopback release (only accepted above when mods-info is loopback too: the tests) isn't https.
+    bool testRelease = localRelease && startsWithI(url, L"http://127.0.0.1:");
+    const std::wstring pkgUrl = L".package.url";
+    auto isPkgUrl = [&](const std::wstring& w) { return w.size() >= pkgUrl.size() && w.compare(w.size() - pkgUrl.size(), pkgUrl.size(), pkgUrl) == 0; };
+    for (const auto& i : issues)
+        if (i.severity == ConfigIssue::Severity::Error && !(testRelease && isPkgUrl(i.where)))
+            return refuse(error, i.where + L": " + i.message);
+    out = std::move(g);
+    return true;
+}
+
 }  // namespace fl

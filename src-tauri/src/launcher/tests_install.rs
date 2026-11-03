@@ -9,7 +9,7 @@ use std::net::TcpListener;
 use std::sync::{Arc, Mutex};
 
 use super::catalog::{outdated_game_files, parse_catalog};
-use super::config::{PlayerSpec, load_config};
+use super::config::{PlayerSpec, load_config, load_config_file};
 use super::http::{is_rate_limit_message, rate_limit_message};
 use super::install::*;
 use super::paths;
@@ -448,4 +448,181 @@ fn website_covers_are_pictures_or_nothing() {
     assert!(!paths::exists(&dir.join("covers/x.png")) && !paths::exists(&dir.join("covers/y.png")));
     assert!(!paths::exists(&dir.join("covers/site-a.png.part")));
     assert_eq!(download_image("http://example.com/a.png", &dir.join("z.png")).unwrap_err(), "Pictures are only fetched over https");
+}
+
+// ---- community mods from mods-info (src/launcher/community.rs) ---------------------------------------------------
+
+fn shipped_config() -> super::config::Config {
+    let path = format!("{}\\..\\launcher\\launcher.json", env!("CARGO_MANIFEST_DIR"));
+    let r = load_config_file(&paths::normalize(&path));
+    assert!(r.ok());
+    r.config
+}
+
+const SHA: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+/// An approved record as the website writes it into mods-info's community/<id>.json.
+fn record() -> serde_json::Value {
+    serde_json::json!({
+        "id": "lab-coop",
+        "repo": "someone/lab-coop",
+        "tag": "v1.2.0",
+        "version": "1.2.0",
+        "asset": "LabCoop-1.2.0.zip",
+        "url": "https://github.com/someone/lab-coop/releases/download/v1.2.0/LabCoop-1.2.0.zip",
+        "sha256": SHA,
+        "manifest_sha256": SHA,
+        "author": "someone",
+        "approved_at": "2026-11-03",
+        "approved_by": "JessniX",
+        "mod": {
+            "id": "lab-coop",
+            "game": {
+                "name": "Lab Game",
+                "executable": "LabGame.exe",
+                "steamAppId": "123456",
+                "validationFiles": ["${GAME_EXE}"],
+                "processNames": ["LabGame.exe"],
+                "detection": [{ "type": "steam", "appId": "123456", "installDir": "Lab Game" }]
+            },
+            "install": { "targetDir": "${GAME_DIR}/BepInEx/plugins/LabCoop" },
+            "components": [{ "id": "mod", "name": "LabCoop", "source": "LabCoop.dll", "target": "${INSTALL_DIR}", "required": true }],
+            "launch": { "uri": "steam://rungameid/${STEAM_APP_ID}", "hint": "Host from the pause menu." }
+        }
+    })
+}
+
+fn read_rec(v: &serde_json::Value) -> Result<super::config::GameSpec, String> {
+    super::community::read_record(&v.to_string(), &shipped_config(), false)
+}
+
+#[test]
+fn an_approved_community_record_becomes_an_installable_card() {
+    let g = read_rec(&record()).unwrap();
+    assert_eq!(g.id, "lab-coop");
+    assert_eq!(g.name, "Lab Game", "a community card is named after the game");
+    assert_eq!(g.categories, ["community"]);
+    let m = g.mod_spec.as_ref().unwrap();
+    assert_eq!(m.package.version, "1.2.0");
+    assert_eq!(m.package.sha256, SHA);
+    assert!(m.package.url.starts_with("https://github.com/someone/lab-coop/releases/download/v1.2.0/"));
+    assert!(m.package.github.is_empty() && m.package.mods_info.is_empty(), "only the pinned file, never the newest release");
+    assert_eq!(m.info.publisher, "someone", "credited to its author");
+    assert_eq!(m.info.website, "https://github.com/someone/lab-coop");
+    assert_eq!(m.launch.uri, "steam://rungameid/${STEAM_APP_ID}");
+    let ops: Vec<&str> = g.actions.iter().map(|a| a.mod_op.as_str()).collect();
+    assert_eq!(ops, ["update", "install", "launch", "repair", "uninstall"]);
+}
+
+#[test]
+fn a_community_record_that_could_do_more_than_it_shows_is_refused_whole() {
+    let mut cases: Vec<(serde_json::Value, &str)> = Vec::new();
+    let mut add = |f: &dyn Fn(&mut serde_json::Value), want: &'static str| {
+        let mut r = record();
+        f(&mut r);
+        cases.push((r, want));
+    };
+    add(&|r| r["extra"] = "x".into(), "record.extra: not allowed");
+    add(&|r| r["mod"]["package"] = serde_json::json!({ "github": "x/y" }), "mod.package: not allowed");
+    add(&|r| r["mod"]["launch"]["executable"] = "cmd.exe".into(), "mod.launch.executable: not allowed");
+    add(&|r| r["mod"]["launch"]["uri"] = "https://example.com".into(), "steam://rungameid");
+    add(&|r| r["mod"]["install"]["allowedRoots"] = serde_json::json!(["C:/"]), "allowedRoots: not allowed");
+    add(&|r| r["mod"]["install"]["targetDir"] = "C:/Windows".into(), "targetDir must be inside");
+    add(&|r| r["mod"]["install"]["targetDir"] = "${GAME_DIR}/../..".into(), "targetDir must be inside");
+    add(&|r| r["mod"]["components"][0]["target"] = "%APPDATA%".into(), "target must be inside");
+    add(&|r| r["mod"]["components"][0]["source"] = "../secret".into(), "source: a path inside the package");
+    add(&|r| r["mod"]["components"][0]["sourceGame"] = serde_json::json!(["x"]), "sourceGame: not allowed");
+    add(&|r| r["mod"]["components"] = serde_json::json!([]), "at least one");
+    add(&|r| r["mod"]["game"]["detection"][0] = serde_json::json!({ "type": "registry", "key": "HKLM" }), "only \"steam\" and \"path\"");
+    add(&|r| r["mod"]["game"]["executable"] = "../evil.exe".into(), "must be a file name");
+    add(&|r| r["mod"]["website"] = "https://evil.example".into(), "mod.website must be");
+    add(&|r| r["mod"]["id"] = "other".into(), "mod.id must be the record's id");
+    add(&|r| r["url"] = "https://evil.example/LabCoop-1.2.0.zip".into(), "url must be https://github.com/someone/lab-coop/");
+    add(&|r| r["url"] = "https://github.com/other/repo/releases/download/v1.2.0/LabCoop-1.2.0.zip".into(), "url must be");
+    add(&|r| r["sha256"] = "ABC".into(), "sha256 must be");
+    add(&|r| r["id"] = "Lab Coop".into(), "id: lowercase");
+    add(&|r| r["repo"] = "no-slash".into(), "repo must be");
+    add(&|r| r["tag"] = "../x".into(), "plain names");
+    add(&|r| r["id"] = "spooky-together".into(), "launcher.json already has");
+    for (r, want) in cases {
+        let e = read_rec(&r).map(|g| g.id).unwrap_err();
+        assert!(e.contains(want), "wanted {want:?}, got {e:?}");
+    }
+    assert!(super::community::read_record("[1]", &shipped_config(), false).is_err());
+    assert!(super::community::read_record("not json", &shipped_config(), false).is_err());
+}
+
+#[test]
+fn a_local_release_is_only_trusted_when_mods_info_is_local_too() {
+    let mut r = record();
+    r["url"] = "http://127.0.0.1:9/someone/lab-coop/releases/download/v1.2.0/LabCoop-1.2.0.zip".into();
+    assert!(read_rec(&r).unwrap_err().contains("url must be"));
+    let ok = super::community::read_record(&r.to_string(), &shipped_config(), true);
+    assert!(ok.is_ok(), "{:?}", ok.map(|g| g.id));
+}
+
+#[test]
+fn community_records_are_fetched_from_mods_info_at_most_once_an_hour() {
+    use super::community::{Cache, load_cache, merge, mods_info_base, refresh_cache, save_cache};
+    let dir = TempDir::new("community");
+    let cache = dir.join("community.json");
+    let s = Server::new();
+    let base = s.url("/mods-info/");
+    // No community folder yet: no community mods, and that is kept as an answer.
+    assert_eq!(refresh_cache(&base, &cache), Ok(true));
+    assert!(load_cache(&cache).unwrap().raw.is_empty());
+    // Two listed, one missing on the server, the index with a bad id and a repeat.
+    s.set("/mods-info/community/index.json", br#"{"mods":["lab-coop","gone","Bad Id","lab-coop"]}"#);
+    s.set("/mods-info/community/lab-coop.json", record().to_string().as_bytes());
+    let old = load_cache(&cache).unwrap();
+    save_cache(&cache, &Cache { fetched_at: old.fetched_at - 3600, raw: old.raw });
+    assert_eq!(refresh_cache(&base, &cache), Ok(true));
+    let c = load_cache(&cache).unwrap();
+    assert_eq!(c.raw.len(), 1);
+    assert_eq!(s.hits("/mods-info/community/gone.json"), 1);
+    // Under an hour old: mods-info isn't asked again.
+    assert_eq!(refresh_cache(&base, &cache), Ok(false));
+    assert_eq!(s.hits("/mods-info/community/index.json"), 2, "the 404 and the fetch after it, nothing since");
+    // A broken index keeps the last good copy.
+    save_cache(&cache, &Cache { fetched_at: c.fetched_at - 3600, raw: c.raw.clone() });
+    s.set("/mods-info/community/index.json", b"<html>");
+    assert!(refresh_cache(&base, &cache).is_err());
+    assert_eq!(load_cache(&cache).unwrap().raw, c.raw);
+    assert!(refresh_cache("http://example.com/", &dir.join("x.json")).is_err(), "only https");
+    // The merge adds what passes and says why the others were left out.
+    let mut cfg = shipped_config();
+    let n = cfg.games.len();
+    let bad = { let mut r = record(); r["id"] = "other-mod".into(); r.to_string() };
+    let left_out = merge(&mut cfg, &Cache { fetched_at: 0, raw: vec![record().to_string(), bad] });
+    assert_eq!(cfg.games.len(), n + 1);
+    assert_eq!(left_out.len(), 1, "{left_out:?}");
+    assert!(mods_info_base(&cfg).ends_with('/'));
+}
+
+#[test]
+fn website_projects_become_community_cards() {
+    use super::site::{mark_community, merge_projects, parse_site, projects_url};
+    assert_eq!(projects_url("https://www.multiplayereverything.com/games.json"), "https://www.multiplayereverything.com/api/projects");
+    let api = br#"{"games":[
+        {"id":"test","kind":"pc","name":"TEST","maintainer":"multiplayereverything","repo":"multiplayereverything/multiplayer-mods-launcher","description":"A test."},
+        {"id":"lab-coop","kind":"pc","name":"Lab Game","maintainer":"someone","repo":"someone/lab-coop","description":"Four players in one world.","players":"1-4 players"}
+    ],"attach":{}}"#;
+    let mut list = parse_site(api).unwrap();
+    mark_community(&mut list);
+    assert!(list.iter().all(|s| s.community));
+    assert_eq!(list[0].author, "multiplayereverything");
+    assert_eq!(list[0].author_url, "https://github.com/multiplayereverything/multiplayer-mods-launcher");
+    let mut cfg = shipped_config();
+    cfg.games.push(read_rec(&record()).unwrap());
+    let n = cfg.games.len();
+    merge_projects(&mut cfg, &list, "covers");
+    // The approved one gets the website's description; the other is a card that can't be installed yet.
+    let lab = cfg.games.iter().find(|g| g.id == "lab-coop").unwrap();
+    assert_eq!(lab.description, "Four players in one world.");
+    assert_eq!(lab.player_count, "1-4 players");
+    assert_eq!(cfg.games.len(), n + 1);
+    let t = cfg.games.last().unwrap();
+    assert!(t.id == "site-test" && t.name == "TEST" && t.coming_soon && t.mod_spec.is_none());
+    assert_eq!(t.categories, ["community"]);
+    assert_eq!(t.description, "A test.");
 }

@@ -3,6 +3,7 @@
 #include <cstring>
 #include <thread>
 
+#include "core/community.h"
 #include "core/config.h"
 #include "core/discord.h"
 #include "core/embedded.h"
@@ -681,4 +682,75 @@ TEST(rooms_a_server_without_the_game_is_told_apart) {
     server.join();
     closesocket(l);
     WSACleanup();
+}
+
+// ---- community mods from mods-info (core/community.cpp, readCommunityMod) -------------------------------------------
+// The same rules as the app's src-tauri/src/launcher/community.rs, whose tests try every refusal; here, that the mod
+// commands accept an approved record, refuse one that reaches further, and read the app's saved copy.
+
+namespace {
+
+std::string communityRecord(const std::string& extraMod = "", const std::string& url = "") {
+    std::string u = url.empty() ? "https://github.com/someone/lab-coop/releases/download/v1.2.0/LabCoop-1.2.0.zip" : url;
+    return R"({ "id": "lab-coop", "repo": "someone/lab-coop", "tag": "v1.2.0", "version": "1.2.0", "asset": "LabCoop-1.2.0.zip",
+      "url": ")" + u + R"(", "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", "author": "someone",
+      "mod": { "id": "lab-coop", )" + extraMod + R"(
+        "game": { "name": "Lab Game", "executable": "LabGame.exe", "validationFiles": ["${GAME_EXE}"],
+                  "detection": [{ "type": "steam", "appId": "123456", "installDir": "Lab Game" }] },
+        "install": { "targetDir": "${GAME_DIR}/BepInEx/plugins/LabCoop" },
+        "components": [{ "id": "mod", "name": "LabCoop", "source": "LabCoop.dll", "target": "${INSTALL_DIR}", "required": true }],
+        "launch": { "uri": "steam://rungameid/123456" } } })";
+}
+
+Config shippedConfig() {
+    std::wstring path = fs::join(fs::parent(fs::parent(fs::parent(fs::parent(fs::selfExePath())))), L"launcher\\launcher.json");
+    if (!fs::isFile(path)) path = L"launcher\\launcher.json";
+    return loadConfigFile(path).config;
+}
+
+}  // namespace
+
+TEST(community_record_becomes_a_pinned_mod) {
+    Config cfg = shippedConfig();
+    GameSpec g;
+    std::wstring why;
+    REQUIRE(readCommunityMod(communityRecord(), cfg, false, g, why));
+    CHECK(g.id == "lab-coop");
+    CHECK(g.name == L"Lab Game");
+    REQUIRE(g.mod != nullptr);
+    CHECK(g.mod->package.version == L"1.2.0");
+    CHECK(g.mod->package.sha256.size() == 64);
+    CHECK(g.mod->mod.publisher == L"someone");
+    CHECK(g.categories.size() == 1 && g.categories[0] == "community");
+}
+
+TEST(community_record_that_reaches_further_is_refused) {
+    Config cfg = shippedConfig();
+    GameSpec g;
+    std::wstring why;
+    CHECK(!readCommunityMod(communityRecord(R"("package": { "github": "x/y" },)"), cfg, false, g, why));
+    CHECK(why.find(L"not allowed") != std::wstring::npos);
+    CHECK(!readCommunityMod(communityRecord("", "https://evil.example/LabCoop-1.2.0.zip"), cfg, false, g, why));
+    CHECK(why.find(L"url must be") != std::wstring::npos);
+    // A loopback release only when mods-info is loopback too (the tests).
+    std::string local = "http://127.0.0.1:9/someone/lab-coop/releases/download/v1.2.0/LabCoop-1.2.0.zip";
+    CHECK(!readCommunityMod(communityRecord("", local), cfg, false, g, why));
+    CHECK(readCommunityMod(communityRecord("", local), cfg, true, g, why));
+}
+
+TEST(community_mods_come_from_the_apps_saved_copy) {
+    TempDir dir("community");
+    std::wstring path = fs::join(dir.path(), L"community.json");
+    CommunityCache c;
+    c.fetchedAt = 1700000000;
+    c.raw = {communityRecord(), R"({ "id": "broken" })"};
+    REQUIRE(saveCommunityCache(path, c));
+    CommunityCache back;
+    REQUIRE(loadCommunityCache(path, back));
+    CHECK(back.raw.size() == 2 && back.fetchedAt == 1700000000);
+    Config cfg = shippedConfig();
+    size_t before = cfg.games.size();
+    CHECK(mergeCommunity(cfg, back) == 1);  // the broken one is left out
+    CHECK(cfg.games.size() == before + 1);
+    CHECK(cfg.findGame("lab-coop") != nullptr);
 }

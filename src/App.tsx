@@ -244,21 +244,28 @@ export default function App() {
       setLoadError(String(e))
     }
   }, [])
-  const refreshMods = useCallback(() => loadMods().then(setMods).catch((e) => say(`Mods: ${e}`, 'error')), [say])
+  // Each look asks the C++ launcher, which can take a while: only the newest answer is kept, so an older, slower one
+  // never overwrites a list that already has a community mod that came since.
+  const modsAsked = useRef(0)
+  const refreshMods = useCallback(() => {
+    const n = ++modsAsked.current
+    return loadMods().then((m) => n === modsAsked.current && setMods(m)).catch((e) => say(`Mods: ${e}`, 'error'))
+  }, [say])
 
   useEffect(() => {
     refresh()
     refreshMods()
   }, [refresh, refreshMods])
 
-  // What the website says: games it added show as Coming soon, and status and grades change. Asked at start and every
-  // hour (the copy on disk is used for an hour, so the website isn't asked more often than that).
+  // What mods-info and the website say: approved community mods, games the website added (Coming soon), statuses and
+  // grades. Asked at start and every hour (the copies on disk are used for an hour, so nothing is asked more often).
   useEffect(() => {
-    const ask = () => refreshSite().then((changed) => { if (changed) void refresh() }).catch(() => {})
+    // A community mod that came with it needs its install state too (the C++ launcher reads the same saved copy).
+    const ask = () => refreshSite().then((changed) => { if (changed) { void refresh(); void refreshMods() } }).catch(() => {})
     ask()
     const id = window.setInterval(ask, 3600000)
     return () => window.clearInterval(id)
-  }, [refresh])
+  }, [refresh, refreshMods])
 
   // Coming back to the window: whether a modded game is still open may have changed (the C++ window polls it).
   // At most every 30 seconds, since each look asks mods-info.

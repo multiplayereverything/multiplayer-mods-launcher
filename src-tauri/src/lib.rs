@@ -105,7 +105,7 @@ fn launch(
 ) -> Result<u32, String> {
     static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
     let session = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let is_mod = launcher::library_json::load_launcher_config().ok().and_then(|c| c.find_game(&game).map(|g| g.mod_spec.is_some()));
+    let is_mod = launcher::library_json::load_with_community().ok().and_then(|c| c.find_game(&game).map(|g| g.mod_spec.is_some()));
     if is_mod == Some(true) {
         return launch_mod(app, &shared, session, game, action, tv);
     }
@@ -448,11 +448,11 @@ fn lobby_send(shared: State<'_, Shared>, command: serde_json::Value) -> Result<(
     input.flush().map_err(|e| e.to_string())
 }
 
-/// The website's games.json and its covers brought up to date (at most once an hour): true when the library should be
-/// read again, for a game the website added or a status that changed.
+/// mods-info's community mods and the website's games.json with its covers, brought up to date (each at most once an
+/// hour): true when the library should be read again, for a mod or game that was added or a status that changed.
 #[tauri::command]
 async fn refresh_site() -> Result<bool, String> {
-    blocking(launcher::library_json::refresh_site).await
+    blocking(launcher::library_json::refresh_online_lists).await
 }
 
 /// "How did it run?": the player's answer, sent to the central server with this PC's parts (src/launcher/reports.rs).
