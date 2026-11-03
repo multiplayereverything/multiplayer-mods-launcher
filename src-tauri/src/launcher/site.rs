@@ -216,9 +216,14 @@ fn fetchable(url: &str) -> bool {
 /// when a copy that differs from the saved one came; Ok(false) when the saved copy is still fresh or the same. A failed
 /// fetch keeps the saved copy and says why.
 pub fn refresh_site_cache(url: &str, cache_path: &str) -> Result<bool, String> {
+    refresh_site_cache_within(url, cache_path, MAX_AGE_SECONDS)
+}
+
+/// The same with the saved copy's age limit given; 0 always asks the website (Ctrl+F5).
+pub fn refresh_site_cache_within(url: &str, cache_path: &str, max_age: i64) -> Result<bool, String> {
     let saved = load_site_cache(cache_path).filter(|c| parse_site(c.raw.as_bytes()).is_some());
     let now = now_unix();
-    if saved.as_ref().is_some_and(|c| c.fresh(now, MAX_AGE_SECONDS)) {
+    if saved.as_ref().is_some_and(|c| c.fresh(now, max_age)) {
         return Ok(false);
     }
     if !fetchable(url) {

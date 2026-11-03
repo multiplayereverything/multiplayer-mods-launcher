@@ -206,7 +206,7 @@ export const sendReport = (game: string, verdict: Verdict, version: string, mins
 export const loadReports = (game: string): Promise<Reports> => (live ? invoke<Reports>('reports', { game }) : Promise.resolve(sampleReports()))
 
 // The website's games.json, at most once an hour: true when the library changed (src-tauri/src/launcher/site.rs).
-export const refreshSite = (): Promise<boolean> => (live ? invoke<boolean>('refresh_site') : Promise.resolve(false))
+export const refreshSite = (force = false): Promise<boolean> => (live ? invoke<boolean>('refresh_site', { force }) : Promise.resolve(false))
 export const downloadGame = (game: string): Promise<void> => (live ? invoke('download_game', { game }) : Promise.resolve())
 export const setSetting = (key: keyof Settings, value: string | boolean): Promise<void> =>
   live ? invoke('set_setting', { key, value }) : Promise.resolve()

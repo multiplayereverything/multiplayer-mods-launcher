@@ -502,6 +502,28 @@ const scenarios = {
     const listed = await wd.exec("return document.querySelector('.gp')?.innerText ?? ''")
     await check('a listed project says it can\'t be installed yet', listed.includes("can't be installed from the launcher yet") || listed.includes('On the website, not in mods-info.'), listed.slice(0, 200))
     await check('a listed project has no Install button', (await wd.exec("return [...document.querySelectorAll('.dpanel .pbtn')].filter(b => /Install/.test(b.textContent)).length")) === 0)
+    await key('Escape')
+
+    // Ctrl+F5: a mod approved a minute ago comes now, not when the saved copy's hour is up; one taken down goes again.
+    const www = join(work, 'www', 'community')
+    const indexBefore = readFileSync(join(www, 'index.json'), 'utf8')
+    const late = JSON.parse(readFileSync(join(www, 'lab-solo.json'), 'utf8'))
+    late.id = late.mod.id = 'lab-late'
+    late.mod.game.name = 'Lab Late'
+    writeFileSync(join(www, 'lab-late.json'), JSON.stringify(late))
+    writeFileSync(join(www, 'index.json'), JSON.stringify({ mods: [...JSON.parse(indexBefore).mods, 'lab-late'] }))
+    await wd.click(nav('All games'))
+    await key('F5')
+    await new Promise((r) => setTimeout(r, 1500))
+    await check('F5 alone keeps the saved copy for its hour', (await wd.count(card('Lab Late'))) === 0)
+    const ctrlF5 = () => wd.exec("window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F5', ctrlKey: true }))")
+    await ctrlF5()
+    await check('Ctrl+F5 brings a mod approved since the start', (await waitFor(async () => (await wd.count(card('Lab Late'))) === 1, 20000)) === true)
+    await check('Ctrl+F5 says what it found', (await waitFor(async () => (await toast()).includes('New games or changes came'), 10000)) === true, await toast())
+    writeFileSync(join(www, 'index.json'), indexBefore)
+    rmSync(join(www, 'lab-late.json'))
+    await ctrlF5()
+    await check('Ctrl+F5 drops a mod taken down from mods-info', (await waitFor(async () => (await wd.count(card('Lab Late'))) === 0, 20000)) === true)
   },
 
   async keys() {

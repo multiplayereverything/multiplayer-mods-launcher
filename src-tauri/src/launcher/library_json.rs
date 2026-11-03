@@ -13,7 +13,7 @@ use super::embedded::{LAUNCHER_VERSION, read_embedded};
 use super::library::Library;
 use super::paths;
 use super::settings::{UserData, load_user_data};
-use super::site::{SiteGame, fetch_site_covers, find_site, load_site_cache, mark_community, merge_projects, merge_site, parse_site, projects_url, refresh_site_cache};
+use super::site::{SiteGame, fetch_site_covers, find_site, load_site_cache, mark_community, merge_projects, merge_site, parse_site, projects_url, refresh_site_cache_within};
 use super::text::atoi;
 use super::vars::Vars;
 
@@ -125,14 +125,16 @@ pub fn library_json() -> Result<Value, String> {
 /// What the launcher reads from the internet about its games, brought up to date (each at most once an hour): mods-info's
 /// community mods, and the website's games.json with any new covers it points at. True when the library should be read
 /// again. The C++ window fetched games.json on its own thread at start.
-pub fn refresh_online_lists() -> Result<bool, String> {
+/// `force` (Ctrl+F5) asks again even when the saved copies are under an hour old.
+pub fn refresh_online_lists(force: bool) -> Result<bool, String> {
+    let max_age = if force { 0 } else { community::MAX_AGE_SECONDS };
     let cfg = load_launcher_config()?;
     let community = if std::env::var_os("FL_NO_COMMUNITY").is_some() {
         Ok(false)
     } else {
-        community::refresh_cache(&community::mods_info_base(&cfg), &paths::join(&data_dir_of(&cfg), "community.json"))
+        community::refresh_cache_within(&community::mods_info_base(&cfg), &paths::join(&data_dir_of(&cfg), "community.json"), max_age)
     };
-    let site = refresh_site(&cfg);
+    let site = refresh_site(&cfg, max_age);
     match (community, site) {
         (Ok(a), Ok(b)) => Ok(a || b),
         (Ok(true), _) | (_, Ok(true)) => Ok(true),
@@ -140,15 +142,15 @@ pub fn refresh_online_lists() -> Result<bool, String> {
     }
 }
 
-fn refresh_site(cfg: &Config) -> Result<bool, String> {
+fn refresh_site(cfg: &Config, max_age: i64) -> Result<bool, String> {
     let cfg = cfg.clone();
     if cfg.downloads.site.is_empty() || std::env::var_os("FL_NO_SITE").is_some() {
         return Ok(false);
     }
     let (lib, _) = open_library(&cfg);
     let cache = paths::join(&lib.data_dir(), "site.json");
-    let changed = refresh_site_cache(&cfg.downloads.site, &cache);
-    let projects = refresh_site_cache(&projects_url(&cfg.downloads.site), &paths::join(&lib.data_dir(), "projects.json"));
+    let changed = refresh_site_cache_within(&cfg.downloads.site, &cache, max_age);
+    let projects = refresh_site_cache_within(&projects_url(&cfg.downloads.site), &paths::join(&lib.data_dir(), "projects.json"), max_age);
     let changed = match (changed, projects) {
         (Ok(a), Ok(b)) => Ok(a || b),
         (Ok(true), _) | (_, Ok(true)) => Ok(true),

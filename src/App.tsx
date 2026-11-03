@@ -627,7 +627,16 @@ export default function App() {
         e.preventDefault()
         moveFocus(e.key.slice(5).toLowerCase() as 'up' | 'down' | 'left' | 'right')
       } else if (e.key === 'Escape' && !(e.target instanceof HTMLInputElement)) back()
-      else if (e.key === 'F5') {
+      else if (e.key === 'F5' && e.ctrlKey) {
+        // Ctrl+F5: ask the website and mods-info now, not when the hour of the saved copies is up.
+        e.preventDefault()
+        if (e.repeat) return
+        say('Checking the website and mods-info for new games...')
+        refreshSite(true)
+          .then((changed) => say(changed ? 'New games or changes came from the website.' : 'Nothing new on the website or mods-info.', 'ok'))
+          .catch((err) => say(`The game list couldn't be checked: ${err}`, 'error'))
+          .finally(() => { void refresh(); void refreshMods() })
+      } else if (e.key === 'F5') {
         e.preventDefault()
         refresh()
         refreshMods()
@@ -1024,7 +1033,7 @@ export default function App() {
         </main>
         <footer className="statusbar">
           <span className="hints">
-            {(pad ? [['A', 'Select'], ['B', 'Back'], ['Y', 'Search'], ['LB/RB', 'Sections'], ['Start', 'TV mode']] : [['Enter', 'Open'], ['Ctrl+K', 'Go to'], ['Ctrl+F', 'Search'], ['Esc', 'Back']])
+            {(pad ? [['A', 'Select'], ['B', 'Back'], ['Y', 'Search'], ['LB/RB', 'Sections'], ['Start', 'TV mode']] : [['Enter', 'Open'], ['Ctrl+K', 'Go to'], ['Ctrl+F', 'Search'], ['Ctrl+F5', 'New games'], ['Esc', 'Back']])
               .map(([k, l]) => <span key={k}><kbd>{k}</kbd>{l}</span>)}
           </span>
           <span className="grow" />

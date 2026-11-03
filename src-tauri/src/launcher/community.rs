@@ -79,9 +79,14 @@ fn now_unix() -> i64 {
 /// Brings community.json up to date from mods-info, unless it is under an hour old. Ok(true) when the records changed.
 /// A mods-info without a community folder yet (404) means no community mods; any other failure keeps the last copy.
 pub fn refresh_cache(base: &str, cache_path: &str) -> Result<bool, String> {
+    refresh_cache_within(base, cache_path, MAX_AGE_SECONDS)
+}
+
+/// The same with the saved copy's age limit given; 0 always asks mods-info (Ctrl+F5).
+pub fn refresh_cache_within(base: &str, cache_path: &str, max_age: i64) -> Result<bool, String> {
     let saved = load_cache(cache_path);
     let now = now_unix();
-    if saved.as_ref().is_some_and(|c| now >= c.fetched_at && now - c.fetched_at < MAX_AGE_SECONDS) {
+    if saved.as_ref().is_some_and(|c| now >= c.fetched_at && now - c.fetched_at < max_age) {
         return Ok(false);
     }
     if !(base.starts_with("https://") || local(base)) {

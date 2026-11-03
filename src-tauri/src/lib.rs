@@ -449,10 +449,11 @@ fn lobby_send(shared: State<'_, Shared>, command: serde_json::Value) -> Result<(
 }
 
 /// mods-info's community mods and the website's games.json with its covers, brought up to date (each at most once an
-/// hour): true when the library should be read again, for a mod or game that was added or a status that changed.
+/// hour, or now with `force`): true when the library should be read again, for a mod or game that was added or a status that changed.
 #[tauri::command]
-async fn refresh_site() -> Result<bool, String> {
-    blocking(launcher::library_json::refresh_online_lists).await
+async fn refresh_site(force: Option<bool>) -> Result<bool, String> {
+    let force = force.unwrap_or(false);
+    blocking(move || launcher::library_json::refresh_online_lists(force)).await
 }
 
 /// "How did it run?": the player's answer, sent to the central server with this PC's parts (src/launcher/reports.rs).
