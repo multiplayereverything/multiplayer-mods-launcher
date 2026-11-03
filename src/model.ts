@@ -21,7 +21,7 @@ export function statusOf(g: Game, lib: Library, mods: Record<string, ModInfo> | 
     if (!m) return { kind: 'checking', text: 'Checking...' }
     if (!m.gameFound) return { kind: 'missing', text: `${g.mod.gameName || g.name} not found` }
     if (m.problem) return { kind: 'missing', text: m.problem }
-    if (!m.installed) return { kind: 'missing', text: 'Not installed' }
+    if (!m.installed) return { kind: 'missing', text: m.missing || 'Not installed' }
     if (m.published && newer(m.newest, m.installedVersion)) return { kind: 'update', text: `Update ${m.newest} available` }
     return { kind: 'installed', text: `Installed ${m.installedVersion}` }
   }

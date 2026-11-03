@@ -44,7 +44,7 @@ community/<id>.json       one record per mod
 - `mod` is a launcher.json `mod` recipe limited to what can't reach outside the game folder:
   - `game`: `name`, `executable` (a file name), `steamAppId` (digits), `validationFiles`, `processNames`, and
     `detection` with only `steam` and `path` rules;
-  - `install`: `targetDir` inside `${GAME_DIR}`, `preserve`, `requires`, `uninstallCleanup`;
+  - `install`: `targetDir` inside `${GAME_DIR}`, `preserve`, `requires` (each `path` relative to the game folder, like `BepInEx\core`, without `${GAME_DIR}`), `uninstallCleanup`;
   - `components`: `id`, `name`, `source` (inside the package), `target` inside `${GAME_DIR}` or `${INSTALL_DIR}`,
     `targetName`, `required`;
   - `launch`: only `uri` (`steam://rungameid/<app id>` or `${STEAM_APP_ID}`) and `hint`.

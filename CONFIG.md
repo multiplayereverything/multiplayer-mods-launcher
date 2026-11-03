@@ -291,7 +291,7 @@ adopted: use the same `mod.id` and `install` layout and the launcher sees it as 
 | `components[].sourceGame` | Instead of `source`: a copy of a file the game folder already has, the first of this list that exists, installed under `targetName` (or its own name). For a loader that wraps one of the game's own files and needs the original beside it: `["eax_orig.dll", "eax.dll"]` with `"targetName": "eax_orig.dll"` keeps an update from copying the wrapper over the copy. List it before the component that replaces the original. |
 | `package.extras[]` | A second download unpacked beside the package under `dir` (components then use `"<dir>/..."` as their `source`), usually the mod loader from its own release: `{ "dir": "loader", "github": "BepInEx/BepInEx", "tag": "v5.4.23.5", "asset": "BepInEx_win_x64_5.4.23.5.zip" }`, or a `url`. Its checksum is GitHub's, or `sha256` you pin. |
 | `actions[]` on a mod game | Only `link` actions: the mod's own page, shown after the launcher's Install and Launch buttons in the amber link style. |
-| `install.requires[]` | `{ "path", "message" }`: a file the game folder must already have (a loader the launcher can't download with a checksum). While it's missing, Install is off and the message is shown. |
+| `install.requires[]` | `{ "path", "message" }`: a file or folder the game folder must already have (a loader the launcher can't download with a checksum). `path` is relative to the game folder: `BepInEx\core`, never `${GAME_DIR}\...`. While it's missing, Install is off and the message is shown. |
 
 A package is a `.zip` (or one file) laid out as the `components[].source` folders expect. It is downloaded
 only over `https://`, and **only installed when its SHA-256 is known**: from `download_sha256`,

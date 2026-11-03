@@ -84,11 +84,14 @@ export function makeSandbox(work, fakePlayer) {
   const labGame = join(work, 'LabGame')
   write(join(labGame, 'LabGame.exe'), 'lab game binary')
   const labPkg = join(work, 'labpkg')
-  write(join(labPkg, 'LabCoop.dll'), 'lab coop 1.2.0')
+  // The mod is a folder inside the zip, as the website's form allows (source "release\\LabCoop"), and it needs BepInEx.
+  write(join(labGame, 'BepInEx', 'core', 'BepInEx.dll'), 'bepinex')
+  write(join(labPkg, 'release', 'LabCoop', 'LabCoop.dll'), 'lab coop 1.2.0')
+  write(join(labPkg, 'release', 'LabCoop', 'lang', 'en.txt'), 'hello')
   const labZip = join(work, 'www', 'someone', 'lab-coop', 'releases', 'download', 'v1.2.0', 'LabCoop-1.2.0.zip')
   mkdirSync(join(labZip, '..'), { recursive: true })
   execFileSync('powershell', ['-NoProfile', '-Command', `Compress-Archive -Path '${labPkg}\\*' -DestinationPath '${labZip}'`])
-  write(join(work, 'www', 'community', 'index.json'), JSON.stringify({ mods: ['lab-coop'] }))
+  write(join(work, 'www', 'community', 'index.json'), JSON.stringify({ mods: ['lab-coop', 'lab-solo'] }))
   write(join(work, 'www', 'community', 'lab-coop.json'), JSON.stringify({
     id: 'lab-coop', repo: 'someone/lab-coop', tag: 'v1.2.0', version: '1.2.0', asset: 'LabCoop-1.2.0.zip',
     url: `http://127.0.0.1:${PORTS.http}/someone/lab-coop/releases/download/v1.2.0/LabCoop-1.2.0.zip`, sha256: sha256(labZip),
@@ -97,9 +100,27 @@ export function makeSandbox(work, fakePlayer) {
       id: 'lab-coop',
       game: { name: 'Lab Game', executable: 'LabGame.exe', validationFiles: ['${GAME_EXE}'], processNames: ['LabGame-not-running.exe'],
         detection: [{ type: 'path', path: labGame }] },
-      install: { targetDir: '${GAME_DIR}\\BepInEx\\plugins\\LabCoop' },
-      components: [{ id: 'mod', name: 'LabCoop', source: 'LabCoop.dll', target: '${INSTALL_DIR}', required: true }],
+      install: { targetDir: '${GAME_DIR}\\BepInEx\\plugins\\LabCoop', requires: [{ path: 'BepInEx\\core', message: 'Install BepInEx 5 first' }] },
+      components: [{ id: 'mod', name: 'LabCoop', source: 'release\\LabCoop', target: '${INSTALL_DIR}', required: true }],
       launch: { uri: 'steam://rungameid/123456', hint: 'Host from the pause menu.' },
+    },
+  }))
+  // A mod released as one DLL, not a zip, with no manifest on the release: the record the website's form writes.
+  const labSolo = join(work, 'LabSolo')
+  write(join(labSolo, 'LabSolo.exe'), 'lab solo binary')
+  const soloDll = join(work, 'www', 'someone', 'lab-solo', 'releases', 'download', 'v0.3.0', 'LabSolo.dll')
+  write(soloDll, 'lab solo 0.3.0')
+  write(join(work, 'www', 'community', 'lab-solo.json'), JSON.stringify({
+    id: 'lab-solo', repo: 'someone/lab-solo', tag: 'v0.3.0', version: '0.3.0', asset: 'LabSolo.dll',
+    url: `http://127.0.0.1:${PORTS.http}/someone/lab-solo/releases/download/v0.3.0/LabSolo.dll`, sha256: sha256(soloDll),
+    author: 'someone', approved_at: '2026-11-03', approved_by: 'lab',
+    mod: {
+      id: 'lab-solo', publisher: 'someone', website: 'https://github.com/someone/lab-solo',
+      game: { name: 'Lab Solo', executable: 'LabSolo.exe', steamAppId: '654321', validationFiles: ['${GAME_EXE}'], processNames: ['LabSolo-not-running.exe'],
+        detection: [{ type: 'path', path: labSolo }] },
+      install: { targetDir: '${GAME_DIR}\\Mods' },
+      components: [{ id: 'mod', name: 'Lab Solo', source: 'LabSolo.dll', target: '${INSTALL_DIR}', required: true }],
+      launch: { uri: 'steam://rungameid/${STEAM_APP_ID}' },
     },
   }))
   write(join(work, 'www', 'api', 'projects'), JSON.stringify({ games: [
@@ -195,5 +216,5 @@ export function makeSandbox(work, fakePlayer) {
   write(join(work, 'www', 'games.json'), JSON.stringify(siteGames))
   // A name and no minimizing, so nothing waits on a prompt and the window stays where WebDriver can see it.
   write(join(work, 'data', 'settings.json'), JSON.stringify({ playerName: 'Tester', online: true, minimize: 0 }))
-  return { config: join(work, 'launcher.json'), gameDir, labGame, args: join(work, 'args.txt'), settings: join(work, 'data', 'settings.json') }
+  return { config: join(work, 'launcher.json'), gameDir, labGame, labSolo, args: join(work, 'args.txt'), settings: join(work, 'data', 'settings.json') }
 }

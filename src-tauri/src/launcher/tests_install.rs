@@ -514,6 +514,47 @@ fn an_approved_community_record_becomes_an_installable_card() {
     assert_eq!(ops, ["update", "install", "launch", "repair", "uninstall"]);
 }
 
+/// What the website's add-a-mod form writes when the release has no multiplayereverything.json (buildManifest in the
+/// website's community-validate.js): no manifest_sha256, backslash paths, a Steam rule and what the mod needs first.
+#[test]
+fn a_record_built_from_the_websites_form_is_installable_too() {
+    let mut r = record();
+    r.as_object_mut().unwrap().remove("manifest_sha256");
+    r["mod"] = serde_json::json!({
+        "id": "lab-coop",
+        "publisher": "someone",
+        "website": "https://github.com/someone/lab-coop",
+        "game": {
+            "name": "Lab Game", "executable": "LabGame.exe", "steamAppId": "123456",
+            "validationFiles": ["${GAME_EXE}"], "processNames": ["LabGame.exe"],
+            "detection": [{ "type": "steam", "appId": "123456", "installDir": "Lab Game" }]
+        },
+        "install": {
+            "targetDir": "${GAME_DIR}\\BepInEx\\plugins\\LabCoop",
+            "requires": [{ "path": "BepInEx\\core", "message": "Install BepInEx 5 first" }]
+        },
+        "components": [{ "id": "mod", "name": "Lab Game", "source": "release\\LabCoop", "target": "${INSTALL_DIR}", "required": true }],
+        "launch": { "uri": "steam://rungameid/${STEAM_APP_ID}" }
+    });
+    let g = read_rec(&r).unwrap();
+    let m = g.mod_spec.as_ref().unwrap();
+    assert_eq!(m.package.sha256, SHA);
+    assert_eq!(m.install.target_dir, "${GAME_DIR}\\BepInEx\\plugins\\LabCoop");
+    assert_eq!(m.components[0].source, "release\\LabCoop", "a folder inside the zip");
+
+    // A mod released as one file: the asset is the DLL and the source is its own name.
+    r["asset"] = "LabCoop.dll".into();
+    r["url"] = "https://github.com/someone/lab-coop/releases/download/v1.2.0/LabCoop.dll".into();
+    r["mod"]["components"][0]["source"] = "LabCoop.dll".into();
+    let g = read_rec(&r).unwrap();
+    assert!(g.mod_spec.as_ref().unwrap().package.url.ends_with("/LabCoop.dll"));
+
+    // The form leaves a Steam app id out only by mistake; the launch line then has nothing to start.
+    r["mod"]["game"]["steamAppId"] = "".into();
+    r["mod"]["game"].as_object_mut().unwrap().remove("detection");
+    assert!(read_rec(&r).is_err(), "no app id and steam://rungameid/${{STEAM_APP_ID}} can't be launched");
+}
+
 #[test]
 fn a_community_record_that_could_do_more_than_it_shows_is_refused_whole() {
     let mut cases: Vec<(serde_json::Value, &str)> = Vec::new();
@@ -530,6 +571,8 @@ fn a_community_record_that_could_do_more_than_it_shows_is_refused_whole() {
     add(&|r| r["mod"]["install"]["targetDir"] = "C:/Windows".into(), "targetDir must be inside");
     add(&|r| r["mod"]["install"]["targetDir"] = "${GAME_DIR}/../..".into(), "targetDir must be inside");
     add(&|r| r["mod"]["components"][0]["target"] = "%APPDATA%".into(), "target must be inside");
+    // The engine looks for a requirement under the game folder: with ${GAME_DIR} in front, Install would never turn on.
+    add(&|r| r["mod"]["install"]["requires"] = serde_json::json!([{ "path": "${GAME_DIR}\\BepInEx\\core", "message": "x" }]), "without ${GAME_DIR}");
     add(&|r| r["mod"]["components"][0]["source"] = "../secret".into(), "source: a path inside the package");
     add(&|r| r["mod"]["components"][0]["sourceGame"] = serde_json::json!(["x"]), "sourceGame: not allowed");
     add(&|r| r["mod"]["components"] = serde_json::json!([]), "at least one");

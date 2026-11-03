@@ -1588,8 +1588,9 @@ pub fn validate_config(cfg: &Config, issues: &mut Vec<ConfigIssue>) {
                 }
             }
             for (k, r) in m.install.requires.iter().enumerate() {
-                if r.path.is_empty() || norm_rel(&r.path).is_empty() {
-                    err(issues, format!("{mw}.install.requires[{k}].path"), "a path inside the game folder".into());
+                // The engine looks for it under the game folder, so "${GAME_DIR}\..." is never found and Install stays off.
+                if r.path.is_empty() || r.path.contains('$') || norm_rel(&r.path).is_empty() {
+                    err(issues, format!("{mw}.install.requires[{k}].path"), "a path inside the game folder, without ${GAME_DIR} (BepInEx\\core)".into());
                 }
             }
             for (k, pat) in m.install.uninstall_cleanup.iter().enumerate() {

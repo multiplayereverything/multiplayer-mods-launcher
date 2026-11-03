@@ -137,10 +137,10 @@ const scenarios = {
   async library() {
     const counts = await waitFor(async () => {
       const c = await wd.exec("return Object.fromEntries([...document.querySelectorAll('.navs .nav')].map(b => [b.querySelector('.lbl')?.textContent, b.querySelector('.n')?.textContent ?? '']))")
-      return c['All games'] === '9' && c
+      return c['All games'] === '10' && c
     })
     await check('the sidebar counts every game', !!counts, JSON.stringify(counts))
-    await check('the sidebar counts each category', counts && counts['Flash mods'] === '5' && counts['PC mods'] === '1' && counts['Online multiplayer'] === '3' && counts['Community mods'] === '1' && counts['Coming soon'] === '1', JSON.stringify(counts))
+    await check('the sidebar counts each category', counts && counts['Flash mods'] === '5' && counts['PC mods'] === '1' && counts['Online multiplayer'] === '3' && counts['Community mods'] === '2' && counts['Coming soon'] === '1', JSON.stringify(counts))
     await wd.click(nav('Flash mods'))
     await check('a category shows its games', (await waitFor(async () => (await wd.count("//button[contains(@class,'card-c')]")) === 5)) === true)
     await wd.click(nav('All games'))
@@ -151,7 +151,7 @@ const scenarios = {
     await wd.click(button('A to Z'))
     const names = await waitFor(async () => {
       const n = await wd.exec("return [...document.querySelectorAll('.card-c .name')].map(e => e.textContent)")
-      return n.length === 9 && n
+      return n.length === 10 && n
     })
     await check('A to Z sorts by name', !!names && names.join('|') === [...names].sort((a, b) => a.localeCompare(b)).join('|'), names?.join(', '))
     await wd.click(button('Compact'))
@@ -473,12 +473,30 @@ const scenarios = {
     await wd.click(panel('Install Lab Game'))
     const dll = join(box.labGame, 'BepInEx', 'plugins', 'LabCoop', 'LabCoop.dll')
     await check('Install puts the pinned release in the game folder', (await waitFor(() => existsSync(dll), 30000)) === true)
+    await check('a folder inside the zip is copied with its own subfolders', existsSync(join(box.labGame, 'BepInEx', 'plugins', 'LabCoop', 'lang', 'en.txt')) && !existsSync(join(box.labGame, 'BepInEx', 'plugins', 'LabCoop', 'LabCoop')))
     await check('the community mod shows as installed', (await waitFor(async () => (await pill()).includes('Installed'), 15000)) === true, await pill())
     await waitFor(async () => (await wd.count(panel('Uninstall'))) === 1, 30000)
     await wd.click(panel('Uninstall'))
     await wd.click(inDialog('Uninstall'))
     await waitFor(async () => wd.exec("return [...document.querySelectorAll('.dpanel .pbtn')].some(b => b.textContent.includes('Install'))"), 30000)
     await check('Uninstall leaves the community game folder exactly as it was', snapshot(box.labGame) === labBefore)
+    await key('Escape')
+
+    // community/lab-solo.json: one DLL released on its own, the record the website's form writes when there's no manifest.
+    const soloBefore = snapshot(box.labSolo)
+    await openGame('Lab Solo')
+    const soloReady = await waitFor(async () => wd.exec("return [...document.querySelectorAll('.dpanel .pbtn')].some(b => b.textContent.includes('Install') && !b.disabled)"), 20000)
+    await check('a single-file community mod offers Install', soloReady === true, await pill())
+    if (soloReady === true) {
+      await wd.click(panel('Install Lab Solo'))
+      const soloDll = join(box.labSolo, 'Mods', 'LabSolo.dll')
+      await check('a single-file mod is copied as it was released', (await waitFor(() => existsSync(soloDll) && readFileSync(soloDll, 'utf8') === 'lab solo 0.3.0', 30000)) === true)
+      await waitFor(async () => (await wd.count(panel('Uninstall'))) === 1, 30000)
+      await wd.click(panel('Uninstall'))
+      await wd.click(inDialog('Uninstall'))
+      await waitFor(async () => wd.exec("return [...document.querySelectorAll('.dpanel .pbtn')].some(b => b.textContent.includes('Install'))"), 30000)
+      await check('Uninstall leaves the single-file mod\'s game folder exactly as it was', snapshot(box.labSolo) === soloBefore)
+    }
     await key('Escape')
     await openGame('Listed Only')
     const listed = await wd.exec("return document.querySelector('.gp')?.innerText ?? ''")
@@ -628,7 +646,7 @@ const scenarios = {
 
     await key('PageDown')
     await check('RB goes to Games', !!(await waitFor(async () => (await wd.count("//div[contains(@class,'tv-lib')]")) > 0)))
-    await check('Games shows every game', (await waitFor(async () => (await wd.count("//div[contains(@class,'tv-grid')]//button[contains(@class,'tv-tile')]")) === 9)) === true)
+    await check('Games shows every game', (await waitFor(async () => (await wd.count("//div[contains(@class,'tv-grid')]//button[contains(@class,'tv-tile')]")) === 10)) === true)
     await wd.click("//button[contains(@class,'tv-chip')][starts-with(normalize-space(.),'PC mods')]")
     await check('a filter narrows the games', (await waitFor(async () => (await wd.count("//div[contains(@class,'tv-grid')]//button[contains(@class,'tv-tile')]")) === 1)) === true)
     await key('Escape')

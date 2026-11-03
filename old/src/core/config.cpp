@@ -1378,9 +1378,13 @@ void validateConfig(const Config& cfg, std::vector<ConfigIssue>& issues) {
                     err(ew, L"give a \"url\", or \"github\" and \"asset\"");
                 if (!e.url.empty() && !startsWithI(e.url, L"https://")) err(ew + L".url", L"must be an https:// address");
             }
-            for (size_t k = 0; k < m.install.requires_.size(); ++k)
-                if (m.install.requires_[k].path.empty() || mod::normRel(m.install.requires_[k].path).empty())
-                    err(mw + L".install.requires[" + std::to_wstring(k) + L"].path", L"a path inside the game folder");
+            // The engine looks for it under the game folder, so "${GAME_DIR}\..." is never found and Install stays off.
+            for (size_t k = 0; k < m.install.requires_.size(); ++k) {
+                const std::wstring& rp = m.install.requires_[k].path;
+                if (rp.empty() || rp.find(L'$') != std::wstring::npos || mod::normRel(rp).empty())
+                    err(mw + L".install.requires[" + std::to_wstring(k) + L"].path",
+                        L"a path inside the game folder, without ${GAME_DIR} (BepInEx\\core)");
+            }
             for (size_t k = 0; k < m.install.uninstallCleanup.size(); ++k) {
                 const std::wstring& pat = m.install.uninstallCleanup[k];
                 std::wstring prefix = pat.substr(0, pat.find_first_of(L"*?"));

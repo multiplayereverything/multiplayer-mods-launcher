@@ -275,6 +275,9 @@ export function GamePage({
           <PanelButton primary icon="E8B7" label="Choose the game folder" sub={`Where ${modName} is installed`} onClick={() => actions.chooseFolder(game)} />
         </>
       )
+    else if (!mod.installed && mod.missing)
+      // The loader this mod needs (install.requires) isn't in the game folder: the launcher can't install it.
+      modButtons = <PanelButton icon="E896" label={`Install ${modName}`} sub={mod.missing} warn disabled />
     else if (!mod.installed)
       modButtons = (
         <PanelButton primary icon="E896" label={`Install ${modName}`} disabled={!mod.published}
