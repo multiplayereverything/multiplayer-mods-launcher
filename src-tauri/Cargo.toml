@@ -30,7 +30,9 @@ tauri-plugin-single-instance = "2"
 tauri-plugin-notification = "2"
 # The library port (src/launcher): the catalog's SHA-256 check, launcher.json's server-link patterns, and the Windows
 # lookups the C++ launcher makes (known folders, PATH search, FindFirstFile wildcards). Part 2: WinHTTP for
-# mods-info's servers.json, getaddrinfo for the room server, Windows' UTF-8 decoding for what it answers.
+# mods-info's servers.json, getaddrinfo for the room server, Windows' UTF-8 decoding for what it answers. Part 3:
+# CreateProcess with the exact command line and environment, job objects for a game's server, the relay's select()
+# loop, this PC's addresses, Discord's named pipe.
 sha2 = "0.10"
 regex = "1"
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_UI_Shell", "Win32_System_Com", "Win32_Networking_WinHttp", "Win32_Networking_WinSock", "Win32_System_Diagnostics_Debug", "Win32_Globalization"] }
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_UI_Shell", "Win32_System_Com", "Win32_Networking_WinHttp", "Win32_Networking_WinSock", "Win32_System_Diagnostics_Debug", "Win32_Globalization", "Win32_Security", "Win32_System_Threading", "Win32_System_JobObjects", "Win32_System_Pipes", "Win32_System_Environment", "Win32_System_IO", "Win32_NetworkManagement_IpHelper", "Win32_NetworkManagement_Ndis", "Win32_System_SystemInformation"] }

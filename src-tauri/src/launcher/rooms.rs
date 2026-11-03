@@ -105,7 +105,7 @@ pub fn parse_room_list(reply: &[u8]) -> Option<Vec<RoomInfo>> {
 
 /// The first IPv4 address `getaddrinfo` gives, as the C++ side asks for it: a port may also be a service name
 /// ("127.0.0.1:http"), which Rust's own lookup refuses. None when nothing is found; Err when Winsock won't start.
-fn resolve_v4(host: &str, port: &str) -> Result<Option<SocketAddr>, ()> {
+pub(crate) fn resolve_v4(host: &str, port: &str) -> Result<Option<SocketAddr>, ()> {
     use windows_sys::Win32::Networking::WinSock::{ADDRINFOA, AF_INET, SOCK_STREAM, SOCKADDR_IN, WSACleanup, WSADATA, WSAStartup, freeaddrinfo, getaddrinfo};
     // A C string ends at the first NUL, as c_str() did.
     let c = |s: &str| std::ffi::CString::new(s.split('\0').next().unwrap_or("")).unwrap_or_default();

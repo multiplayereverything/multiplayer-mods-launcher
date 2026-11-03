@@ -133,6 +133,21 @@ pub fn is_absolute(p: &str) -> bool {
     c.len() > 2 && c[0] == '\\' && c[1] == '\\'
 }
 
+/// `child` is `parent_dir` or inside it, compared as Windows compares paths.
+pub fn is_under(child: &str, parent_dir: &str) -> bool {
+    let (c, mut p) = (normalize(child), normalize(parent_dir));
+    if c.is_empty() || p.is_empty() {
+        return false;
+    }
+    if iequals(&c, &p) {
+        return true;
+    }
+    if !p.ends_with('\\') {
+        p.push('\\');
+    }
+    super::text::starts_with_i(&c, &p)
+}
+
 pub fn join(a: &str, b: &str) -> String {
     if a.is_empty() {
         return b.to_string();

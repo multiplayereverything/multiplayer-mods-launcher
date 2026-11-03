@@ -9,8 +9,9 @@ engine until each part is rewritten in Rust (`src-tauri/src/engine.rs`).
 - The library, every action's state, the UI texts and your stats are built in Rust (`src-tauri/src/launcher`, what
   `--list --json` printed), and so are the open rooms (what `--rooms <id> --json` and `--rooms all --json` printed);
   the PC mods come from `--mods --json`.
-- Play, Host (players and room code or IP), Join (room code or address), the rooms' Join buttons, and mod
-  Install / Update / Launch / Repair / Uninstall run `--launch`, `--join`, `--address` and the mod commands.
+- Play, Host (players and room code or IP), Join (room code or address) and the rooms' Join buttons start the game
+  in Rust (`src-tauri/src/launcher/launch.rs`: the player's command line, the relay, the HTML5 server, Discord, play
+  time); mod Install / Update / Launch / Repair / Uninstall still run the C++ launcher's commands.
 - Favorites are written to the launcher's own `settings.json`, so both windows agree.
 
 It finds the exe through `FL_LAUNCHER_EXE`, or next to its own exe (the shipped layout):

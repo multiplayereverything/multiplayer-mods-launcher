@@ -10,12 +10,13 @@ use std::sync::{Arc, Mutex};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};  // Manager: asset_protocol_scope()
 
-/// What the window keeps between calls: where the launcher keeps settings.json, the launchers running a game or
-/// hosting (for Stop hosting), and the lobby session's input.
+/// What the window keeps between calls: where the launcher keeps settings.json, the games running or hosting (for
+/// Stop hosting: a PC mod's C++ launcher, or a Rust launch's stop signal), and the lobby session's input.
 #[derive(Default)]
 struct Shared {
     data_dir: Mutex<Option<PathBuf>>,
     sessions: Arc<Mutex<HashMap<u32, Child>>>,
+    stops: Arc<Mutex<HashMap<u32, Arc<launcher::launch::Stop>>>>,
     lobby: Mutex<Option<ChildStdin>>,
 }
 
@@ -85,9 +86,10 @@ struct HostStatus {
     relay: serde_json::Value,
 }
 
-/// Starts an action (`--launch game:action --json`, with a room code or an address when joining). Returns at once.
-/// A host action keeps its launcher running with the relay until the game closes, printing the relay's state as it
-/// changes: those become `host-status` events. `launch-ended` follows when the launcher returns.
+/// Starts an action and returns at once (src/launcher/launch.rs: what `--launch game:action --json --wait` did). A
+/// host action keeps the relay up until the game closes and reports its state as it changes: those become
+/// `host-status` events. `launch-ended` follows when the game exits, with the C++ launcher's exit code and message.
+/// PC mods still start through the C++ launcher (PORTING.md part 6).
 #[tauri::command]
 fn launch(
     app: AppHandle,
@@ -101,20 +103,47 @@ fn launch(
 ) -> Result<u32, String> {
     static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
     let session = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    // --wait: the launcher stays until the game exits, so the window knows it is running, its time is counted and
-    // Discord shows it.
+    let is_mod = launcher::library_json::load_launcher_config().ok().and_then(|c| c.find_game(&game).map(|g| g.mod_spec.is_some()));
+    if is_mod == Some(true) {
+        return launch_mod(app, &shared, session, game, action, tv);
+    }
+    let req = launcher::launch::Request {
+        game: game.clone(),
+        action,
+        join: code.unwrap_or_default(),
+        address: address.unwrap_or_default(),
+        coop_save: coop_save.unwrap_or_default(),
+        tv: tv == Some(true),
+        // The launch stays until the game exits, so the window knows it is running, its time is counted and Discord
+        // shows it.
+        wait: true,
+    };
+    let stop = Arc::new(launcher::launch::Stop::default());
+    let stops = shared.stops.clone();
+    stops.lock().unwrap().insert(session, stop.clone());
+    std::thread::spawn(move || {
+        let (code, message) = launcher::launch::run(
+            &req,
+            &mut |line| {
+                if let Some(relay) = serde_json::from_str::<serde_json::Value>(line).ok().and_then(|v| v.get("relay").cloned()) {
+                    let _ = app.emit("host-status", HostStatus { session, game: game.clone(), relay });
+                }
+            },
+            &stop,
+        );
+        // Stop hosting already took it out: that ends the session quietly, as killing the C++ launcher did.
+        let stopped = stops.lock().unwrap().remove(&session).is_none();
+        let (code, message) = if stopped { (0, String::new()) } else { (code, message) };
+        let _ = app.emit("launch-ended", LaunchEnded { session, game, code, message });
+    });
+    Ok(session)
+}
+
+/// A PC mod's Launch: `--launch game:action --json --wait` on the C++ launcher, whose exit becomes `launch-ended`.
+fn launch_mod(app: AppHandle, shared: &Shared, session: u32, game: String, action: String, tv: Option<bool>) -> Result<u32, String> {
     let mut args = vec!["--launch".to_string(), format!("{game}:{action}"), "--json".into(), "--wait".into()];
     if tv == Some(true) {
         args.push("--tv".into());
-    }
-    if let Some(s) = coop_save.filter(|s| !s.is_empty() && s != "continue") {
-        args.extend(["--coop-save".into(), s]);
-    }
-    if let Some(c) = code.filter(|c| !c.is_empty()) {
-        args.extend(["--join".into(), c]);
-    }
-    if let Some(a) = address.filter(|a| !a.is_empty()) {
-        args.extend(["--address".into(), a]);
     }
     let mut child = engine::spawn(&args, false)?;
     let stdout = child.stdout.take();
@@ -135,17 +164,11 @@ fn launch(
         let mut message = String::new();
         if let Some(out) = stdout {
             for line in BufReader::new(out).lines().map_while(Result::ok) {
-                match serde_json::from_str::<serde_json::Value>(&line).ok().and_then(|v| v.get("relay").cloned()) {
-                    Some(relay) => {
-                        let _ = app.emit("host-status", HostStatus { session, game: game.clone(), relay });
-                    }
-                    None => message = line,
-                }
+                message = line;
             }
         }
         let err = err_reader.join().unwrap_or_default();
         let child = sessions.lock().unwrap().remove(&session);
-        // Stop hosting already took it out and killed it: that ends the session quietly.
         let code = match child {
             Some(mut c) => c.wait().ok().and_then(|s| s.code()).unwrap_or(-1),
             None => 0,
@@ -156,9 +179,12 @@ fn launch(
     Ok(session)
 }
 
-/// Stop hosting: ends the launcher that keeps the relay up (the game itself keeps running).
+/// Stop hosting: ends the relay (and an HTML5 game's servers); the game itself keeps running.
 #[tauri::command]
 fn stop_session(shared: State<'_, Shared>, session: u32) -> Result<(), String> {
+    if let Some(stop) = shared.stops.lock().unwrap().remove(&session) {
+        stop.set();
+    }
     if let Some(mut c) = shared.sessions.lock().unwrap().remove(&session) {
         c.kill().map_err(|e| e.to_string())?;
         let _ = c.wait();

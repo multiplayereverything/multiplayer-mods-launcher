@@ -24,7 +24,7 @@ a temporary name, and a failed or cancelled mod install leaves the game folder b
 |---|---|---|---|---|
 | 1 | launcher.json, variables, settings.json, the library (players, game files, command lines), the website's games.json merge | `config`, `vars`, `settings`, `library`, `site`, `embedded`, `cli_json` | `--list --json`, the settings writes, favorites, located files | Done: `src-tauri/src/launcher`, same JSON on every input of `tests/parity/library.mjs` |
 | 2 | Open rooms and the central server's address and ping | `rooms` | `--rooms all --json`, `--rooms <id>`, ping | Done: `src-tauri/src/launcher/rooms.rs` (and `http.rs` for servers.json), same JSON, exit codes, errors and server requests on every case of `tests/parity/rooms.mjs`; ping was already Rust |
-| 3 | Starting a game: the command line, host options, TV options, the relay, the HTML5 web server, Discord, play time | `library`, `process`, `relay`, `webserver`, `discord`, `game_options`, `launcher_headless` | `--launch ... --wait [--tv] [--coop-save]` | |
+| 3 | Starting a game: the command line, host options, TV options, the relay, the HTML5 web server, Discord, play time | `library`, `process`, `relay`, `webserver`, `discord`, `game_options`, `launcher_headless` | `--launch ... --wait [--tv] [--coop-save]` | Done for every non-mod action: `src-tauri/src/launcher/launch.rs` (with `process.rs`, `relay.rs`, `webserver.rs`, `discord.rs`, `log.rs`); same arguments, environment, working folder, exit codes, messages, settings.json, relay reports and relay protocol on every case of `tests/parity/launch.mjs`. PC mods' Launch still runs the C++ launcher (part 6) |
 | 4 | Players and game files: GitHub releases, downloads with SHA-256, unzip, updates with progress | `install` | `--install-player`, `--update-players [--check]`, `--download-game` | |
 | 5 | The lobby and the game bridge | `lobby`, `lobby_cli` | `--lobby-session` | |
 | 6 | The PC-mod engine: detection, the install record, the journaled install / update / repair / uninstall, packages | `mod/*` | `--mods --json`, `--install-mod`, `--repair-mod`, `--uninstall-mod` | |
@@ -57,3 +57,32 @@ The PC-mod engine is late on purpose: it writes into players' game folders, so i
   in the app that is until it is closed, as in the C++ window.
 - Part 2: the room's `version` is parsed but not in the JSON; `--rooms <id>` lists a coming-soon game, `all`
   skips it.
+- Part 3: `coopSaveGame` recognises Ruffle Together's co-op games by the online id "ruffle-coop" written in the code
+  (catalog.rs `coop_save_game`): a game name in code, kept so both launchers offer the save choice to the same games.
+- Part 3: `--join` keeps letters and digits outside ASCII (iswalnum) but upper-cases only ASCII ones (towupper in the
+  C locale): " éa1ß" becomes "éA1ß". Kept.
+- Part 3: when a C++ launch failed, the window's message was the launcher's whole stderr: the log lines it echoed
+  (time-stamped, `--launch` turns the echo on) and then the reason. The Rust launch sends the reason alone; nothing
+  else differs.
+- Part 3: every Flash launch fetches servers.json (for `${SERVER}`), even a solo play whose arguments don't use it,
+  so a slow mods-info delays starting a game.
+- Part 3: the relay doesn't read what a client sends together with its goodbye (data and FIN in one read): a friend
+  who sends "J|name" and hangs up at once never joins or leaves. A second "H|" is told "E|..." but stays connected
+  with no role and its name changed, and its next message is read as a role request again.
+- Part 3: a relay port already taken ("in use" or "access denied") is silent: the game starts without the relay and
+  the hosting box gets no reports. Another error fails the launch.
+- Part 3: Stop hosting (killing the C++ launcher, now the stop signal) leaves the game running and its play time is
+  never added; the play count was added at start.
+- Part 3: the web server takes the first character of the path as the '/' whatever it is, so a request line without
+  a target looks for "ndex.html".
+- Part 3: one behaviour changes with the move: the C++ `--launch --wait` outlived the window, so closing the window
+  while a game ran kept the relay up and still counted the time. In the app, closing it ends the relay and that
+  session's time isn't added. Discord's presence now comes from the app's process (one per running game) instead of
+  one launcher process each.
+- Part 3: each `--launch` restarted launcher.log (opened "wb", others denied writing). The Rust launch restarts it too
+  and appends line by line, so the C++ launcher (mods, lobby) can still open it.
+- Part 3: players start with CREATE_NO_WINDOW, as they effectively did under the hidden C++ launcher; without it the
+  lab's console stand-in player opened a window that took the focus and minimized the window in TV mode.
+- Part 3: closing the app while a game runs now ends that session's relay and its play time (the C++ child used to
+  outlive the window). Only games that host through the launcher's own relay are affected.
+- Part 3: the lab's TV on-screen keyboard check failed once in a full run and passed in the next two; watch it.

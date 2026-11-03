@@ -378,9 +378,171 @@ fn strtod_whole(t: &str) -> Option<f64> {
     t.parse::<f64>().ok()
 }
 
+impl Value {
+    pub fn object() -> Value {
+        Value::Object(Vec::new())
+    }
+    /// Sets a key of an object, keeping its place when it is already there (json::Value::set).
+    pub fn set(&mut self, key: &str, v: impl Into<Value>) {
+        if let Value::Object(o) = self {
+            set(o, key.to_string(), v.into());
+        }
+    }
+    pub fn push(&mut self, v: impl Into<Value>) {
+        if let Value::Array(a) = self {
+            a.push(v.into());
+        }
+    }
+}
+
+impl From<&str> for Value {
+    fn from(s: &str) -> Value {
+        Value::String(s.to_string())
+    }
+}
+impl From<String> for Value {
+    fn from(s: String) -> Value {
+        Value::String(s)
+    }
+}
+impl From<bool> for Value {
+    fn from(b: bool) -> Value {
+        Value::Bool(b)
+    }
+}
+impl From<i32> for Value {
+    fn from(n: i32) -> Value {
+        Value::Number(n as f64)
+    }
+}
+impl From<i64> for Value {
+    fn from(n: i64) -> Value {
+        Value::Number(n as f64)
+    }
+}
+impl From<u32> for Value {
+    fn from(n: u32) -> Value {
+        Value::Number(n as f64)
+    }
+}
+impl From<Vec<Value>> for Value {
+    fn from(a: Vec<Value>) -> Value {
+        Value::Array(a)
+    }
+}
+
+fn write_string(out: &mut String, s: &str) {
+    out.push('"');
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+}
+
+/// printf's "%.17g": the shortest of fixed and exponent notation, trailing zeros dropped.
+fn format_g17(d: f64) -> String {
+    if !d.is_finite() {
+        return if d.is_nan() { "nan".into() } else if d > 0.0 { "inf".into() } else { "-inf".into() };
+    }
+    let e = format!("{d:.16e}");
+    let (mant, exp) = e.split_once('e').unwrap();
+    let exp: i32 = exp.parse().unwrap_or(0);
+    let strip = |s: String| if s.contains('.') { s.trim_end_matches('0').trim_end_matches('.').to_string() } else { s };
+    if exp < -4 || exp >= 17 {
+        let m = strip(mant.to_string());
+        format!("{m}e{}{:02}", if exp < 0 { '-' } else { '+' }, exp.abs())
+    } else {
+        strip(format!("{d:.*}", (16 - exp).max(0) as usize))
+    }
+}
+
+fn write(out: &mut String, v: &Value, pretty: bool, indent: usize) {
+    let newline = |out: &mut String, level: usize| {
+        if pretty {
+            out.push('\n');
+            out.push_str(&"  ".repeat(level));
+        }
+    };
+    match v {
+        Value::Null => out.push_str("null"),
+        Value::Bool(b) => out.push_str(if *b { "true" } else { "false" }),
+        Value::Number(d) => {
+            if d.floor() == *d && d.abs() < 1e15 {
+                out.push_str(&format!("{}", *d as i64));
+            } else {
+                out.push_str(&format_g17(*d));
+            }
+        }
+        Value::String(s) => write_string(out, s),
+        Value::Array(a) if a.is_empty() => out.push_str("[]"),
+        Value::Array(a) => {
+            out.push('[');
+            for (i, x) in a.iter().enumerate() {
+                if i > 0 {
+                    out.push(',');
+                }
+                newline(out, indent + 1);
+                write(out, x, pretty, indent + 1);
+            }
+            newline(out, indent);
+            out.push(']');
+        }
+        Value::Object(o) if o.is_empty() => out.push_str("{}"),
+        Value::Object(o) => {
+            out.push('{');
+            for (i, (k, x)) in o.iter().enumerate() {
+                if i > 0 {
+                    out.push(',');
+                }
+                newline(out, indent + 1);
+                write_string(out, k);
+                out.push_str(if pretty { ": " } else { ":" });
+                write(out, x, pretty, indent + 1);
+            }
+            newline(out, indent);
+            out.push('}');
+        }
+    }
+}
+
+/// The C++ writer's text (json::serialize): two-space indents when pretty, then a final newline; integers without
+/// a fraction. settings.json and the relay's report lines are written with it, so both launchers write the same bytes.
+pub fn serialize(v: &Value, pretty: bool) -> String {
+    let mut out = String::new();
+    write(&mut out, v, pretty, 0);
+    if pretty {
+        out.push('\n');
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn writes_as_the_cpp_writer_does() {
+        let mut o = Value::object();
+        o.set("a", 1);
+        o.set("b", "x\"\\\n\u{1}");
+        o.set("c", Value::Array(vec![Value::Bool(true), Value::Null]));
+        o.set("d", Value::object());
+        o.set("e", Value::Number(0.5));
+        o.set("a", 2);
+        assert_eq!(serialize(&o, false), r#"{"a":2,"b":"x\"\\\n\u0001","c":[true,null],"d":{},"e":0.5}"#);
+        assert_eq!(serialize(&o, true), "{\n  \"a\": 2,\n  \"b\": \"x\\\"\\\\\\n\\u0001\",\n  \"c\": [\n    true,\n    null\n  ],\n  \"d\": {},\n  \"e\": 0.5\n}\n");
+        assert_eq!(format_g17(0.1), "0.10000000000000001");
+        assert_eq!(format_g17(1e20), "1e+20");
+        assert_eq!(format_g17(1.5e-7), "1.4999999999999999e-07");
+    }
 
     #[test]
     fn comments_trailing_commas_and_repeated_keys() {
