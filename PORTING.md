@@ -25,7 +25,7 @@ a temporary name, and a failed or cancelled mod install leaves the game folder b
 | 1 | launcher.json, variables, settings.json, the library (players, game files, command lines), the website's games.json merge | `config`, `vars`, `settings`, `library`, `site`, `embedded`, `cli_json` | `--list --json`, the settings writes, favorites, located files | Done: `src-tauri/src/launcher`, same JSON on every input of `tests/parity/library.mjs` |
 | 2 | Open rooms and the central server's address and ping | `rooms` | `--rooms all --json`, `--rooms <id>`, ping | Done: `src-tauri/src/launcher/rooms.rs` (and `http.rs` for servers.json), same JSON, exit codes, errors and server requests on every case of `tests/parity/rooms.mjs`; ping was already Rust |
 | 3 | Starting a game: the command line, host options, TV options, the relay, the HTML5 web server, Discord, play time | `library`, `process`, `relay`, `webserver`, `discord`, `game_options`, `launcher_headless` | `--launch ... --wait [--tv] [--coop-save]` | Done for every non-mod action: `src-tauri/src/launcher/launch.rs` (with `process.rs`, `relay.rs`, `webserver.rs`, `discord.rs`, `log.rs`); same arguments, environment, working folder, exit codes, messages, settings.json, relay reports and relay protocol on every case of `tests/parity/launch.mjs`. PC mods' Launch still runs the C++ launcher (part 6) |
-| 4 | Players and game files: GitHub releases, downloads with SHA-256, unzip, updates with progress | `install` | `--install-player`, `--update-players [--check]`, `--download-game` | |
+| 4 | Players and game files: GitHub releases, downloads with SHA-256, unzip, updates with progress | `install` | `--install-player`, `--update-players [--check]`, `--download-game` | Done: `src-tauri/src/launcher/install.rs` (with `http.rs`'s streamed downloads); same exit codes, stdout and progress lines, messages, requests, and players, games and data folders (names, sizes, SHA-256, launcher.log) on every case of `tests/parity/downloads.mjs`. Unzipping is still Windows' tar.exe, as in C++ |
 | 5 | The lobby and the game bridge | `lobby`, `lobby_cli` | `--lobby-session` | |
 | 6 | The PC-mod engine: detection, the install record, the journaled install / update / repair / uninstall, packages | `mod/*` | `--mods --json`, `--install-mod`, `--repair-mod`, `--uninstall-mod` | |
 | 7 | Community mods approved into mods-info (`community/<id>.json`); the C++ draft of the rules is on branch `wip/community-mods-cpp` | (new) | | |
@@ -86,3 +86,22 @@ The PC-mod engine is late on purpose: it writes into players' game folders, so i
 - Part 3: closing the app while a game runs now ends that session's relay and its play time (the C++ child used to
   outlive the window). Only games that host through the launcher's own relay are affected.
 - Part 3: the lab's TV on-screen keyboard check failed once in a full run and passed in the next two; watch it.
+- Part 4: SHA-256 is checked only when it is known. A player from a fixed URL without `sha256`, a release asset with no
+  digest (or one that isn't "sha256:"), and a catalog entry without `sha256` are installed unchecked; such a catalog
+  file is downloaded again every time. Kept, so both launchers accept the same configs and catalogs.
+- Part 4: WinHTTP ends a read without an error when the server hangs up before its Content-Length, so a dropped
+  download is caught only by the expected size or the checksum ("The download is incomplete (7 bytes of 14 bytes; ...)"
+  or "doesn't match its published checksum"). With neither, a cut-off catalog file would be saved as the game.
+- Part 4: "The download is incomplete" is also what a file larger than the catalog's `size` reads ("14 bytes of 3 bytes").
+- Part 4: unzipping is Windows' tar.exe, as in C++. It refuses entries that climb out with ".." and links (the whole
+  install fails: "Unpacking the download failed", the old copy stays), and strips a leading "/" from absolute entries.
+  A tar still running after two minutes counts as failed while it keeps running.
+- Part 4: "Cannot replace <folder>" read Windows' error after the work folder was removed, so its code could be the
+  removal's; the Rust message gives the move's own code.
+- Part 4: updating a player asks GitHub twice (the check, then the install looks the release up again): two of the 60
+  unsigned requests an hour.
+- Part 4: a `gamesDir` in settings.json isn't expanded or made absolute, so "${LAUNCHER_DIR}\x" is a folder of that
+  name under the current folder; both launchers download there. With a `gamesDir`, the player lookups are logged twice
+  (the library refreshes again).
+- Part 4: each of these commands restarts launcher.log, as each C++ process did; the window's player check at start
+  and a game download while a game runs restart it too (they did when the C++ launcher ran them).

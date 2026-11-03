@@ -50,16 +50,16 @@ async fn mods() -> Result<serde_json::Value, String> {
     blocking(|| engine::run_json(&["--mods".into(), "--json".into()])).await
 }
 
-/// Downloads and installs a player that has an "install" entry, such as Ruffle Together (`--install-player <id>`):
-/// what the C++ launcher does on its first start, shown as a step of the first-run setup here.
+/// Downloads and installs a player that has an "install" entry, such as Ruffle Together (src/launcher/install.rs:
+/// what `--install-player <id>` did): what the C++ launcher does on its first start, shown as a step of the first-run
+/// setup here. A failure is the last line of the message, as the window read the C++ launcher's stderr.
 #[tauri::command]
 async fn install_player(player: String) -> Result<(), String> {
-    let o = blocking(move || engine::run(&["--install-player".into(), player])).await?;
-    if o.code == 0 {
+    let (code, message) = blocking(move || Ok(launcher::install::install_player_command(&player, &mut |_| {}))).await?;
+    if code == 0 {
         return Ok(());
     }
-    let text = if o.stderr.trim().is_empty() { o.stdout } else { o.stderr };
-    Err(text.trim().lines().last().unwrap_or("The player couldn't be installed").to_string())
+    Err(message.trim().lines().last().unwrap_or("The player couldn't be installed").to_string())
 }
 
 /// A game's open rooms on the central server: what `--rooms <id> --json` printed, now asked here (src/launcher/rooms).
@@ -227,16 +227,13 @@ fn mod_job(app: AppHandle, op: String, game: String) -> Result<(), String> {
     Ok(())
 }
 
-/// Downloads a game's files from the catalog (`--download-game <id>`); `download-ended` says how it went.
+/// Downloads a game's files from the catalog (src/launcher/install.rs: what `--download-game <id>` did);
+/// `download-ended` says how it went.
 #[tauri::command]
 fn download_game(app: AppHandle, game: String) -> Result<(), String> {
-    engine::find_exe()?;
     std::thread::spawn(move || {
-        let (ok, line) = match engine::run(&["--download-game".into(), game.clone()]) {
-            Ok(o) if o.code == 0 => (true, String::new()),
-            Ok(o) => (false, o.stderr.trim().to_string()),
-            Err(e) => (false, e),
-        };
+        let (code, message) = launcher::install::download_game_command(&game, &mut |_| {});
+        let (ok, line) = if code == 0 { (true, String::new()) } else { (false, message.trim().to_string()) };
         let _ = app.emit("download-ended", JobEvent { game, line, done: true, ok });
     });
     Ok(())
@@ -339,27 +336,36 @@ async fn all_rooms() -> Result<serde_json::Value, String> {
     blocking(launcher::rooms::all_rooms).await
 }
 
-/// Whether a player the launcher installed has a newer release, without installing it
-/// (`--update-players --check --json`), so the window can ask first.
+/// Whether a player the launcher installed has a newer release, without installing it (what
+/// `--update-players --check --json` printed), so the window can ask first.
 #[tauri::command]
 async fn check_players() -> Result<serde_json::Value, String> {
-    blocking(|| engine::run_json(&["--update-players".into(), "--check".into(), "--json".into()])).await
+    blocking(|| {
+        let mut answer = String::new();
+        let (code, message) = launcher::install::update_players_command(true, true, &mut |line| answer = line.to_string());
+        if answer.is_empty() {
+            return Err(if message.is_empty() { format!("The launcher printed nothing (exit {code})") } else { message });
+        }
+        serde_json::from_str(&answer).map_err(|e| format!("The launcher's answer isn't JSON: {e}"))
+    })
+    .await
 }
 
-/// Brings the players the launcher installed up to their newest release (`--update-players --json`). While a
-/// release downloads, its `{"progress":...}` lines become `player-progress` events; the last line is the answer.
+/// Brings the players the launcher installed up to their newest release (what `--update-players --json` printed).
+/// While a release downloads, its `{"progress":...}` lines become `player-progress` events; the last line is the
+/// answer.
 #[tauri::command]
 async fn update_players(app: AppHandle) -> Result<serde_json::Value, String> {
     blocking(move || {
         let mut last = String::new();
-        let (code, err) = engine::stream(&["--update-players".into(), "--json".into()], |line| {
+        let (code, err) = launcher::install::update_players_command(false, true, &mut |line| {
             match serde_json::from_str::<serde_json::Value>(line) {
                 Ok(v) if v.get("progress").is_some() => {
                     let _ = app.emit("player-progress", v["progress"].clone());
                 }
                 _ => last = line.to_string(),
             }
-        })?;
+        });
         serde_json::from_str(last.trim()).map_err(|_| if err.trim().is_empty() { format!("The update stopped (exit {code})") } else { err.trim().to_string() })
     })
     .await

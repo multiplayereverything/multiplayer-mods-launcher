@@ -183,7 +183,7 @@ pub fn file_name(path: &str) -> String {
 }
 
 /// Paths of 240 characters and more go to Windows with the \\?\ prefix, as in the C++ launcher.
-fn long_path(p: &str) -> String {
+pub(crate) fn long_path(p: &str) -> String {
     if p.encode_utf16().count() < 240 || p.starts_with("\\\\?\\") {
         return p.to_string();
     }
@@ -209,6 +209,63 @@ pub fn is_dir(p: &str) -> bool {
 pub fn is_file(p: &str) -> bool {
     let a = attrs(p);
     a != INVALID_FILE_ATTRIBUTES && a & FILE_ATTRIBUTE_DIRECTORY == 0
+}
+
+pub fn exists(p: &str) -> bool {
+    attrs(p) != INVALID_FILE_ATTRIBUTES
+}
+
+/// A drive root, a share, Windows or one of the user's top folders: never replaced or emptied as an install folder.
+pub fn is_dangerous_root(path: &str) -> bool {
+    let n = normalize(path);
+    if n.encode_utf16().count() <= 3 {
+        return true;
+    }
+    if n.starts_with("\\\\") && n.matches('\\').count() <= 3 {
+        return true;
+    }
+    for r in ["Windows", "ProgramFiles", "ProgramFilesX86", "Profile", "Desktop", "Documents", "ProgramData"] {
+        let k = known_folder(r);
+        if !k.is_empty() && iequals(&normalize(&k), &n) {
+            return true;
+        }
+    }
+    let win = known_folder("Windows");
+    !win.is_empty() && is_under(&n, &win)
+}
+
+/// MoveFileExW, with Windows' error code when it refuses.
+pub fn move_file(from: &str, to: &str, replace: bool) -> Result<(), u32> {
+    use windows_sys::Win32::Storage::FileSystem::{MOVEFILE_REPLACE_EXISTING, MoveFileExW};
+    let (f, t) = (wide(&long_path(from)), wide(&long_path(to)));
+    if unsafe { MoveFileExW(f.as_ptr(), t.as_ptr(), if replace { MOVEFILE_REPLACE_EXISTING } else { 0 }) } != 0 {
+        Ok(())
+    } else {
+        Err(unsafe { windows_sys::Win32::Foundation::GetLastError() })
+    }
+}
+
+pub fn delete_file(path: &str) {
+    let w = wide(&long_path(path));
+    unsafe { windows_sys::Win32::Storage::FileSystem::DeleteFileW(w.as_ptr()) };
+}
+
+/// std::filesystem::remove_all, errors ignored: a folder with everything in it, or a file. Links are removed, not
+/// followed.
+pub fn remove_tree(path: &str) {
+    if path.is_empty() {
+        return;
+    }
+    let lp = long_path(path);
+    match std::fs::symlink_metadata(&lp) {
+        Ok(m) if m.is_dir() => {
+            let _ = std::fs::remove_dir_all(&lp);
+        }
+        Ok(_) => {
+            let _ = std::fs::remove_file(&lp).or_else(|_| std::fs::remove_dir(&lp));
+        }
+        Err(_) => {}
+    }
 }
 
 /// Creates `dir` and its missing parents; false when a file is in the way or Windows refuses.

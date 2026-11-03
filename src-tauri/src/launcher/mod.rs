@@ -2,13 +2,15 @@
 //! settings.json, the library (players, game files, command lines) and the website's games.json merge, which
 //! together answer what `--list --json` answered. Part 2: the open rooms on the central server and which server to
 //! ask (`--rooms <id> --json`, `--rooms all --json`). Part 3: starting a game (`--launch ... --wait`): the command
-//! line, host options, the relay, the HTML5 web server, Discord and the play time.
+//! line, host options, the relay, the HTML5 web server, Discord and the play time. Part 4: players and game files
+//! (`--install-player`, `--update-players [--check]`, `--download-game`): releases, SHA-256-checked downloads, unzip.
 
 pub mod catalog;
 pub mod config;
 pub mod discord;
 pub mod embedded;
 pub mod http;
+pub mod install;
 pub mod json;
 pub mod launch;
 pub mod library;
@@ -27,5 +29,7 @@ pub mod webserver;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_install;
 #[cfg(test)]
 mod tests_launch;

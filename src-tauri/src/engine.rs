@@ -1,7 +1,7 @@
 //! The C++ launcher as the engine: until each part is rewritten in Rust, the window asks the tested launcher exe
 //! (`MultiplayerEverythingLauncher.exe`) for the mods (`--mods --json`), and starts PC mods and mod jobs through
-//! `--launch` and `--install-mod` and the rest. The library, the open rooms and starting every other game are Rust
-//! now (src/launcher).
+//! `--launch` and `--install-mod` and the rest. The library, the open rooms, starting every other game, and the
+//! players and game files (installs, updates, catalog downloads) are Rust now (src/launcher).
 
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;

@@ -7,7 +7,7 @@ use std::collections::BTreeSet;
 use serde_json::{Map, Value, json};
 
 use super::catalog::{GameOptions, cached_catalog_settings, coop_save_game, installed_player_version, outdated_game_files, parse_catalog};
-use super::config::{ActionSpec, Config, GameSpec, format_issues, load_config, load_config_file};
+use super::config::{ActionSpec, Config, ConfigIssue, GameSpec, format_issues, load_config, load_config_file};
 use super::embedded::{LAUNCHER_VERSION, read_embedded};
 use super::library::Library;
 use super::paths;
@@ -20,6 +20,11 @@ use super::vars::Vars;
 /// else launcher.json next to the app, else the copy built into it. An error, as the C++ launcher's exit 3, when it
 /// has problems.
 pub fn load_launcher_config() -> Result<Config, String> {
+    load_launcher_config_issues().map(|(cfg, _)| cfg)
+}
+
+/// The same, with the warnings launcher.json loaded with (the C++ commands write them to the log).
+pub fn load_launcher_config_issues() -> Result<(Config, Vec<ConfigIssue>), String> {
     let exe_dir = paths::self_exe_dir();
     let chosen = std::env::var("FL_LAUNCHER_CONFIG").unwrap_or_default();
     let config_path = if chosen.is_empty() { paths::join(&exe_dir, "launcher.json") } else { paths::full_path(&chosen) };
@@ -34,13 +39,13 @@ pub fn load_launcher_config() -> Result<Config, String> {
 {}
 {config_path}", format_issues(&lr.issues)));
     }
-    let cfg = lr.config;
+    let (cfg, issues) = (lr.config, lr.issues);
     let mut base = Vars::default();
     base.set("LAUNCHER_DIR", &cfg.config_dir);
     // The C++ launcher opens its log in the data folder first, so the folder exists from the first start (the
     // window's "Open log folder" and settings.json both need it).
     paths::ensure_dir(&paths::normalize(&base.expand(&cfg.paths.data)));
-    Ok(cfg)
+    Ok((cfg, issues))
 }
 
 /// The library and the user's settings, as the C++ launcher sets them up before any command.

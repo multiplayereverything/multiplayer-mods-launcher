@@ -101,6 +101,63 @@ pub fn compare_versions(a: &str, b: &str) -> i32 {
     0
 }
 
+/// A file-name pattern without case: `*` and `?` stay inside one folder, `**` crosses folders ("**/" may match none).
+pub fn glob_match(pattern: &str, text: &str) -> bool {
+    let p: Vec<char> = to_lower(pattern).replace('\\', "/").chars().collect();
+    let t: Vec<char> = to_lower(text).replace('\\', "/").chars().collect();
+    glob_impl(&p, &t)
+}
+
+fn glob_impl(mut p: &[char], mut t: &[char]) -> bool {
+    while let Some(&c) = p.first() {
+        if c == '*' && p.get(1) == Some(&'*') {
+            p = &p[2..];
+            if p.first() == Some(&'/') && glob_impl(&p[1..], t) {
+                return true;
+            }
+            return (0..=t.len()).any(|i| glob_impl(p, &t[i..]));
+        }
+        if c == '*' {
+            p = &p[1..];
+            for i in 0..=t.len() {
+                if glob_impl(p, &t[i..]) {
+                    return true;
+                }
+                if i == t.len() || t[i] == '/' {
+                    return false;
+                }
+            }
+            return false;
+        }
+        let Some(&x) = t.first() else { return false };
+        if c == '?' {
+            if x == '/' {
+                return false;
+            }
+        } else if c != x {
+            return false;
+        }
+        p = &p[1..];
+        t = &t[1..];
+    }
+    t.is_empty()
+}
+
+/// "1 byte", "512 bytes", "3.4 MB", "12 MB": the size in the download messages.
+pub fn format_bytes(bytes: u64) -> String {
+    if bytes < 1024 {
+        return format!("{bytes} {}", if bytes == 1 { "byte" } else { "bytes" });
+    }
+    let units = ["bytes", "KB", "MB", "GB", "TB"];
+    let mut v = bytes as f64;
+    let mut u = 0;
+    while v >= 1024.0 && u < 4 {
+        v /= 1024.0;
+        u += 1;
+    }
+    if v < 10.0 { format!("{v:.1} {}", units[u]) } else { format!("{v:.0} {}", units[u]) }
+}
+
 /// wcstoull: the leading digits, saturating.
 fn leading_u64(s: &str) -> u64 {
     s.bytes().take_while(|b| b.is_ascii_digit()).fold(0u64, |v, b| v.saturating_mul(10).saturating_add((b - b'0') as u64))

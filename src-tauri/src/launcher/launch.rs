@@ -185,7 +185,7 @@ fn relay_line(relay: &Relay) -> String {
 }
 
 /// The config file the app reads, for the log's first line.
-fn config_source() -> String {
+pub(crate) fn config_source() -> String {
     match std::env::var("FL_LAUNCHER_CONFIG") {
         Ok(c) if !c.is_empty() => paths::full_path(&c),
         _ => {

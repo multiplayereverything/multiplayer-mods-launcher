@@ -1,6 +1,9 @@
 //! HTTP GET the way the C++ launcher does it (old/src/core/install.cpp `httpGet`): through WinHTTP, so the system's
 //! proxy settings, TLS and redirects behave as they did, and a failure reads the same ("<host> answered HTTP 404",
-//! "Downloading from <host>: <Windows' message> (code N)").
+//! "Downloading from <host>: <Windows' message> (code N)"). Text answers (`get`) and downloads streamed to disk
+//! (`get_to`, with the Content-Length for progress and a cancel flag).
+
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use windows_sys::Win32::Foundation::GetLastError;
 use windows_sys::Win32::Networking::WinHttp::*;
@@ -44,6 +47,11 @@ pub fn rate_limit_message(seconds_left: i64) -> String {
     format!("GitHub only allows 60 requests an hour and that limit is used up. It answers again in {wait}.")
 }
 
+/// The window tells a used-up rate limit apart from other failures by this wording.
+pub fn is_rate_limit_message(text: &str) -> bool {
+    text.starts_with("GitHub only allows 60 requests")
+}
+
 struct Handle(*mut core::ffi::c_void);
 
 impl Drop for Handle {
@@ -56,6 +64,23 @@ impl Drop for Handle {
 
 /// The body of `url`, at most `limit` bytes (more is an error, as the C++ sink refusing it was).
 pub fn get(url: &str, limit: usize) -> Result<Vec<u8>, String> {
+    let mut body = Vec::new();
+    get_to(
+        url,
+        &mut |d, _| {
+            body.extend_from_slice(d);
+            body.len() < limit
+        },
+        None,
+    )?;
+    Ok(body)
+}
+
+/// GET `url`, following redirects (GitHub sends downloads to its CDN), handing the body to `sink` as it arrives; a
+/// sink that answers false stops it ("Could not write the download to disk", the C++ wording whether the disk or a
+/// size limit refused); it is also told the Content-Length header (0 without one). `cancel` is looked at before each
+/// read.
+pub fn get_to(url: &str, sink: &mut dyn FnMut(&[u8], u64) -> bool, cancel: Option<&AtomicBool>) -> Result<(), String> {
     let mut host = [0u16; 256];
     let mut path = [0u16; 4096];
     let mut extra = [0u16; 2048];
@@ -142,21 +167,48 @@ pub fn get(url: &str, limit: usize) -> Result<Vec<u8>, String> {
         }
         return Err(error);
     }
-    let mut body = Vec::new();
+    let length = {
+        let mut v = [0u16; 32];
+        let mut lsize = std::mem::size_of_val(&v) as u32;
+        let ok = unsafe {
+            WinHttpQueryHeaders(req.0, WINHTTP_QUERY_CONTENT_LENGTH, std::ptr::null(), v.as_mut_ptr().cast(), &mut lsize, std::ptr::null_mut())
+        };
+        if ok != 0 { wcstoui64(&until_nul(&v)) } else { 0 }
+    };
     let mut buf = vec![0u8; 256 * 1024];
     loop {
+        if cancel.is_some_and(|c| c.load(Ordering::Relaxed)) {
+            return Err("Cancelled".into());
+        }
         let mut got = 0u32;
         if unsafe { WinHttpReadData(req.0, buf.as_mut_ptr().cast(), buf.len() as u32, &mut got) } == 0 {
             return Err(last_error("Download interrupted"));
         }
         if got == 0 {
-            return Ok(body);
+            return Ok(());
         }
-        body.extend_from_slice(&buf[..got as usize]);
-        if body.len() >= limit {
+        if !sink(&buf[..got as usize], length) {
             return Err("Could not write the download to disk".into());
         }
     }
+}
+
+/// `_wcstoui64`: leading white space, digits; a minus sign negates modulo 2^64 as the C runtime does.
+fn wcstoui64(s: &str) -> u64 {
+    let t = s.trim_start();
+    let (neg, digits) = match t.as_bytes().first() {
+        Some(b'-') => (true, &t[1..]),
+        Some(b'+') => (false, &t[1..]),
+        _ => (false, t),
+    };
+    let mut v: u64 = 0;
+    for b in digits.bytes().take_while(|b| b.is_ascii_digit()) {
+        match v.checked_mul(10).and_then(|x| x.checked_add((b - b'0') as u64)) {
+            Some(x) => v = x,
+            None => return u64::MAX,
+        }
+    }
+    if neg { v.wrapping_neg() } else { v }
 }
 
 /// `_wcstoi64`: leading white space, a sign, digits.
