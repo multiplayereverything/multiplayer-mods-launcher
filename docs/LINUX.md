@@ -128,9 +128,13 @@ cmake --build old/build-linux
 ```
 
 The lab also needs `tauri-driver` (`cargo install tauri-driver --locked`), `webkitgtk-webdriver` (or
-`WEBKIT_WEBDRIVER` pointing at the driver), `zip`, `wl-clipboard` (`xclip` under X11) and a display. WSLg's works, with `DISPLAY=:0`. WSLg doesn't report a minimized
+`WEBKIT_WEBDRIVER` pointing at the driver), `zip`, `wl-clipboard` (`xclip` under X11) and a display. Under WSLg, run it
+with `GDK_BACKEND=x11 DISPLAY=:0`, as animation frames stall on its Wayland display. WSLg doesn't report a minimized
 window, so the lab prints that check as `SKIP` there. It also doesn't focus a window nobody clicked, so on Linux the
 lab's gamepad checks treat the window as focused.
+
+The parity suite skips `join-code-unicode` on Linux: the C++ engine there keeps only ASCII letters in a `--join` code,
+where Rust keeps every letter. Real room codes are ASCII.
 
 On Linux the lab's update check replaces a stand-in file (`FL_UPDATE_TARGET`, honoured only by development builds)
 rather than the running program.

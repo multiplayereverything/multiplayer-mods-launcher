@@ -1114,7 +1114,8 @@ fn a_developers_flash_record_downloads_its_pinned_files_and_gets_the_standard_bu
     for a in &g.actions {
         assert_eq!(a.swf, ["${GAMES_DIR}\\community\\lab-flash-coop\\LabFlash_coop.swf"], "{}", a.id);
         let k = a.args.iter().position(|x| x == "--coop-keys").unwrap();
-        assert_eq!(a.args[k + 1], "${GAMES_DIR}\\community\\lab-flash-coop\\lab-flash.keys", "{}", a.id);
+        let keys = if cfg!(windows) { "${GAMES_DIR}\\community\\lab-flash-coop\\lab-flash.keys" } else { "${GAMES_DIR}/community/lab-flash-coop/lab-flash.keys" };
+        assert_eq!(a.args[k + 1], keys, "{}", a.id);
         assert!(a.server.exe.is_empty() && a.link.is_empty() && a.page.is_empty(), "{}", a.id);
     }
     assert_eq!(g.actions[5].description, "Up to 3 players on this PC");

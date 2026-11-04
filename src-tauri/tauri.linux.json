@@ -3,6 +3,8 @@
   "mainBinaryName": "MultiplayerEverything",
   "bundle": {
     "targets": ["appimage"],
+    "shortDescription": "Mods and Flash games, played together.",
+    "category": "Game",
     "linux": {
       "appimage": {
         "bundleMediaFramework": false,

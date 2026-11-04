@@ -76,8 +76,7 @@ export class Driver {
 
   async type(xpath, text, clear = true) {
     const id = await this.find(xpath)
-    if (clear) await this.call('POST', this.s(`/element/${id}/clear`), {})
-    // WebKitWebDriver's clear doesn't reach React, which puts the old text back: empty it the way typing would.
+    // Not WebDriver's clear: it can leave React holding the old text, which comes back with the first key. This reaches it.
     if (clear) {
       await this.exec(
         `const e = arguments[0]
