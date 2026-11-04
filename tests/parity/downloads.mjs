@@ -362,7 +362,9 @@ for (const c of cases) {
     cmp('progress', progressShape(a.stdout), progressShape(r.stdout))
     cmp('files', a.tree, r.tree)
   } else {
-    cmp('stdout', a.stdout, r.stdout)
+    // Linux: the engine reads through curl and the app through its own client, so the percents between start and end differ.
+    const steps = (l) => (win ? l : l.filter((x) => !/^[0-9]+%$/.test(x) || x === '100%'))
+    cmp('stdout', steps(a.stdout), steps(r.stdout))
     cmp('files', a.tree, r.tree)
   }
   cmp('requests', a.requests, r.requests)

@@ -94,7 +94,7 @@ std::wstring formatBytes(uint64_t bytes) {
         ++u;
     }
     wchar_t buf[64];
-    swprintf(buf, 64, v < 10 ? L"%.1f %s" : L"%.0f %s", v, units[u]);
+    swprintf(buf, 64, v < 10 ? L"%.1f %ls" : L"%.0f %ls", v, units[u]);
     return buf;
 }
 

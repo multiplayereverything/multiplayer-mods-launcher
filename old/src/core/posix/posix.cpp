@@ -37,6 +37,7 @@ struct Startup {
 } startup;
 
 // ---- UTF-8 <-> UTF-32 ------------------------------------------------------------------------------------------
+// One U+FFFD for each longest broken run, as MultiByteToWideChar and Rust's from_utf8_lossy give.
 std::wstring fromUtf8(const char* s, size_t n) {
     std::wstring out;
     out.reserve(n);
@@ -44,31 +45,31 @@ std::wstring fromUtf8(const char* s, size_t n) {
         unsigned char c = static_cast<unsigned char>(s[i]);
         uint32_t cp;
         size_t len;
+        unsigned char lo = 0x80, hi = 0xBF;  // What the second byte may be: rules out overlong forms and surrogates.
         if (c < 0x80) cp = c, len = 1;
-        else if ((c >> 5) == 6) cp = c & 0x1f, len = 2;
-        else if ((c >> 4) == 14) cp = c & 0x0f, len = 3;
-        else if ((c >> 3) == 30) cp = c & 0x07, len = 4;
-        else {
+        else if (c >= 0xC2 && c <= 0xDF) cp = c & 0x1f, len = 2;
+        else if (c >= 0xE0 && c <= 0xEF) {
+            cp = c & 0x0f, len = 3;
+            if (c == 0xE0) lo = 0xA0;
+            if (c == 0xED) hi = 0x9F;
+        } else if (c >= 0xF0 && c <= 0xF4) {
+            cp = c & 0x07, len = 4;
+            if (c == 0xF0) lo = 0x90;
+            if (c == 0xF4) hi = 0x8F;
+        } else {
             out += L'\xFFFD';
             ++i;
             continue;
         }
-        if (i + len > n) {
-            out += L'\xFFFD';
-            break;
-        }
-        bool ok = true;
-        for (size_t k = 1; k < len; ++k) {
+        size_t k = 1;
+        for (; k < len && i + k < n; ++k) {
             unsigned char cc = static_cast<unsigned char>(s[i + k]);
-            if ((cc >> 6) != 2) {
-                ok = false;
-                break;
-            }
+            if (cc < (k == 1 ? lo : 0x80) || cc > (k == 1 ? hi : 0xBF)) break;
             cp = (cp << 6) | (cc & 0x3f);
         }
-        if (!ok) {
+        if (k < len) {
             out += L'\xFFFD';
-            ++i;
+            i += k;
             continue;
         }
         out += static_cast<wchar_t>(cp);

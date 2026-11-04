@@ -98,7 +98,14 @@ bool askServer(const std::wstring& server, const std::string& request, std::stri
         FD_ZERO(&w);
         FD_SET(s, &w);
         timeval tv{timeoutMs / 1000, (timeoutMs % 1000) * 1000};
-        if (select(0, nullptr, &w, nullptr, &tv) == 1) {
+        bool connected = select(0, nullptr, &w, nullptr, &tv) == 1;
+#ifndef _WIN32
+        // Linux reports a refused connection as writable too; the socket's error tells them apart.
+        int soError = 0;
+        socklen_t soLen = sizeof soError;
+        if (connected && (getsockopt(s, SOL_SOCKET, SO_ERROR, &soError, &soLen) != 0 || soError != 0)) connected = false;
+#endif
+        if (connected) {
             nb = 0;
             ioctlsocket(s, FIONBIO, &nb);
             std::string req = request + std::string(1, '\0');

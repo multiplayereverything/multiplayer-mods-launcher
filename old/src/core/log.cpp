@@ -40,7 +40,7 @@ void Logger::log(LogLevel level, std::wstring_view msg) {
     GetLocalTime(&t);
     static const wchar_t* names[] = {L"DEBUG", L"INFO ", L"WARN ", L"ERROR"};
     wchar_t stamp[48];
-    swprintf(stamp, 48, L"%04u-%02u-%02u %02u:%02u:%02u.%03u %s ", t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute,
+    swprintf(stamp, 48, L"%04u-%02u-%02u %02u:%02u:%02u.%03u %ls ", t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute,
              t.wSecond, t.wMilliseconds, names[static_cast<int>(level)]);
     std::wstring line = stamp;
     line += msg;
@@ -52,7 +52,7 @@ void Logger::log(LogLevel level, std::wstring_view msg) {
         fwrite(utf8.data(), 1, utf8.size(), file_);
         fflush(file_);
     }
-    if (echo_) fwprintf(stderr, L"%s\n", line.c_str());
+    if (echo_) fwprintf(stderr, L"%ls\n", line.c_str());
     recent_.push_back(line.substr(11));  // drop the date for the on-screen view
     if (recent_.size() > 500) recent_.pop_front();
     ++seq_;
