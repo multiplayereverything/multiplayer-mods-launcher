@@ -766,7 +766,7 @@ fn read_flash_rest(f: &Value, file: String, keys: String) -> Result<FlashGame, S
     };
     let ruffle = text(f, "ruffle");
     if f.find("ruffle").is_some() && !version_text(ruffle) {
-        return Err("flash.ruffle: a Ruffle Together version such as \"1.0.5\"".into());
+        return Err("flash.ruffle: a Ruffle Together version such as \"1.0.3.7\"".into());
     }
     Ok(FlashGame { file, keys, max: max as i64, offline, original: None, ruffle: ruffle.to_string() })
 }

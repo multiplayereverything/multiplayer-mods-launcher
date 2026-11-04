@@ -172,7 +172,7 @@ holds a command line, so it can't start anything but Ruffle Together with its ga
               "sha256": "<64 hex>" },
     "maxPlayers": 3,
     "offline": { "local": true },
-    "ruffle": "1.0.5"
+    "ruffle": "1.0.3.7"
   }
 }
 ```
@@ -193,7 +193,7 @@ holds a command line, so it can't start anything but Ruffle Together with its ga
   is "Play on one keyboard" (everyone on one PC). `keys`: another built-in map for it (one player's keys), or
   `false` for none. `label` (at most 40 characters) and `description` (at most 120) replace the button's texts.
 - `flash.ruffle` (optional): the oldest Ruffle Together the game runs in. A player with an older release the launcher
-  installed sees "Needs Ruffle Together 1.0.5 or newer", and Play offers the update instead of starting.
+  installed sees "Needs Ruffle Together 1.0.3.7 or newer", and Play offers the update instead of starting.
 - The credit goes first among the tips and the repository's link last, as for a PC mod. An approved update is a new
   record with the new tag and hashes: a file already downloaded with another SHA-256 shows "Update available".
 - Older launchers: 1.0.42 shows a card that asks for the update (`minLauncher`); the C++ mod engine skips it quietly.
