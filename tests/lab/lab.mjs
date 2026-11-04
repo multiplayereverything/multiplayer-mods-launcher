@@ -459,6 +459,8 @@ const scenarios = {
   // A community mod approved into mods-info (community/lab-coop.json): it arrives without a launcher update, installs
   // its pinned release and uninstalls cleanly. The website's second project, with no record, is listed but can't install.
   async communitymods() {
+    // The players scenario's game may still be open: its card over the grid would take the clicks below.
+    await waitFor(async () => !(await wd.exec("return document.querySelector('.island')?.textContent ?? ''")).includes('Playing'), FAKE_MS + 8000)
     const labBefore = snapshot(box.labGame)
     await wd.click(nav('All games'))
     const arrived = await waitFor(async () => (await wd.count(card('Lab Game'))) === 1 && (await wd.count(card('Listed Only'))) === 1, 20000)
@@ -481,7 +483,7 @@ const scenarios = {
     await wd.click(panel('Install Lab Game'))
     const dll = join(box.labGame, 'BepInEx', 'plugins', 'LabCoop', 'LabCoop.dll')
     await check('Install puts the pinned release in the game folder', (await waitFor(() => existsSync(dll), 30000)) === true)
-    await check('a folder inside the zip is copied with its own subfolders', existsSync(join(box.labGame, 'BepInEx', 'plugins', 'LabCoop', 'lang', 'en.txt')) && !existsSync(join(box.labGame, 'BepInEx', 'plugins', 'LabCoop', 'LabCoop')))
+    await check('a folder inside the zip is copied with its own subfolders', (await waitFor(() => existsSync(join(box.labGame, 'BepInEx', 'plugins', 'LabCoop', 'lang', 'en.txt')), 15000)) === true && !existsSync(join(box.labGame, 'BepInEx', 'plugins', 'LabCoop', 'LabCoop')))
     await check('the community mod shows as installed', (await waitFor(async () => (await pill()).includes('Installed'), 15000)) === true, await pill())
     await waitFor(async () => (await wd.count(panel('Uninstall'))) === 1, 30000)
     await wd.click(panel('Uninstall'))
