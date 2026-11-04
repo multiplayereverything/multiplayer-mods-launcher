@@ -51,7 +51,7 @@ int mergeTeam(Config& cfg, const CommunityCache& cache) {
         GameSpec g;
         std::wstring why;
         if (!readTeamMod(raw, cfg, local, g, why)) {
-            logger().warn(L"Team mod left out: " + why);
+            if (!why.empty()) logger().warn(L"Team mod left out: " + why);
             continue;
         }
         cfg.games.push_back(std::move(g));

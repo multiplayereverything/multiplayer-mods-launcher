@@ -91,7 +91,21 @@ export function makeSandbox(work, fakePlayer) {
   const labZip = join(work, 'www', 'someone', 'lab-coop', 'releases', 'download', 'v1.2.0', 'LabCoop-1.2.0.zip')
   mkdirSync(join(labZip, '..'), { recursive: true })
   execFileSync('powershell', ['-NoProfile', '-Command', `Compress-Archive -Path '${labPkg}\\*' -DestinationPath '${labZip}'`])
-  write(join(work, 'www', 'community', 'index.json'), JSON.stringify({ mods: ['lab-coop', 'lab-link', 'lab-solo'] }))
+  write(join(work, 'www', 'community', 'index.json'), JSON.stringify({ mods: ['lab-coop', 'lab-link', 'lab-solo', 'lab-devflash', 'lab-newflash'] }))
+  // A developer's Flash game (1.0.43): the game file and its key map pinned from their release, the buttons made by the
+  // launcher. And one that needs a Ruffle Together newer than any there is.
+  const devRel = join(work, 'www', 'someone', 'lab-devflash', 'releases', 'download', 'v1.0')
+  write(join(devRel, 'LabDevFlash.swf'), 'dev flash game 1.0')
+  write(join(devRel, 'lab-devflash.keys'), 'slot 0: UP=38\nslot 1: UP=87\n')
+  const pin = (name) => ({ asset: name, url: `http://127.0.0.1:${PORTS.http}/someone/lab-devflash/releases/download/v1.0/${name}`,
+    sha256: sha256(join(devRel, name)), size: readFileSync(join(devRel, name)).length })
+  const devFlash = (id, game, ruffle, keys) => ({
+    id, repo: 'someone/lab-devflash', kind: 'flash', minLauncher: '1.0.43', tag: 'v1.0', version: '1.0', author: 'someone',
+    approved_at: '2026-11-04', approved_by: 'lab', description: 'A developer\'s Flash game for two.',
+    flash: { game, file: pin('LabDevFlash.swf'), keys, maxPlayers: 2, offline: {}, ruffle },
+  })
+  write(join(work, 'www', 'community', 'lab-devflash.json'), JSON.stringify(devFlash('lab-devflash', 'Lab Dev Flash', '1.0.0', pin('lab-devflash.keys'))))
+  write(join(work, 'www', 'community', 'lab-newflash.json'), JSON.stringify(devFlash('lab-newflash', 'Lab New Flash', '99.0', 'gun-mayhem-2')))
   // A card the team wrote by hand that only links to the mod's page (its own installer), with the card's own text.
   write(join(work, 'www', 'community', 'lab-link.json'), JSON.stringify({
     id: 'lab-link', kind: 'link', repo: 'someone/lab-link', author: 'someone', approved_at: '2026-11-04', approved_by: 'lab',

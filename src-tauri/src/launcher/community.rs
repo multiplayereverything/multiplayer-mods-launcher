@@ -21,7 +21,7 @@
 //! fails is left out whole. The copy kept in the data folder (community.json) is what the C++ mod commands read too.
 
 use super::config::{ConfigIssue, Issues, Severity, add_mod_actions, read_card_of, read_mod, validate_config};
-use super::config::{Config, GameSpec, read_game};
+use super::config::{Config, GameSpec, PinnedFile, read_game};
 use super::embedded::LAUNCHER_VERSION;
 use super::text::compare_versions;
 use super::http;
@@ -342,8 +342,9 @@ pub fn read_record(text_: &str, cfg: &Config, local_release: bool) -> Result<Gam
     if !r.is_object() {
         return Err("not a JSON object".into());
     }
-    // "pc" (the default): a mod the launcher installs. "link": a card that only links to the mod's page. A kind this
-    // launcher doesn't know (a Flash record, later) is left out whole, so an older launcher never shows half of one.
+    // "pc" (the default): a mod the launcher installs. "link": a card that only links to the mod's page. "flash": a Flash
+    // game played in Ruffle Together (1.0.43). A kind this launcher doesn't know is left out whole, so an older
+    // launcher never shows half of one.
     let kind = r.find("kind").map(|_| text(&r, "kind")).unwrap_or("pc");
     let (id, repo) = (text(&r, "id"), text(&r, "repo"));
     if !id_ok(id) {
@@ -358,10 +359,14 @@ pub fn read_record(text_: &str, cfg: &Config, local_release: bool) -> Result<Gam
     match kind {
         "pc" => only_keys(&r, &[RECORD_KEYS, CARD_KEYS, &["tag", "version", "asset", "url", "sha256", "manifest_sha256", "mod"]].concat(), "record")?,
         "link" => only_keys(&r, &[RECORD_KEYS, CARD_KEYS, &["link"]].concat(), "record")?,
+        "flash" => only_keys(&r, &[RECORD_KEYS, CARD_KEYS, &["tag", "version", "manifest_sha256", "flash"]].concat(), "record")?,
         _ => return Err(format!("kind \"{kind}\" isn't known to this launcher")),
     }
     if cfg.games.iter().any(|g| g.id == id || g.site_id == id || g.mod_spec.as_ref().is_some_and(|m| m.info.id == id)) {
         return Err(format!("launcher.json already has \"{id}\""));
+    }
+    if kind == "flash" {
+        return read_dev_flash_record(&r, cfg, id, repo, local_release);
     }
     let issues: Issues = Default::default();
     let mut g = GameSpec { id: id.to_string(), site_id: id.to_string(), categories: vec!["community".into()], ..Default::default() };
@@ -510,7 +515,8 @@ fn needs_newer(r: &Value) -> Result<Option<String>, String> {
 fn update_card(r: &Value, cfg: &Config, id: &str, min: &str, categories: Vec<String>) -> GameSpec {
     let game_name = r.find("mod").and_then(|m| m.find("game")).map(|g| text(g, "name")).unwrap_or("");
     let link_name = r.find("link").map(|l| text(l, "game")).unwrap_or("");
-    let name = [text(r, "name"), game_name, link_name, id].into_iter().find(|s| !s.is_empty()).unwrap_or(id);
+    let flash_name = r.find("flash").map(|f| text(f, "game")).unwrap_or("");
+    let name = [text(r, "name"), game_name, link_name, flash_name, id].into_iter().find(|s| !s.is_empty()).unwrap_or(id);
     GameSpec {
         id: id.to_string(),
         site_id: id.to_string(),
@@ -530,7 +536,7 @@ const TEAM_OWNER: &str = "multiplayereverything";
 const TEAM_RECORD_KEYS: &[&str] = &["id", "repo", "minLauncher", "approved_at", "approved_by"];
 const TEAM_GAME_KEYS: &[&str] = &[
     "name", "description", "players", "maxPlayers", "color", "colorEnd", "guide", "categories", "site", "online", "image", "imageFocus",
-    "mod", "actions", "settings",
+    "mod", "actions", "flash", "settings",
 ];
 /// What a Flash game's button may say: the game file, the player's arguments and its texts. No program, page, server,
 /// working folder or link of its own: a team record's button only ever starts one of launcher.json's players.
@@ -595,14 +601,20 @@ pub fn read_team_record(text_: &str, cfg: &Config, local_release: bool) -> Resul
     if categories.iter().any(|c| c == "community") {
         return Err("categories: \"community\" is for developers' records".into());
     }
-    // A Flash game: buttons, and nothing to install.
-    if r.find("mod").is_none() {
-        let actions = r.find("actions").ok_or("no \"mod\" object or Flash \"actions\"")?;
-        check_flash_actions(actions)?;
-        return team_game(&r, id, cfg, local_release);
+    // A PC mod, a Flash game with its own buttons, or a Flash game the launcher makes the buttons for: one of the three.
+    if ["mod", "actions", "flash"].iter().filter(|k| r.find(k).is_some()).count() != 1 {
+        return Err("a team record is a PC mod (\"mod\") or a Flash game (\"flash\", or its own \"actions\"): one of them".into());
     }
-    if r.find("actions").is_some() {
-        return Err("a team record is a PC mod (\"mod\") or a Flash game (\"actions\"), not both".into());
+    if let Some(f) = r.find("flash") {
+        let fl = read_team_flash(f)?;
+        let issues: Issues = Default::default();
+        let mut g = read_game(&flash_entry(team_entry(&r), cfg, &fl), &format!("team.{id}"), &issues);
+        g.min_player = fl.ruffle;
+        return checked(g, cfg, issues, local_release);
+    }
+    if r.find("mod").is_none() {
+        check_flash_actions(r.find("actions").unwrap())?;
+        return team_game(&r, id, cfg, local_release);
     }
     let m = r.find("mod").filter(|m| m.is_object()).ok_or("no \"mod\" object")?;
     if m.find("id").is_some_and(|v| v.as_str() != Some(id)) {
@@ -636,16 +648,21 @@ pub fn read_team_record(text_: &str, cfg: &Config, local_release: bool) -> Resul
 
 /// The record without its own keys, read as the launcher.json games[] entry it is, then checked like one.
 fn team_game(r: &Value, id: &str, cfg: &Config, local_release: bool) -> Result<GameSpec, String> {
+    let issues: Issues = Default::default();
+    // Exactly what launcher.json makes of it: no website id it doesn't give.
+    let g = read_game(&team_entry(r), &format!("team.{id}"), &issues);
+    checked(g, cfg, issues, local_release)
+}
+
+/// The record without its own keys (and without "flash", which becomes buttons).
+fn team_entry(r: &Value) -> Value {
     let mut entry = Value::object();
     for (k, v) in r.entries() {
-        if k == "id" || !TEAM_RECORD_KEYS.contains(&k.as_str()) {
+        if k != "flash" && (k == "id" || !TEAM_RECORD_KEYS.contains(&k.as_str())) {
             entry.set(k, v.clone());
         }
     }
-    let issues: Issues = Default::default();
-    // Exactly what launcher.json makes of it: no website id it doesn't give.
-    let g = read_game(&entry, &format!("team.{id}"), &issues);
-    checked(g, cfg, issues, local_release)
+    entry
 }
 
 /// Adds every team record that passes to the games; the reasons the others were left out. Before the community
@@ -660,6 +677,333 @@ pub fn merge_team(cfg: &mut Config, cache: &Cache) -> Vec<String> {
         }
     }
     left_out
+}
+
+// ---- Flash records: the record describes the game, the launcher makes the buttons -------------------------------
+
+/// The port every generated "Host with your IP" button listens on (Ruffle Together's own default).
+const FLASH_PORT: &str = "7790";
+/// A team record's "flash": a game file the catalog (or Flashpoint, or the Desktop) has, a built-in key map, and the
+/// unmodded game as an extra button.
+const FLASH_TEAM_KEYS: &[&str] = &["file", "keys", "maxPlayers", "offline", "original", "ruffle"];
+/// A developer's "flash": the game file (and maybe its key map) pinned from their own release.
+const FLASH_DEV_KEYS: &[&str] = &["game", "file", "keys", "maxPlayers", "offline", "ruffle"];
+/// The most players a generated button hosts (Ruffle Together's limit).
+const FLASH_MAX_PLAYERS: i64 = 6;
+
+/// What a Flash record says about its game; every button follows from it.
+struct FlashGame {
+    /// The co-op game file: a path `flash_file` accepts.
+    file: String,
+    /// `--coop-keys`: a map Ruffle Together has built in, or the path of a .keys file.
+    keys: String,
+    max: i64,
+    offline: Option<FlashOffline>,
+    /// The unmodded game ("Play the original"): where it may be, and the button's text.
+    original: Option<(Vec<String>, String)>,
+    /// The oldest Ruffle Together the game runs in.
+    ruffle: String,
+}
+
+struct FlashOffline {
+    /// Everyone on one keyboard ("Play on one keyboard"), not one player on their own.
+    local: bool,
+    keys: String,
+    label: String,
+    sub: String,
+}
+
+/// A short line of text the record may give a button, at most `max` characters.
+fn short_text(v: Option<&Value>, place: &str, max: usize) -> Result<String, String> {
+    match v {
+        None => Ok(String::new()),
+        Some(v) => v
+            .as_str()
+            .filter(|s| s.chars().count() <= max && !s.contains(['\n', '\r']))
+            .map(str::to_string)
+            .ok_or(format!("{place}: text, at most {max} characters")),
+    }
+}
+
+/// A built-in key map's name, as Ruffle Together spells them (air-battle, gun-mayhem-2). Never one that reads as an
+/// option of its own.
+fn key_map_name(s: &str) -> bool {
+    id_ok(s) && !s.starts_with('-')
+}
+
+fn version_text(s: &str) -> bool {
+    !s.is_empty() && s.len() <= 20 && s.bytes().all(|b| b.is_ascii_digit() || b == b'.') && !s.starts_with('.') && !s.ends_with('.')
+}
+
+/// The parts a team record and a developer's record write the same way: players, the offline button, Ruffle Together.
+fn read_flash_rest(f: &Value, file: String, keys: String) -> Result<FlashGame, String> {
+    let max = f.find("maxPlayers").and_then(Value::as_f64).ok_or("flash.maxPlayers: how many play online, 2 to 6")?;
+    if max.fract() != 0.0 || !(2.0..=FLASH_MAX_PLAYERS as f64).contains(&max) {
+        return Err("flash.maxPlayers: how many play online, 2 to 6".into());
+    }
+    let offline = match f.find("offline") {
+        None => None,
+        Some(o) if o.is_object() => {
+            only_keys(o, &["local", "keys", "label", "description"], "flash.offline")?;
+            let local = match o.find("local") {
+                None => false,
+                Some(v) => v.as_bool().ok_or("flash.offline.local: true or false")?,
+            };
+            // Its own built-in map (one player's keys), or false for none at all.
+            let own = match o.find("keys") {
+                None => keys.clone(),
+                Some(Value::Bool(false)) => String::new(),
+                Some(v) => v.as_str().filter(|k| key_map_name(k)).map(str::to_string).ok_or("flash.offline.keys: a key map Ruffle Together has built in, or false")?,
+            };
+            Some(FlashOffline {
+                local,
+                keys: own,
+                label: short_text(o.find("label"), "flash.offline.label", 40)?,
+                sub: short_text(o.find("description"), "flash.offline.description", 120)?,
+            })
+        }
+        Some(_) => return Err("flash.offline: an object ({} for the plain button)".into()),
+    };
+    let ruffle = text(f, "ruffle");
+    if f.find("ruffle").is_some() && !version_text(ruffle) {
+        return Err("flash.ruffle: a Ruffle Together version such as \"1.0.5\"".into());
+    }
+    Ok(FlashGame { file, keys, max: max as i64, offline, original: None, ruffle: ruffle.to_string() })
+}
+
+/// A team record's "flash".
+fn read_team_flash(f: &Value) -> Result<FlashGame, String> {
+    if !f.is_object() {
+        return Err("flash must be an object".into());
+    }
+    only_keys(f, FLASH_TEAM_KEYS, "flash")?;
+    let file = text(f, "file");
+    if !flash_file(file) {
+        return Err("flash.file: a game file in ${GAMES_DIR}, ${FLASHPOINT} or ${folder:Desktop}".into());
+    }
+    if !key_map_name(text(f, "keys")) {
+        return Err("flash.keys: a key map Ruffle Together has built in".into());
+    }
+    let mut fl = read_flash_rest(f, file.to_string(), text(f, "keys").to_string())?;
+    if let Some(o) = f.find("original") {
+        if !o.is_object() {
+            return Err("flash.original must be an object".into());
+        }
+        only_keys(o, &["files", "description"], "flash.original")?;
+        let listed = o.find("files").filter(|l| l.is_array()).map_or(0, |l| l.items().len());
+        let files: Vec<String> =
+            o.find("files").map(|l| l.items().iter().filter_map(|p| p.as_str().filter(|p| flash_file(p)).map(str::to_string)).collect()).unwrap_or_default();
+        if files.is_empty() || files.len() > 8 || files.len() != listed {
+            return Err("flash.original.files: one to eight game files in ${GAMES_DIR}, ${FLASHPOINT} or ${folder:Desktop}".into());
+        }
+        fl.original = Some((files, short_text(o.find("description"), "flash.original.description", 120)?));
+    }
+    Ok(fl)
+}
+
+/// One file a developer's Flash record pins from its release: its name, address, SHA-256 and size.
+fn pinned_file(v: Option<&Value>, place: &str, repo: &str, tag: &str, ext: &str, local_release: bool) -> Result<PinnedFile, String> {
+    let v = v.filter(|v| v.is_object()).ok_or(format!("{place}: the release file, {{\"asset\", \"url\", \"sha256\", \"size\"}}"))?;
+    only_keys(v, &["asset", "url", "sha256", "size"], place)?;
+    let asset = text(v, "asset");
+    if !plain_segment(asset) || !asset.to_ascii_lowercase().ends_with(ext) {
+        return Err(format!("{place}.asset: a {ext} file of the release"));
+    }
+    let sha = text(v, "sha256");
+    if !sha256_hex(sha) {
+        return Err(format!("{place}.sha256 must be 64 lower-case hex digits"));
+    }
+    let url = text(v, "url");
+    if !release_url_ok(url, repo, tag, asset, local_release) {
+        return Err(format!("{place}.url must be https://github.com/{repo}/releases/download/{tag}/{asset}"));
+    }
+    let size = match v.find("size") {
+        None => 0.0,
+        Some(n) => n
+            .as_f64()
+            .filter(|n| n.fract() == 0.0 && *n > 0.0 && *n <= 512.0 * 1024.0 * 1024.0)
+            .ok_or(format!("{place}.size: bytes, at most 512 MB"))?,
+    };
+    Ok(PinnedFile { dir: String::new(), name: asset.to_string(), url: url.to_string(), sha256: sha.to_string(), size: size as u64 })
+}
+
+/// A developer's "flash": the files come from the pinned release into the games folder's community\<id> folder.
+fn read_dev_flash(f: &Value, id: &str, repo: &str, tag: &str, local_release: bool) -> Result<(FlashGame, Vec<PinnedFile>), String> {
+    if !f.is_object() {
+        return Err("flash must be an object".into());
+    }
+    only_keys(f, FLASH_DEV_KEYS, "flash")?;
+    let dir = format!("community\\{id}");
+    let mut files = vec![PinnedFile { dir: dir.clone(), ..pinned_file(f.find("file"), "flash.file", repo, tag, ".swf", local_release)? }];
+    let keys = match f.find("keys") {
+        Some(k) if k.is_string() && key_map_name(text(f, "keys")) => text(f, "keys").to_string(),
+        Some(k) if k.is_object() => {
+            let map = PinnedFile { dir: dir.clone(), ..pinned_file(Some(k), "flash.keys", repo, tag, ".keys", local_release)? };
+            let path = format!("${{GAMES_DIR}}\\{dir}\\{}", map.name);
+            files.push(map);
+            path
+        }
+        _ => return Err("flash.keys: a key map Ruffle Together has built in, or the release's .keys file".into()),
+    };
+    let file = format!("${{GAMES_DIR}}\\{dir}\\{}", files[0].name);
+    Ok((read_flash_rest(f, file, keys)?, files))
+}
+
+fn strings_value(v: &[&str]) -> Value {
+    Value::Array(v.iter().map(|s| Value::from(*s)).collect())
+}
+
+/// The buttons every Flash game gets, in the order the game page lists them: online through the relay (rooms for 2 to
+/// maxPlayers), host and join by IP, the offline button, the original game. Texts come from launcher.json (flash.*).
+fn flash_actions(cfg: &Config, fl: &FlashGame) -> Value {
+    let max = fl.max.to_string();
+    let button = |id: &str, label: String, icon: &str, sub: String, hint: String, args: Vec<&str>| {
+        let mut b = Value::object();
+        b.set("id", id);
+        b.set("label", label);
+        if !icon.is_empty() {
+            b.set("icon", icon);
+        }
+        b.set("description", sub);
+        if !hint.is_empty() {
+            b.set("hint", hint);
+        }
+        b.set("swf", strings_value(&[fl.file.as_str()]));
+        if !args.is_empty() {
+            b.set("args", strings_value(&args));
+        }
+        b
+    };
+    let keys = fl.keys.as_str();
+    let mut out = Vec::new();
+    let hint = if fl.max > 2 { cfg.t("flash.online.hintMore", &[("MAX", &max)]) } else { cfg.t("flash.online.hint", &[]) };
+    let mut online = button(
+        "online",
+        cfg.t("flash.online", &[]),
+        "E774",
+        cfg.t("flash.online.sub", &[]),
+        hint,
+        vec!["--coop-host-relay", "${SERVER}", "--coop-name", "${PLAYER_NAME}", "--coop-keys", keys, "--coop-players", "2"],
+    );
+    online.set("joinArgs", strings_value(&["--coop-join-relay", "${SERVER}", "--coop-code", "${CODE}", "--coop-name", "${PLAYER_NAME}", "--coop-keys", keys]));
+    out.push(online);
+    for n in 3..=fl.max {
+        let (ns, friends) = (n.to_string(), (n - 1).to_string());
+        let vars = [("N", ns.as_str()), ("FRIENDS", friends.as_str())];
+        let mut b = button(
+            &format!("room{n}"),
+            cfg.t("flash.room", &vars),
+            "E774",
+            cfg.t("flash.room.sub", &vars),
+            cfg.t("flash.room.hint", &vars),
+            vec!["--coop-host-relay", "${SERVER}", "--coop-name", "${PLAYER_NAME}", "--coop-keys", keys, "--coop-players", &ns],
+        );
+        b.set("more", true);
+        out.push(b);
+    }
+    for n in 2..=fl.max {
+        let (ns, friends) = (n.to_string(), (n - 1).to_string());
+        let vars = [("N", ns.as_str()), ("FRIENDS", friends.as_str()), ("PORT", FLASH_PORT)];
+        let (id, sub, hint) = if n == 2 {
+            ("host".to_string(), cfg.t("flash.host.sub", &vars), cfg.t("flash.host.hint", &vars))
+        } else {
+            (format!("host{n}"), cfg.t("flash.hostMore.sub", &vars), cfg.t("flash.hostMore.hint", &vars))
+        };
+        let mut b = button(
+            &id,
+            cfg.t("flash.host", &vars),
+            "E774",
+            sub,
+            hint,
+            vec!["--coop-host", FLASH_PORT, "--coop-name", "${PLAYER_NAME}", "--coop-keys", keys, "--coop-players", &ns],
+        );
+        b.set("more", true);
+        out.push(b);
+    }
+    let mut join = button(
+        "join",
+        cfg.t("flash.join", &[]),
+        "E774",
+        cfg.t("flash.join.sub", &[]),
+        cfg.t("flash.join.hint", &[]),
+        vec!["--coop-join", "${ADDRESS}", "--coop-name", "${PLAYER_NAME}", "--coop-keys", keys],
+    );
+    join.set("more", true);
+    out.push(join);
+    if let Some(o) = &fl.offline {
+        let (id, key, icon) = if o.local { ("local", "flash.local", "E765") } else { ("offline", "flash.offline", "E77B") };
+        let label = if o.label.is_empty() { cfg.t(key, &[]) } else { o.label.clone() };
+        let sub = if o.sub.is_empty() { cfg.t(&format!("{key}.sub"), &[("MAX", &max)]) } else { o.sub.clone() };
+        let args = if o.keys.is_empty() { Vec::new() } else { vec!["--coop-keys", o.keys.as_str()] };
+        let mut b = button(id, label, icon, sub, String::new(), args);
+        b.set("offline", true);
+        out.push(b);
+    }
+    if let Some((files, sub)) = &fl.original {
+        let sub = if sub.is_empty() { cfg.t("flash.original.sub", &[]) } else { sub.clone() };
+        let mut b = button("play", cfg.t("flash.original", &[]), "", sub, String::new(), Vec::new());
+        b.set("edition", "original");
+        b.set("swf", Value::Array(files.iter().map(|f| Value::from(f.as_str())).collect()));
+        out.push(b);
+    }
+    Value::Array(out)
+}
+
+/// The launcher.json games[] entry a Flash record stands for: its card with the buttons above, online through Ruffle
+/// Together's relay rooms.
+fn flash_entry(mut entry: Value, cfg: &Config, fl: &FlashGame) -> Value {
+    entry.set("actions", flash_actions(cfg, fl));
+    if entry.find("online").is_none() {
+        let mut on = Value::object();
+        on.set("id", "ruffle-coop");
+        on.set("join", "online");
+        entry.set("online", on);
+    }
+    if entry.find("maxPlayers").is_none() {
+        entry.set("maxPlayers", fl.max);
+    }
+    entry
+}
+
+/// A developer's Flash game (community/<id>.json, "kind": "flash"): the pinned release's game file, the buttons the
+/// launcher makes, and the author's credit.
+fn read_dev_flash_record(r: &Value, cfg: &Config, id: &str, repo: &str, local_release: bool) -> Result<GameSpec, String> {
+    let (tag, version) = (text(r, "tag"), text(r, "version"));
+    if !plain_segment(tag) {
+        return Err("tag must be a plain name".into());
+    }
+    if !plain_segment(version) {
+        return Err("version is missing".into());
+    }
+    check_card(r)?;
+    let f = r.find("flash").ok_or("no \"flash\" object")?;
+    let (fl, files) = read_dev_flash(f, id, repo, tag, local_release)?;
+    let game = short_text(f.find("game"), "flash.game", 80)?;
+    if game.is_empty() {
+        return Err("flash.game: the game's name".into());
+    }
+    let mut entry = Value::object();
+    entry.set("id", id);
+    entry.set("name", game);
+    for k in CARD_KEYS {
+        if let Some(v) = r.find(k) {
+            entry.set(k, v.clone());
+        }
+    }
+    entry.set("categories", strings_value(&["community", "flash"]));
+    let entry = flash_entry(entry, cfg, &fl);
+    let issues: Issues = Default::default();
+    let mut g = read_game(&entry, &format!("community.{id}"), &issues);
+    g.site_id = id.to_string();
+    g.downloads = files;
+    g.min_player = fl.ruffle;
+    let author = match text(r, "author") {
+        "" => repo.split('/').next().unwrap_or(repo).to_string(),
+        a => a.to_string(),
+    };
+    let tip = cfg.t("flash.credit", &[("AUTHOR", &author), ("VERSION", version)]);
+    credit(&mut g, repo, &author, &tip);
+    checked(g, cfg, issues, false)
 }
 
 /// Every check a launcher.json game gets, on top of the record's own.

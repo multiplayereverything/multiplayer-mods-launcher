@@ -22,7 +22,8 @@ export interface Action {
   hostPlayers: number
   viaRelay: boolean
   asksAddress: boolean
-  state?: 'ready' | 'noPlayer' | 'noFile' | 'noRuntime'
+  state?: 'ready' | 'noPlayer' | 'oldPlayer' | 'noFile' | 'noRuntime'
+  needs?: string  // oldPlayer: the Ruffle Together version the game needs
   player?: string | null
   playerId?: string | null
   file?: string

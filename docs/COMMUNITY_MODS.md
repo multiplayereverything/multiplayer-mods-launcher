@@ -90,9 +90,8 @@ may also carry what launcher.json gives a card, and may be a card that only link
 - `"kind": "link"`: a mod with its own installer, or none yet. Instead of `tag`, `version`, `asset`, `url`, `sha256`
   and `mod` it has `"link": { "game": "MDK2 HD", "url": "https://github.com/<repo>/...", "label": "..." }`; the url
   must be in the record's own repository and `label` defaults to "Open the mod's page". The card installs nothing.
-- `kind` is `pc` when left out. A kind a launcher doesn't know is left out whole, so a later kind (a Flash mod by
-  someone else: its pinned SWF and SHA-256, key map, player counts and the Ruffle Together version it needs) never
-  shows half a card in an older launcher.
+- `kind` is `pc` when left out, or `flash` (a developer's Flash game, below). A kind a launcher doesn't know is left
+  out whole, so a later kind never shows half a card in an older launcher.
 
 Our own 7 PC mods and 17 Flash games became team records on 2026-11-04 (mods-info 107816f) and left launcher.json in
 1.0.42; `tests/fixtures/team` is the published copy the tests read, kept equal to mods-info by
@@ -142,6 +141,76 @@ team/<id>.json       one of our own mods
 - The website writes them through a team-only path (not the developer form), for `multiplayereverything`
   repositories only. The launcher session's test `the_team_records_in_a_mods_info_checkout_are_the_games_launcher_json_has`
   (`FL_TEST_COMMUNITY_DIR=<mods-info checkout>`) proves each record makes exactly the game its launcher.json entry did.
+
+## Flash records (1.0.43)
+
+A Flash game no longer needs hand-written buttons. The record says what the game is, and the launcher makes the
+buttons every Flash game has (`src-tauri/src/launcher/community.rs`, `flash_actions`): Play online (a relay room for
+2), Host a room for 3 to `maxPlayers`, Host with your IP for 2 to `maxPlayers` (port 7790), Join by IP, the offline
+button, and for a team record the original game. Their texts are launcher.json's `flash.*` texts. A record never
+holds a command line, so it can't start anything but Ruffle Together with its game file and key map.
+
+### A developer's Flash game
+
+```json
+{
+  "id": "lab-flash-coop",
+  "repo": "someone/lab-flash",
+  "kind": "flash",
+  "minLauncher": "1.0.43",
+  "tag": "v2.0",
+  "version": "2.0",
+  "manifest_sha256": "<the manifest's SHA-256>",
+  "author": "someone",
+  "approved_at": "2026-11-04",
+  "approved_by": "JessniX",
+  "flash": {
+    "game": "Lab Flash",
+    "file": { "asset": "LabFlash_coop.swf", "url": "https://github.com/someone/lab-flash/releases/download/v2.0/LabFlash_coop.swf",
+              "sha256": "<64 hex>", "size": 1234 },
+    "keys": { "asset": "lab-flash.keys", "url": "https://github.com/someone/lab-flash/releases/download/v2.0/lab-flash.keys",
+              "sha256": "<64 hex>" },
+    "maxPlayers": 3,
+    "offline": { "local": true },
+    "ruffle": "1.0.5"
+  }
+}
+```
+
+- `kind` is `flash`. Besides the keys every record may have (`id`, `repo`, `author`, `authorUrl`, `approved_at`,
+  `approved_by`, `minLauncher`) and the card's text (`description`, `players`, `maxPlayers`, `color`, `colorEnd`,
+  `guide`, as above), it has only `tag`, `version`, `manifest_sha256` and `flash`. No `actions`, `categories` or
+  `online`: the card is listed under Community mods and Flash mods, and plays online through Ruffle Together's rooms.
+- `flash.game`: the game's name, the card's title (at most 80 characters).
+- `flash.file`: the game file, a `.swf` of the pinned release: `asset`, `url` (exactly
+  `https://github.com/<repo>/releases/download/<tag>/<asset>`), `sha256`, and `size` in bytes (optional, at most
+  512 MB). It downloads into `<games folder>\community\<id>\`, checked against its SHA-256 before it is used.
+- `flash.keys`: the key map every player gets. Either the name of one Ruffle Together has built in (`gun-mayhem-2`),
+  or the release's `.keys` file, pinned the same way as `file` and downloaded next to it. Ruffle Together reads a
+  `.keys` file from 1.0.3.7 (`--coop-keys <path>`); the format is in ruffle-coop's docs/ruffle-together.md.
+- `flash.maxPlayers`: how many play online, 2 to 6.
+- `flash.offline` (optional): the offline button. `{}` is "Play offline" (one player on their own); `"local": true`
+  is "Play on one keyboard" (everyone on one PC). `keys`: another built-in map for it (one player's keys), or
+  `false` for none. `label` (at most 40 characters) and `description` (at most 120) replace the button's texts.
+- `flash.ruffle` (optional): the oldest Ruffle Together the game runs in. A player with an older release the launcher
+  installed sees "Needs Ruffle Together 1.0.5 or newer", and Play offers the update instead of starting.
+- The credit goes first among the tips and the repository's link last, as for a PC mod. An approved update is a new
+  record with the new tag and hashes: a file already downloaded with another SHA-256 shows "Update available".
+- Older launchers: 1.0.42 shows a card that asks for the update (`minLauncher`); the C++ mod engine skips it quietly.
+
+### Our own Flash games in the short form
+
+A team record may give `flash` instead of `actions`. Its `file` is a path, as `swf` was (`${GAMES_DIR}\`,
+`${FLASHPOINT}\` or `${folder:Desktop}\`); its `keys` a built-in map; and it may have `original`, the unmodded game:
+`{ "files": [one to eight paths], "description": "..." }` ("Play the original"). The other keys are a team record's
+(`settings`, `online`, `image` and the rest stay as they are).
+
+`scripts/flash-records-short.py <team folder> <out folder>` rewrites the published records this way, and
+`tests/fixtures/team-short` is its output for our 17 games. The test
+`flash_team_records_in_the_short_form_make_the_same_buttons` proves each makes the same buttons with the same command
+lines, card and host options as its published record. Bad Ice-Cream keeps its own buttons (its online ones pass no key
+map). Publish them only once most players have 1.0.43: a record with `"minLauncher": "1.0.43"` is an update card in
+1.0.42.
 
 ## In the launcher
 

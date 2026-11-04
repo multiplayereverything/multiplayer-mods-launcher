@@ -626,7 +626,7 @@ fn a_link_record_is_a_card_with_one_button_to_the_mods_page() {
     add(&|r| r["mod"] = serde_json::json!({}), "record.mod: not allowed");
     add(&|r| r["sha256"] = SHA.into(), "record.sha256: not allowed");
     add(&|r| r["link"]["exe"] = "x.exe".into(), "link.exe: not allowed");
-    add(&|r| r["kind"] = "flash".into(), "kind \"flash\" isn't known to this launcher");
+    add(&|r| r["kind"] = "ruffle".into(), "kind \"ruffle\" isn't known to this launcher");
     for (r, want) in cases {
         let e = read_rec(&r).map(|g| g.id).unwrap_err();
         assert!(e.contains(want), "wanted {want:?}, got {e:?}");
@@ -877,8 +877,9 @@ fn a_flash_team_record_only_starts_our_player_with_a_game_file() {
     add(&|r| r["actions"][0]["swf"] = "${GAMES_DIR}\\${env:TEMP}\\x.swf".into(), "actions[0].swf: game files");
     add(&|r| r["actions"][0]["players"] = serde_json::json!(["ghost"]), "players");
     add(&|r| r["actions"] = serde_json::json!([]), "actions: one to twenty");
-    add(&|r| r["mod"] = serde_json::json!({ "id": "zombotron" }), "not both");
-    add(&|r| { r.as_object_mut().unwrap().remove("actions"); }, "no \"mod\" object or Flash \"actions\"");
+    add(&|r| r["mod"] = serde_json::json!({ "id": "zombotron" }), "one of them");
+    add(&|r| r["flash"] = serde_json::json!({}), "one of them");
+    add(&|r| { r.as_object_mut().unwrap().remove("actions"); }, "one of them");
     for (r, want) in cases {
         let e = read_team(&r, &cfg).map(|g| g.id).unwrap_err();
         assert!(e.contains(want), "wanted {want:?}, got {e:?}");
@@ -900,7 +901,7 @@ fn a_team_record_comes_only_from_the_teams_repositories() {
     add(&|r| r["mod"]["package"]["url"] = "https://evil.example/x.zip".into(), "mod.package.url must be a release file");
     add(&|r| r["mod"]["package"]["url"] = "https://github.com/multiplayereverything/other/releases/download/v1/x.zip".into(), "mod.package.url must be a release file");
     add(&|r| r["categories"] = serde_json::json!(["community"]), "\"community\" is for developers' records");
-    add(&|r| r["actions"] = serde_json::json!([]), "not both");
+    add(&|r| r["actions"] = serde_json::json!([]), "one of them");
     add(&|r| r["kind"] = "link".into(), "team record.kind: not allowed");
     add(&|r| r["mod"]["id"] = "other".into(), "mod.id must be the record's id");
     add(&|r| r["mod"] = serde_json::Value::Null, "no \"mod\" object");
@@ -939,6 +940,228 @@ fn team_records_merge_first_and_win_their_ids() {
     assert_eq!(left.len(), 1, "{left:?}");
     assert_eq!(cfg.games.iter().filter(|g| g.id == "spooky-together").count(), 1);
     assert!(cfg.games.iter().find(|g| g.id == "spooky-together").unwrap().categories.contains(&"pc".to_string()));
+}
+
+// ---- Flash records: the launcher makes the buttons (1.0.43) --------------------------------------------------------
+
+fn short_team_record(id: &str) -> serde_json::Value {
+    let path = format!("{}\\..\\tests\\fixtures\\team-short\\{id}.json", env!("CARGO_MANIFEST_DIR"));
+    serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
+}
+
+/// What a button starts: everything but its texts.
+fn command_of(a: &super::config::ActionSpec) -> String {
+    format!(
+        "{} swf={:?} args={:?} join={:?} offline={} more={} original={} players={:?} icon={}",
+        a.id, a.swf, a.args, a.join_args, a.offline, a.more, a.original, a.players, a.icon
+    )
+}
+
+/// Our Flash games in the short form (tests/fixtures/team-short, made by scripts/flash-records-short.py from the
+/// published records) make the same buttons with the same command lines, the same card and the same host options as
+/// the hand-written records. Only a few button texts may read differently, as launcher.json words them now.
+#[test]
+fn flash_team_records_in_the_short_form_make_the_same_buttons() {
+    let dir = format!("{}\\..\\tests\\fixtures\\team-short", env!("CARGO_MANIFEST_DIR"));
+    let mut seen = 0;
+    for e in std::fs::read_dir(dir).unwrap() {
+        let name = e.unwrap().file_name().to_string_lossy().to_string();
+        let id = name.trim_end_matches(".json");
+        if id == "index" {
+            continue;
+        }
+        let short = short_team_record(id);
+        let (published, cfg) = team_record(id);
+        if short.get("flash").is_none() {
+            assert_eq!(short, published, "{id}: only Flash records change");
+            continue;
+        }
+        assert!(published.get("actions").is_some() && short.get("actions").is_none(), "{id}");
+        let a = read_team(&short, &cfg).unwrap_or_else(|e| panic!("{id}: {e}"));
+        let b = read_team(&published, &cfg).unwrap_or_else(|e| panic!("{id}: {e}"));
+        assert!(!a.coming_soon, "{id}");
+        let ca: Vec<String> = a.actions.iter().map(command_of).collect();
+        let cb: Vec<String> = b.actions.iter().map(command_of).collect();
+        assert_eq!(ca, cb, "{id}");
+        for (x, y) in a.actions.iter().zip(&b.actions) {
+            assert!(!x.label.is_empty() && !x.description.is_empty(), "{id}.{}", x.id);
+            // The texts the records' own wording kept: the offline button's and the original's.
+            if ["offline", "local", "play"].contains(&x.id.as_str()) {
+                assert_eq!((&x.label, &x.description), (&y.label, &y.description), "{id}.{}", x.id);
+            }
+        }
+        let card = |g: &super::config::GameSpec| {
+            format!(
+                "{} {} {:?} {} {} {} {:?} {:?} {:?}",
+                g.name, g.description, g.categories, g.online_id, g.join_action, g.max_players, g.guide, g.settings, g.color
+            )
+        };
+        assert_eq!(card(&a), card(&b), "{id}");
+        seen += 1;
+    }
+    assert_eq!(seen, 16); // Bad Ice-Cream keeps its own buttons: its online ones pass no key map
+}
+
+/// The generated buttons for 2 players and for 6: rooms and hosts up to maxPlayers, the texts from launcher.json.
+#[test]
+fn the_launcher_makes_a_flash_games_buttons_from_its_player_count() {
+    let (_, cfg) = team_record("chaosfaction2");
+    let g = read_team(&short_team_record("chaosfaction2"), &cfg).unwrap();
+    let ids: Vec<&str> = g.actions.iter().map(|a| a.id.as_str()).collect();
+    assert_eq!(ids, ["online", "room3", "room4", "room5", "room6", "host", "host3", "host4", "host5", "host6", "join", "offline"]);
+    let room5 = &g.actions[3];
+    assert_eq!((room5.label.as_str(), room5.description.as_str()), ("Host a room for 5 players", "The game starts when 4 friends have joined"));
+    assert_eq!(room5.args, ["--coop-host-relay", "${SERVER}", "--coop-name", "${PLAYER_NAME}", "--coop-keys", "chaos-faction-2", "--coop-players", "5"]);
+    assert!(g.actions[0].hint.ends_with("For up to 6 players use Other ways to connect."));
+    let (_, cfg) = team_record("fireboywatergirlforesttemple");
+    let g = read_team(&short_team_record("fireboywatergirlforesttemple"), &cfg).unwrap();
+    let ids: Vec<&str> = g.actions.iter().map(|a| a.id.as_str()).collect();
+    assert_eq!(ids, ["online", "host", "join", "offline"]);
+    assert_eq!(g.actions[0].hint, "Send the room code the message shows to your friend. The game opens once they join.");
+    assert_eq!(g.actions[1].label, "Host with your IP (2 players)");
+}
+
+#[test]
+fn a_short_flash_team_record_says_only_what_the_launcher_can_make() {
+    let (_, cfg) = team_record("zombotron");
+    let base = short_team_record("zombotron");
+    let mut cases: Vec<(serde_json::Value, &str)> = Vec::new();
+    let mut add = |f: &dyn Fn(&mut serde_json::Value), want: &'static str| {
+        let mut r = base.clone();
+        f(&mut r);
+        cases.push((r, want));
+    };
+    add(&|r| r["flash"]["args"] = serde_json::json!(["--evil"]), "flash.args: not allowed");
+    add(&|r| r["flash"]["file"] = "C:\\Windows\\x.swf".into(), "flash.file: a game file");
+    add(&|r| r["flash"]["file"] = "${GAMES_DIR}\\..\\x.swf".into(), "flash.file: a game file");
+    add(&|r| r["flash"]["keys"] = "..\\..\\x.keys".into(), "flash.keys: a key map");
+    add(&|r| r["flash"]["keys"] = "--coop-host".into(), "flash.keys: a key map");
+    add(&|r| r["flash"]["maxPlayers"] = 7.into(), "flash.maxPlayers");
+    add(&|r| r["flash"]["maxPlayers"] = 1.into(), "flash.maxPlayers");
+    add(&|r| r["flash"]["maxPlayers"] = 2.5.into(), "flash.maxPlayers");
+    add(&|r| r["flash"]["offline"] = true.into(), "flash.offline: an object");
+    add(&|r| r["flash"]["offline"] = serde_json::json!({ "args": ["x"] }), "flash.offline.args: not allowed");
+    add(&|r| r["flash"]["offline"] = serde_json::json!({ "keys": "a b" }), "flash.offline.keys");
+    add(&|r| r["flash"]["offline"] = serde_json::json!({ "label": "x".repeat(41) }), "flash.offline.label");
+    add(&|r| r["flash"]["original"] = serde_json::json!({ "files": [] }), "flash.original.files");
+    add(&|r| r["flash"]["original"] = serde_json::json!({ "files": ["C:\\x.swf"] }), "flash.original.files");
+    add(&|r| r["flash"]["ruffle"] = "latest".into(), "flash.ruffle");
+    add(&|r| r["flash"] = "x".into(), "flash must be an object");
+    for (r, want) in cases {
+        let e = read_team(&r, &cfg).map(|g| g.id).err().unwrap_or_else(|| panic!("{want}: read"));
+        assert!(e.contains(want), "wanted {want:?}, got {e:?}");
+    }
+    let mut r = base.clone();
+    r["flash"]["ruffle"] = "1.0.5".into();
+    assert_eq!(read_team(&r, &cfg).unwrap().min_player, "1.0.5");
+}
+
+/// A developer's Flash game as the website writes it into community/<id>.json.
+fn flash_record() -> serde_json::Value {
+    let rel = "https://github.com/someone/lab-flash/releases/download/v2.0";
+    serde_json::json!({
+        "id": "lab-flash-coop",
+        "repo": "someone/lab-flash",
+        "kind": "flash",
+        "minLauncher": "1.0.43",
+        "tag": "v2.0",
+        "version": "2.0",
+        "manifest_sha256": SHA,
+        "author": "someone",
+        "approved_at": "2026-11-04",
+        "approved_by": "JessniX",
+        "description": "A lab game for two.",
+        "flash": {
+            "game": "Lab Flash",
+            "file": { "asset": "LabFlash_coop.swf", "url": format!("{rel}/LabFlash_coop.swf"), "sha256": SHA, "size": 1234 },
+            "keys": { "asset": "lab-flash.keys", "url": format!("{rel}/lab-flash.keys"), "sha256": SHA },
+            "maxPlayers": 3,
+            "offline": { "local": true },
+            "ruffle": "1.0.5"
+        }
+    })
+}
+
+#[test]
+fn a_developers_flash_record_downloads_its_pinned_files_and_gets_the_standard_buttons() {
+    let g = read_rec(&flash_record()).unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!((g.id.as_str(), g.name.as_str(), g.site_id.as_str()), ("lab-flash-coop", "Lab Flash", "lab-flash-coop"));
+    assert_eq!(g.categories, ["community", "flash"]);
+    assert_eq!((g.online_id.as_str(), g.join_action.as_str(), g.max_players), ("ruffle-coop", "online", 3));
+    assert_eq!(g.min_player, "1.0.5");
+    assert!(g.mod_spec.is_none() && !g.coming_soon);
+    let names: Vec<(&str, &str, &str)> = g.downloads.iter().map(|f| (f.dir.as_str(), f.name.as_str(), f.url.as_str())).collect();
+    assert_eq!(
+        names,
+        [
+            ("community\\lab-flash-coop", "LabFlash_coop.swf", "https://github.com/someone/lab-flash/releases/download/v2.0/LabFlash_coop.swf"),
+            ("community\\lab-flash-coop", "lab-flash.keys", "https://github.com/someone/lab-flash/releases/download/v2.0/lab-flash.keys"),
+        ]
+    );
+    assert_eq!((g.downloads[0].size, g.downloads[1].size), (1234, 0));
+    let ids: Vec<&str> = g.actions.iter().map(|a| a.id.as_str()).collect();
+    assert_eq!(ids, ["online", "room3", "host", "host3", "join", "local"]);
+    for a in &g.actions {
+        assert_eq!(a.swf, ["${GAMES_DIR}\\community\\lab-flash-coop\\LabFlash_coop.swf"], "{}", a.id);
+        let k = a.args.iter().position(|x| x == "--coop-keys").unwrap();
+        assert_eq!(a.args[k + 1], "${GAMES_DIR}\\community\\lab-flash-coop\\lab-flash.keys", "{}", a.id);
+        assert!(a.server.exe.is_empty() && a.link.is_empty() && a.page.is_empty(), "{}", a.id);
+    }
+    assert_eq!(g.actions[5].description, "Up to 3 players on this PC");
+    assert!(g.guide.tips[0].starts_with("Made by someone, not by Multiplayer Everything. We use the exact version we looked at (2.0)"));
+    assert_eq!(g.guide.links.last().unwrap().url, "https://github.com/someone/lab-flash");
+    // A built-in key map instead of a file: one download.
+    let mut r = flash_record();
+    r["flash"]["keys"] = "gun-mayhem-2".into();
+    let g = read_rec(&r).unwrap();
+    assert_eq!(g.downloads.len(), 1);
+    assert!(g.actions[0].args.windows(2).any(|w| w == ["--coop-keys", "gun-mayhem-2"]));
+}
+
+#[test]
+fn a_developers_flash_record_downloads_only_its_own_pinned_release() {
+    let mut cases: Vec<(serde_json::Value, &str)> = Vec::new();
+    let mut add = |f: &dyn Fn(&mut serde_json::Value), want: &'static str| {
+        let mut r = flash_record();
+        f(&mut r);
+        cases.push((r, want));
+    };
+    add(&|r| r["flash"]["file"]["url"] = "https://github.com/other/repo/releases/download/v2.0/LabFlash_coop.swf".into(), "flash.file.url must be");
+    add(&|r| r["flash"]["file"]["url"] = "https://evil.example/LabFlash_coop.swf".into(), "flash.file.url must be");
+    add(&|r| r["flash"]["file"]["url"] = "https://github.com/someone/lab-flash/releases/download/v1.0/LabFlash_coop.swf".into(), "flash.file.url must be");
+    add(&|r| r["flash"]["file"]["sha256"] = "abc".into(), "flash.file.sha256");
+    add(&|r| r["flash"]["file"]["asset"] = "LabFlash.exe".into(), "flash.file.asset: a .swf file");
+    add(&|r| r["flash"]["file"]["asset"] = "..\\x.swf".into(), "flash.file.asset");
+    add(&|r| r["flash"]["file"]["size"] = (-1).into(), "flash.file.size");
+    add(&|r| r["flash"]["file"]["dir"] = "C:\\".into(), "flash.file.dir: not allowed");
+    add(&|r| r["flash"]["file"] = "${GAMES_DIR}\\x.swf".into(), "flash.file: the release file");
+    add(&|r| r["flash"]["keys"]["asset"] = "lab.swf".into(), "flash.keys.asset: a .keys file");
+    add(&|r| r["flash"]["keys"] = "C:\\x.keys".into(), "flash.keys: a key map");
+    add(&|r| { r["flash"].as_object_mut().unwrap().remove("keys"); }, "flash.keys");
+    add(&|r| r["flash"]["original"] = serde_json::json!({ "files": ["${GAMES_DIR}\\x.swf"] }), "flash.original: not allowed");
+    add(&|r| r["flash"]["args"] = serde_json::json!(["--x"]), "flash.args: not allowed");
+    add(&|r| { r["flash"].as_object_mut().unwrap().remove("game"); }, "flash.game");
+    add(&|r| r["actions"] = serde_json::json!([]), "record.actions: not allowed");
+    add(&|r| r["mod"] = serde_json::json!({}), "record.mod: not allowed");
+    add(&|r| r["categories"] = serde_json::json!(["flash"]), "record.categories: not allowed");
+    add(&|r| r["online"] = serde_json::json!({ "id": "x" }), "record.online: not allowed");
+    add(&|r| r["tag"] = "../x".into(), "tag must be a plain name");
+    add(&|r| r["id"] = "gunmayhem2".into(), "already has");
+    add(&|r| r["kind"] = "flash2".into(), "isn't known to this launcher");
+    for (r, want) in cases {
+        let e = read_rec(&r).map(|g| g.id).unwrap_err();
+        assert!(e.contains(want), "wanted {want:?}, got {e:?}");
+    }
+}
+
+#[test]
+fn a_flash_record_for_a_newer_launcher_is_named_after_its_game() {
+    let mut r = flash_record();
+    r["minLauncher"] = "999.0".into();
+    r["flash"]["somethingNew"] = true.into();
+    let g = read_rec(&r).unwrap();
+    assert!(g.coming_soon && g.actions.is_empty() && g.downloads.is_empty());
+    assert_eq!(g.name, "Lab Flash");
 }
 
 #[test]

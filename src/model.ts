@@ -30,6 +30,7 @@ export function statusOf(g: Game, lib: Library, mods: Record<string, ModInfo> | 
   const states = g.actions.filter((a) => a.state).map((a) => a.state)
   if (states.includes('ready') && g.outdated) return { kind: 'update', text: t('status.update', 'Update available') }
   if (states.includes('ready')) return { kind: 'ready', text: t('status.ready', 'Ready') }
+  if (states.includes('oldPlayer')) return { kind: 'missing', text: t('status.oldPlayer', 'Needs a newer Ruffle Together').replace('${PLAYER}', g.actions.find((a) => a.state === 'oldPlayer')?.player ?? 'Ruffle Together').replace('${VERSION}', g.actions.find((a) => a.state === 'oldPlayer')?.needs ?? '') }
   if (states.includes('noPlayer')) return { kind: 'missing', text: t('status.noPlayer', 'No Flash player found') }
   return { kind: 'missing', text: t('status.noSwf', 'Game file missing') }
 }

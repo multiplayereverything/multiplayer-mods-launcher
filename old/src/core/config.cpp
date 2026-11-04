@@ -1717,10 +1717,11 @@ bool readCommunityMod(std::string_view text, const Config& cfg, bool localReleas
     std::string perr;
     Value r = json::parse(text, &perr);
     if (!r.isObject()) return refuse(error, L"not a JSON object" + (perr.empty() ? std::wstring() : L" (" + widen(perr) + L")"));
-    // "pc" (the default) installs; "link" is a card for the app with nothing to install, so the engine skips it without
-    // a reason (an empty error). The card's text (description, guide, colours) is the app's (src-tauri community.rs).
+    // "pc" (the default) installs; "link" is a card for the app with nothing to install, and "flash" a developer's Flash
+    // game the app starts in Ruffle Together (1.0.43), so the engine skips both without a reason (an empty error). The
+    // card's text (description, guide, colours) is the app's (src-tauri community.rs).
     std::wstring kind = r.find("kind") ? strOf(r, "kind") : L"pc";
-    if (kind == L"link") return refuse(error, L"");
+    if (kind == L"link" || kind == L"flash") return refuse(error, L"");
     if (kind != L"pc") return refuse(error, L"kind \"" + kind + L"\" isn't known to this launcher");
     std::wstring id = strOf(r, "id"), repo = strOf(r, "repo"), tag = strOf(r, "tag"), asset = strOf(r, "asset");
     std::wstring version = strOf(r, "version"), url = strOf(r, "url"), sha = strOf(r, "sha256");
@@ -1822,6 +1823,8 @@ bool readTeamMod(std::string_view text, const Config& cfg, bool localRelease, Ga
         return refuse(error, L"id: lowercase letters, digits and '-', up to 48");
     if (!teamRepo(repo)) return refuse(error, L"repo must be \"" + std::wstring(kTeamOwner) + L"/<name>\": team records are the team's own repositories");
     if (tooNew(r, error)) return false;
+    // A Flash game whose buttons the app makes from "flash" (1.0.43): the app's alone, the mod engine has nothing to do.
+    if (r.find("flash") && !r.find("mod")) return refuse(error, L"");
     // The record's own keys; the rest is a launcher.json games[] entry: the card and the mod, no buttons of its own.
     if (!onlyKeys(r, {"id", "repo", "minLauncher", "approved_at", "approved_by", "name", "description", "players", "maxPlayers", "color",
                       "colorEnd", "guide", "categories", "site", "online", "image", "imageFocus", "mod", "actions", "settings"},

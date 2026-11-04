@@ -14,7 +14,7 @@ use super::library::Library;
 use super::paths;
 use super::settings::{UserData, load_user_data};
 use super::site::{SiteGame, fetch_site_covers, find_site, load_site_cache, mark_community, merge_projects, merge_site, parse_site, projects_url, refresh_site_cache_within};
-use super::text::atoi;
+use super::text::{atoi, compare_versions};
 use super::vars::Vars;
 
 /// Where the config comes from: `FL_LAUNCHER_CONFIG` (the lab's sandbox, as `--config` was for the C++ launcher),
@@ -285,6 +285,16 @@ pub fn build(cfg: &Config, lib: &Library, user: &UserData, site: &[SiteGame]) ->
     {
         outdated.extend(outdated_game_files(&catalog, &lib.vars().get("GAMES_DIR")).into_iter().map(|f| f.game));
     }
+    // A record's pinned files (a developer's Flash game): one there with another SHA-256 means the approval moved on.
+    for g in &cfg.games {
+        let stale = |f: &&super::config::PinnedFile| {
+            let path = paths::join(&paths::join(&lib.vars().get("GAMES_DIR"), &f.dir), &f.name);
+            paths::is_file(&path) && paths::sha256_file(&path) != f.sha256
+        };
+        if g.downloads.iter().any(|f| stale(&f)) {
+            outdated.insert(g.id.clone());
+        }
+    }
     let options = GameOptions { cfg, lib, user, catalog: &catalog_settings };
     let mut games = Vec::new();
     for g in &cfg.games {
@@ -375,7 +385,14 @@ pub fn build(cfg: &Config, lib: &Library, user: &UserData, site: &[SiteGame]) ->
             coop_flags(a, &mut ao);
             if !a.is_mod() && !a.is_link() {
                 let r = lib.resolve(g, a, user, false);
-                ao.insert("state".into(), json!(r.state.id()));
+                // A game that needs a newer Ruffle Together than the one this button starts: the window offers the
+                // update. A copy the launcher didn't install has no release tag to compare, and is let through.
+                let have = if g.min_player.is_empty() { String::new() } else { installed_player_version(&r.player_exe) };
+                let old = r.state.id() == "ready" && !have.is_empty() && compare_versions(&have, &g.min_player) < 0;
+                ao.insert("state".into(), json!(if old { "oldPlayer" } else { r.state.id() }));
+                if old {
+                    ao.insert("needs".into(), json!(g.min_player));
+                }
                 ao.insert("player".into(), r.player.map_or(Value::Null, |p| json!(p.name)));
                 ao.insert("playerId".into(), r.player.map_or(Value::Null, |p| json!(p.id)));
                 ao.insert("file".into(), json!(r.swf));

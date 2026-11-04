@@ -793,13 +793,17 @@ TEST(community_record_written_by_the_team_installs_where_it_did) {
     CHECK(!readCommunityMod(up, cfg, false, g, why));
     CHECK(why.find(L"subPath") != std::wstring::npos);
 
-    // A link card has nothing to install: the engine skips it without a reason. A kind it doesn't know has one.
+    // A link card and a developer's Flash game have nothing to install: the engine skips them without a reason. A kind
+    // it doesn't know has one.
     std::string link = R"({ "id": "lab-link", "kind": "link", "repo": "someone/lab-link",
       "link": { "game": "Lab Link", "url": "https://github.com/someone/lab-link" } })";
     CHECK(!readCommunityMod(link, cfg, false, g, why));
     CHECK(why.empty());
     std::string flash = R"({ "id": "lab-flash", "kind": "flash", "repo": "someone/lab-flash" })";
     CHECK(!readCommunityMod(flash, cfg, false, g, why));
+    CHECK(why.empty());
+    std::string later = R"({ "id": "lab-later", "kind": "ruffle", "repo": "someone/lab-later" })";
+    CHECK(!readCommunityMod(later, cfg, false, g, why));
     CHECK(why.find(L"isn't known") != std::wstring::npos);
 }
 
@@ -941,6 +945,21 @@ TEST(flash_team_record_only_starts_our_player_with_a_game_file) {
     CHECK(refused(R"("swf":["${GAMES_DIR}\\)", R"("swf":["${GAMES_DIR}\\..\\)", L"actions[0].swf: game files"));
     CHECK(refused(R"("actions":[)", R"("mod":{"id":"zombotron"},"actions":[)", L"not both"));
     REQUIRE(readTeamMod(base, cfg, false, g, why));
+}
+
+// A team Flash game in the short form (1.0.43: "flash", the app makes its buttons) is the app's alone: the mod engine
+// skips it without a reason, as it skips a developer's Flash game.
+TEST(a_short_flash_team_record_is_left_to_the_app) {
+    Config cfg;
+    teamRecord("airbattle", cfg);
+    std::vector<uint8_t> bytes;
+    fs::readFile(fl::test::repoPath(L"tests\\fixtures\\team-short\\airbattle.json"), bytes);
+    std::string text(bytes.begin(), bytes.end());
+    CHECK(text.find("\"flash\"") != std::string::npos);
+    GameSpec g;
+    std::wstring why = L"x";
+    CHECK(!readTeamMod(text, cfg, false, g, why));
+    CHECK(why.empty());
 }
 
 TEST(team_record_comes_only_from_the_teams_repositories) {

@@ -10,7 +10,7 @@ use windows_sys::Win32::System::SystemInformation::GetSystemDirectoryW;
 use windows_sys::Win32::System::Threading::{GetExitCodeProcess, WaitForSingleObject};
 
 use super::catalog::{CatalogFile, PLAYER_VERSION_FILE, parse_catalog};
-use super::config::{Config, InstallSpec, PlayerSpec};
+use super::config::{Config, GameSpec, InstallSpec, PlayerSpec};
 use super::http::{self, win32_error_message};
 use super::json::{self, Value, serialize};
 use super::library::Library;
@@ -549,7 +549,8 @@ pub fn update_players_command(check: bool, as_json: bool, out: &mut dyn FnMut(&s
     (if failed > 0 { 1 } else { 0 }, String::new())
 }
 
-/// `--download-game <id | all>`: the game's files from the catalog into the games folder, then their paths.
+/// `--download-game <id | all>`: the game's files from the catalog into the games folder, then their paths. A game a
+/// mods-info record pinned its own files for (a developer's Flash game) gets those instead, into their folder.
 pub fn download_game_command(id: &str, out: &mut dyn FnMut(&str)) -> (i32, String) {
     let cfg = match open_command() {
         Ok(c) => c,
@@ -560,24 +561,43 @@ pub fn download_game_command(id: &str, out: &mut dyn FnMut(&str)) -> (i32, Strin
         log::error(&msg);
         (code, msg)
     };
-    if cfg.downloads.catalog.is_empty() {
-        return fail(3, "launcher.json has no downloads.catalog".into());
+    let games = lib.vars().get("GAMES_DIR");
+    let pinned: Vec<&GameSpec> = cfg.games.iter().filter(|g| (id == "all" || g.id == id) && !g.downloads.is_empty()).collect();
+    let mut wanted: Vec<(String, CatalogFile)> = Vec::new();
+    for g in &pinned {
+        for f in &g.downloads {
+            let file = CatalogFile { game: g.id.clone(), name: f.name.clone(), url: f.url.clone(), sha256: f.sha256.clone(), description: String::new(), size: f.size };
+            wanted.push((paths::join(&games, &f.dir), file));
+        }
     }
-    let files = match fetch_catalog(&cfg.downloads.catalog, None) {
-        Ok((f, _)) => f,
-        Err(e) => return fail(1, format!("Cannot read the game catalog: {e}")),
-    };
-    let wanted: Vec<CatalogFile> = files.into_iter().filter(|f| id == "all" || f.game == id).collect();
+    if id == "all" || pinned.is_empty() {
+        if cfg.downloads.catalog.is_empty() {
+            if pinned.is_empty() {
+                return fail(3, "launcher.json has no downloads.catalog".into());
+            }
+        } else {
+            let files = match fetch_catalog(&cfg.downloads.catalog, None) {
+                Ok((f, _)) => f,
+                Err(e) => return fail(1, format!("Cannot read the game catalog: {e}")),
+            };
+            wanted.extend(files.into_iter().filter(|f| id == "all" || f.game == id).map(|f| (games.clone(), f)));
+        }
+    }
     if wanted.is_empty() {
         return fail(3, format!("The catalog has no files for \"{id}\""));
     }
-    let games = lib.vars().get("GAMES_DIR");
-    let r = download_game_files(&wanted, &games, &mut |_| {}, None);
-    if !r.ok {
-        return fail(1, format!("Download failed: {}", r.error));
+    // One folder at a time: the catalog's files go straight into the games folder, a record's into its own.
+    let mut dirs: Vec<&String> = wanted.iter().map(|(d, _)| d).collect();
+    dirs.dedup();
+    for dir in dirs {
+        let files: Vec<CatalogFile> = wanted.iter().filter(|(d, _)| d == dir).map(|(_, f)| f.clone()).collect();
+        let r = download_game_files(&files, dir, &mut |_| {}, None);
+        if !r.ok {
+            return fail(1, format!("Download failed: {}", r.error));
+        }
     }
-    for f in &wanted {
-        out(&paths::join(&games, &f.name));
+    for (dir, f) in &wanted {
+        out(&paths::join(dir, &f.name));
     }
     (0, String::new())
 }

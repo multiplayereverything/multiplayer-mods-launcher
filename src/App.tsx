@@ -180,7 +180,8 @@ export default function App() {
   const [switcher, setSwitcher] = useState(false)
   const [lobbyQuick, setLobbyQuick] = useState(false)
   // Play met a missing Flash player: the C++ window offers to install it there and then.
-  const [offerPlayer, setOfferPlayer] = useState<{ id: string; name: string } | null>(null)
+  // needs: the game asks for a newer release of a player that is installed (an update, not a first install).
+  const [offerPlayer, setOfferPlayer] = useState<{ id: string; name: string; needs?: string } | null>(null)
   const [installingPlayer, setInstallingPlayer] = useState(false)
   // A game whose file is missing, opened from a Play outside its page: its page offers the download at once.
   const [askDownload, setAskDownload] = useState('')
@@ -453,6 +454,13 @@ export default function App() {
         setAskDownload(game.id)
         go('game', game.id)
         return
+      }
+      if (action.state === 'oldPlayer') {
+        const p = lib?.players.find((x) => x.id === action.playerId)
+        if (p) {
+          setOfferPlayer({ id: p.id, name: p.name, needs: action.needs ?? '' })
+          return
+        }
       }
       if (action.state === 'noPlayer') {
         const p = lib?.players.find((x) => x.id === action.playerId) ?? lib?.players.find((x) => x.installable && !x.found)
@@ -863,8 +871,10 @@ export default function App() {
       {offerPlayer && (
         <div className="scrim" onMouseDown={(e) => e.target === e.currentTarget && !installingPlayer && setOfferPlayer(null)}>
           <div className="dialog" role="dialog" aria-modal="true" aria-label={`Install ${offerPlayer.name}?`}>
-            <h2>{(lib.text['install.title'] ?? 'Install ${PLAYER}?').replace('${PLAYER}', offerPlayer.name)}</h2>
-            <p className="dialog-note">{lib.text['install.firstRun'] ?? "No Flash player was found on this PC, so games can't start yet."} The launcher downloads the latest release, checks it, and keeps it with the launcher's own files.</p>
+            <h2>{offerPlayer.needs !== undefined ? `Update ${offerPlayer.name}?` : (lib.text['install.title'] ?? 'Install ${PLAYER}?').replace('${PLAYER}', offerPlayer.name)}</h2>
+            <p className="dialog-note">{offerPlayer.needs !== undefined
+              ? `This game needs ${offerPlayer.name} ${offerPlayer.needs} or newer. Everyone you play with needs it too.`
+              : lib.text['install.firstRun'] ?? "No Flash player was found on this PC, so games can't start yet."} The launcher downloads the latest release, checks it, and keeps it with the launcher's own files.</p>
             <div className="dialog-row">
               <button className="btn" disabled={installingPlayer} onClick={() => setOfferPlayer(null)}>{lib.text['install.no'] ?? 'Not now'}</button>
               <button className="btn next" disabled={installingPlayer} onClick={() => {
@@ -876,7 +886,7 @@ export default function App() {
                     setInstallingPlayer(false)
                     setOfferPlayer(null)
                   })
-              }}>{installingPlayer ? 'Installing...' : (lib.text['install.yes'] ?? 'Install ${PLAYER}').replace('${PLAYER}', offerPlayer.name)}</button>
+              }}>{installingPlayer ? 'Installing...' : offerPlayer.needs !== undefined ? `Update ${offerPlayer.name}` : (lib.text['install.yes'] ?? 'Install ${PLAYER}').replace('${PLAYER}', offerPlayer.name)}</button>
             </div>
           </div>
         </div>

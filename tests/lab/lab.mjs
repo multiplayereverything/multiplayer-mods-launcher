@@ -145,12 +145,12 @@ const scenarios = {
   async library() {
     const counts = await waitFor(async () => {
       const c = await wd.exec("return Object.fromEntries([...document.querySelectorAll('.navs .nav')].map(b => [b.querySelector('.lbl')?.textContent, b.querySelector('.n')?.textContent ?? '']))")
-      return c['All games'] === '14' && c
+      return c['All games'] === '16' && c
     })
     await check('the sidebar counts every game', !!counts, JSON.stringify(counts))
-    await check('the sidebar counts each category', counts && counts['Flash mods'] === '6' && counts['PC mods'] === '2' && counts['Online multiplayer'] === '3' && counts['Community mods'] === '3' && counts['Coming soon'] === '2', JSON.stringify(counts))
+    await check('the sidebar counts each category', counts && counts['Flash mods'] === '8' && counts['PC mods'] === '2' && counts['Online multiplayer'] === '3' && counts['Community mods'] === '5' && counts['Coming soon'] === '2', JSON.stringify(counts))
     await wd.click(nav('Flash mods'))
-    await check('a category shows its games', (await waitFor(async () => (await wd.count("//button[contains(@class,'card-c')]")) === 6)) === true)
+    await check('a category shows its games', (await waitFor(async () => (await wd.count("//button[contains(@class,'card-c')]")) === 8)) === true)
     await wd.click(nav('All games'))
     await wd.type("//input[@placeholder='Search games and mods']", 'relay')
     const found = await waitFor(async () => (await wd.exec("return [...document.querySelectorAll('.card-c .name')].map(e => e.textContent)")).join('|') === 'Relay Test')
@@ -159,7 +159,7 @@ const scenarios = {
     await wd.click(button('A to Z'))
     const names = await waitFor(async () => {
       const n = await wd.exec("return [...document.querySelectorAll('.card-c .name')].map(e => e.textContent)")
-      return n.length === 14 && n
+      return n.length === 16 && n
     })
     await check('A to Z sorts by name', !!names && names.join('|') === [...names].sort((a, b) => a.localeCompare(b)).join('|'), names?.join(', '))
     await wd.click(button('Compact'))
@@ -597,6 +597,48 @@ const scenarios = {
     await key('Escape')
   },
 
+  // community/lab-devflash.json: a developer's Flash game. The launcher makes its buttons, downloads its pinned files into
+  // their own folder, and starts the player with the release's key map.
+  async devflash() {
+    await wd.click(nav('Community mods'))
+    const arrived = await waitFor(async () => (await wd.count(card('Lab Dev Flash'))) === 1, 20000)
+    await check('a developer\'s Flash game from mods-info is a community mod', arrived === true)
+    if (!arrived) return
+    await wd.click(nav('Flash mods'))
+    await check('and a Flash mod', (await waitFor(async () => (await wd.count(card('Lab Dev Flash'))) === 1, 5000)) === true)
+    await openGame('Lab Dev Flash')
+    await wd.click("//div[@role='tablist']//button[normalize-space(.)='How to play']")
+    const guide = await wd.exec("return document.querySelector('.gp')?.innerText ?? ''")
+    await check('its guide credits the developer and links the repository', guide.includes('Made by someone, not by Multiplayer Everything') && guide.includes('lab-devflash by someone on GitHub'), guide.slice(0, 400))
+    await wd.click("//div[@role='tablist']//button[normalize-space(.)='Overview']")
+    await check('a missing file says so', (await waitFor(async () => (await pill()).includes('missing'))) === true, await pill())
+    await wd.click(panel('Download game files'))
+    await check('Download fetches the pinned files', (await waitFor(async () => (await pill()).includes('Ready'), 20000)) === true, await pill())
+    const dir = join(work, 'games', 'community', 'lab-devflash')
+    await check("into the game's own folder in the games folder", existsSync(join(dir, 'LabDevFlash.swf')) && readFileSync(join(dir, 'LabDevFlash.swf'), 'utf8') === 'dev flash game 1.0' &&
+      existsSync(join(dir, 'lab-devflash.keys')))
+    await wd.click("//button[contains(normalize-space(.),'Other ways to connect')]")
+    const played = await launch('Host with your IP (2 players)')
+    const k = played.indexOf('--coop-keys')
+    await check("the launcher's own Host with your IP starts the pinned file with its key map", played.some((x) => x.endsWith('LabDevFlash.swf')) && k >= 0 &&
+      played[k + 1] === join(dir, 'lab-devflash.keys') && played.join(' ').includes('--coop-host 7790'), played.join(' '))
+    await waitFor(async () => !(await wd.exec("return document.querySelector('.island')?.textContent ?? ''")).includes('Playing'), FAKE_MS + 8000)
+    await key('Escape')
+
+    // community/lab-newflash.json needs Ruffle Together 99.0: with an older release picked, Play offers the update.
+    await wd.exec("return window.__TAURI_INTERNALS__.invoke('set_game_player', { game: 'lab-newflash', player: 'rt' })")
+    await openGame('Lab New Flash')
+    await wd.click(panel('Download game files'))
+    const needs = await waitFor(async () => (await pill()).includes('Needs Updater Test 99.0 or newer'), 20000)
+    await check('a game for a newer player says which release it needs', needs === true, await pill())
+    await wd.click("//button[contains(normalize-space(.),'Other ways to connect')]")
+    await wd.click(panel('Host with your IP (2 players)'))
+    const dialog = await wd.find("//div[@role='dialog']//h2[normalize-space(.)='Update Updater Test?']", 4000).catch(() => null)
+    await check('and Play offers the update instead of starting', !!dialog)
+    if (dialog) await wd.click(inDialog('Not now'))
+    await key('Escape')
+  },
+
   async keys() {
     await wd.click(nav('All games'))
     await wd.find("//button[contains(@class,'card-c')]")
@@ -739,7 +781,7 @@ const scenarios = {
 
     await key('PageDown')
     await check('RB goes to Games', !!(await waitFor(async () => (await wd.count("//div[contains(@class,'tv-lib')]")) > 0)))
-    await check('Games shows every game', (await waitFor(async () => (await wd.count("//div[contains(@class,'tv-grid')]//button[contains(@class,'tv-tile')]")) === 14)) === true)
+    await check('Games shows every game', (await waitFor(async () => (await wd.count("//div[contains(@class,'tv-grid')]//button[contains(@class,'tv-tile')]")) === 16)) === true)
     await wd.click("//button[contains(@class,'tv-chip')][starts-with(normalize-space(.),'PC mods')]")
     await check('a filter narrows the games', (await waitFor(async () => (await wd.count("//div[contains(@class,'tv-grid')]//button[contains(@class,'tv-tile')]")) === 2)) === true)
     await key('Escape')

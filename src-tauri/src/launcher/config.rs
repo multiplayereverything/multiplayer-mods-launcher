@@ -462,6 +462,20 @@ pub struct GameSpec {
     pub color: Color,
     pub color_end: Color,
     pub actions: Vec<ActionSpec>,
+    /// Game files a mods-info record pinned (a developer's Flash game): downloaded like the catalog's, into their folder.
+    pub downloads: Vec<PinnedFile>,
+    /// The oldest Ruffle Together the game runs in (a Flash record's "ruffle"); empty = any.
+    pub min_player: String,
+}
+
+/// One pinned release file: where it goes (a folder inside the games folder), its address and its SHA-256.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct PinnedFile {
+    pub dir: String,
+    pub name: String,
+    pub url: String,
+    pub sha256: String,
+    pub size: u64,
 }
 
 impl Default for GameSpec {
@@ -487,6 +501,8 @@ impl Default for GameSpec {
             color: Color::rgb(0x4F8BFF),
             color_end: Color::rgb(0x9C6BFF),
             actions: Vec::new(),
+            downloads: Vec::new(),
+            min_player: String::new(),
         }
     }
 }

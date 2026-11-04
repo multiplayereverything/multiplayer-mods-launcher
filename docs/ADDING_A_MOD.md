@@ -119,3 +119,16 @@ pin the version; we do not vouch for it beyond what we read.
 - [ ] Say what is not tested (a Steam copy, the internet, a Windows build) in the guide tips, as the author's own README does.
 - [ ] Never edit or rebuild the mod itself here, and the website lists it with `origin: "community"` and `reviewed: false`
       until someone has read its code.
+
+### A community Flash game
+
+The same rules, with a Flash record (`"kind": "flash"`, docs/COMMUNITY_MODS.md "Flash records"): the card lands in
+Community mods and Flash mods, named after the game (`flash.game`).
+
+- [ ] **Pin the game file and its key map** from one release: `flash.file` (the `.swf`) and, when the game has its own
+      `.keys` file, `flash.keys` the same way, each with the SHA-256 of the exact file you played. A built-in map is
+      named instead (`"keys": "gun-mayhem-2"`).
+- [ ] **Play it in Ruffle Together** with 2 players and up to `maxPlayers`, from the launcher's own buttons, before it
+      goes out. Set `flash.ruffle` to the oldest Ruffle Together it worked in.
+- [ ] No buttons or arguments of your own: the launcher makes them. A game that needs something they can't say is a
+      new building block for the launcher first.

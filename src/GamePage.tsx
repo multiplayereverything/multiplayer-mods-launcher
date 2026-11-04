@@ -435,7 +435,7 @@ export function GamePage({
             )}
             {!game.comingSoon && !game.mod && main.filter((a) => !(game.lobby && a.id === game.joinAction)).map((a, i) => (
               <PanelButton key={a.id} primary={!coop && !game.lobby && i === 0 && a.state === 'ready'} icon={a.icon} label={a.label}
-                sub={a.state !== 'ready' ? (a.state === 'noFile' ? 'Game file missing' : a.state === 'noPlayer' ? 'No Flash player found' : 'Server program missing') : a.description || (a.player ?? '')}
+                sub={a.state !== 'ready' ? (a.state === 'noFile' ? 'Game file missing' : a.state === 'noPlayer' ? 'No Flash player found' : a.state === 'oldPlayer' ? `Needs ${a.player ?? 'Ruffle Together'} ${a.needs ?? ''} or newer` : 'Server program missing') : a.description || (a.player ?? '')}
                 warn={a.state !== 'ready'} onClick={() => run(a)} />
             ))}
             {!game.comingSoon && more.length > 0 && (
