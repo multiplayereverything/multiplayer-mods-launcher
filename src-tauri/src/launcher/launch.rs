@@ -12,7 +12,7 @@ use super::config::{ActionSpec, Config};
 use super::discord::{DiscordPresence, Presence};
 use super::json::{Value, serialize};
 use super::library::{ActionState, ResolvedAction};
-use super::library_json::{load_launcher_config, open_library};
+use super::library_json::{load_with_community, open_library};
 use super::paths;
 use super::process::{BackgroundProcess, EnvVars, Process, local_addresses, start_process, wait_for_server};
 use super::relay::Relay;
@@ -199,7 +199,8 @@ pub(crate) fn config_source() -> String {
 /// game exits. `report` gets the relay's state as a JSON line whenever it changes. Returns the C++ launcher's exit
 /// code and the message it printed: the launched text on success, the reason otherwise. A stop returns (0, "").
 pub fn run(req: &Request, report: &mut dyn FnMut(&str), stop: &Stop) -> (i32, String) {
-    let cfg = match load_launcher_config() {
+    // With mods-info's records: a Flash game from team/ starts like one launcher.json has.
+    let cfg = match load_with_community() {
         Ok(c) => c,
         Err(e) => return (3, e),
     };

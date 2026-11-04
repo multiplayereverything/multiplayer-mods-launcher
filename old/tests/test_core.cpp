@@ -873,7 +873,8 @@ std::string teamRecord(const std::string& id, Config& without) {
         if (games->at(i).find("id") && games->at(i).find("id")->str() == id) entry = games->at(i);
     json::Value rec = json::Value::object();
     rec.set("id", id);
-    rec.set("repo", entry.find("mod")->find("package")->find("github")->str());
+    // A PC mod's repository is its package's; our Flash games' files live in flash-games.
+    rec.set("repo", entry.find("mod") ? entry.find("mod")->find("package")->find("github")->str() : std::string("multiplayereverything/flash-games"));
     rec.set("approved_by", std::string("Multiplayer Everything Team"));
     for (size_t i = 0; i < entry.size(); ++i)
         if (entry.keyAt(i) != "id") rec.set(entry.keyAt(i), entry.at(i));
@@ -909,6 +910,48 @@ TEST(team_record_is_the_same_game_as_its_launcher_json_entry) {
     }
 }
 
+TEST(flash_team_record_is_the_same_game_as_its_launcher_json_entry) {
+    // Our Flash games as team records: the same card, buttons, arguments and host options, for the lobby too.
+    for (const char* id : {"gunmayhem2", "zombotron"}) {
+        Config cfg;
+        std::string r = teamRecord(id, cfg);
+        GameSpec g;
+        std::wstring why;
+        if (!readTeamMod(r, cfg, false, g, why)) fprintf(stderr, "%s: %ls\n", id, why.c_str());
+        Config shipped = shippedConfig();
+        const GameSpec* s = shipped.findGame(id);
+        REQUIRE(s != nullptr && !s->mod);
+        CHECK(!g.mod && g.name == s->name && g.onlineId == s->onlineId && g.categories == s->categories && g.settings.size() == s->settings.size());
+        REQUIRE(g.actions.size() == s->actions.size());
+        for (size_t i = 0; i < g.actions.size(); ++i) {
+            const ActionSpec &a = g.actions[i], &b = s->actions[i];
+            CHECK(a.id == b.id && a.label == b.label && a.swf == b.swf && a.args == b.args && a.joinArgs == b.joinArgs && a.more == b.more &&
+                  a.offline == b.offline);
+        }
+    }
+}
+
+TEST(flash_team_record_only_starts_our_player_with_a_game_file) {
+    Config cfg;
+    std::string base = teamRecord("zombotron", cfg);
+    GameSpec g;
+    std::wstring why;
+    auto refused = [&](const std::string& from, const std::string& to, const wchar_t* want) {
+        std::string x = base;
+        swapIn(x, from, to);
+        bool ok = !readTeamMod(x, cfg, false, g, why) && why.find(want) != std::wstring::npos;
+        if (!ok) fprintf(stderr, "wanted %ls, got %ls\n", want, why.c_str());
+        return ok;
+    };
+    CHECK(refused(R"("actions":[{)", R"("actions":[{"exe":["cmd.exe"],)", L"actions[0].exe: not allowed"));
+    CHECK(refused(R"("actions":[{)", R"("actions":[{"server":{},)", L"actions[0].server: not allowed"));
+    CHECK(refused(R"("actions":[{)", R"("actions":[{"url":"https://example.com",)", L"actions[0].url: not allowed"));
+    CHECK(refused(R"("swf":["${GAMES_DIR})", R"("swf":["C:\\Windows)", L"actions[0].swf: game files"));
+    CHECK(refused(R"("swf":["${GAMES_DIR}\\)", R"("swf":["${GAMES_DIR}\\..\\)", L"actions[0].swf: game files"));
+    CHECK(refused(R"("actions":[)", R"("mod":{"id":"zombotron"},"actions":[)", L"not both"));
+    REQUIRE(readTeamMod(base, cfg, false, g, why));
+}
+
 TEST(team_record_comes_only_from_the_teams_repositories) {
     Config cfg;
     std::string base = teamRecord("spooky-together", cfg);
@@ -927,7 +970,7 @@ TEST(team_record_comes_only_from_the_teams_repositories) {
     CHECK(refused(R"("dir":"loader","github":"multiplayereverything/spooky-together")", R"("dir":"loader","github":"someone/loader")",
                   L"extras[0].github must be a multiplayereverything repository"));
     CHECK(refused(R"("categories":["pc")", R"("categories":["community")", L"is for developers' records"));
-    CHECK(refused(R"("approved_by")", R"("actions":[],"approved_by")", L"team record.actions: not allowed"));
+    CHECK(refused(R"("approved_by")", R"("actions":[],"approved_by")", L"not both"));
     CHECK(refused(R"("id":"spooky-together")", R"("id":"gta-coop")", L"launcher.json already has"));
     CHECK(refused(R"("approved_by")", R"("minLauncher":"next","approved_by")", L"minLauncher: a version"));
     CHECK(refused(R"("approved_by")", R"("minLauncher":"999.0","approved_by")", L"needs launcher 999.0"));

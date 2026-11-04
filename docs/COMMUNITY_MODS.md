@@ -3,9 +3,9 @@
 How a mod reaches the launcher without a launcher release. mods-info has two folders of records:
 
 - `community/`: mods made by someone else, approved by the owner (the developer SDK). Strict, pinned, credited.
-- `team/`: Multiplayer Everything's own mods. Each record is the mod's launcher.json `games[]` entry with a few
-  record keys added, from a `multiplayereverything` repository only, following its newest release. See
-  [Team records](#team-records) below.
+- `team/`: Multiplayer Everything's own mods and Flash games. Each record is the game's launcher.json `games[]` entry
+  with a few record keys added, from a `multiplayereverything` repository only; a PC mod follows its newest release.
+  See [Team records](#team-records) below.
 
 The launcher is a fixed set of building blocks (finding the game, what it needs first, what goes where, what is
 skipped or kept, how it starts, the card); a record only combines them. A mod that needs something no block covers
@@ -120,9 +120,16 @@ team/<id>.json       one of our own mods
 
 - Besides `id`, `repo`, `minLauncher`, `approved_at` and `approved_by`, a team record is a launcher.json `games[]`
   entry: `name`, `description`, `players`, `maxPlayers`, `color`, `colorEnd`, `guide`, `categories`, `site`, `online`,
-  `image`, `imageFocus` and `mod`, with every block launcher.json has (`sourceGame`, `allowedRoots`, `extras` by tag,
-  any detection, any launch). No `actions` (the launcher makes the buttons), no `kind`; any other key refuses it.
-- `repo` must be `multiplayereverything/<name>`. `mod.package.github` must be that repo: the mod follows its newest
+  `image`, `imageFocus`, `settings`, and either `mod` (a PC mod, with every block launcher.json has: `sourceGame`,
+  `allowedRoots`, `extras` by tag, any detection, any launch; the launcher makes its buttons) or `actions` (a Flash
+  game's buttons), never both. No `kind`; any other key refuses it.
+- A Flash game's `actions` (1 to 20) may only have `id`, `label`, `icon`, `description`, `hint`, `swf`, `args`,
+  `joinArgs`, `more`, `offline`, `edition`, `flashvars` and `players`: every button starts one of launcher.json's
+  players (Ruffle Together) with a game file, never a program, page, server, working folder or link of its own. Every
+  `swf` path starts with `${GAMES_DIR}\`, `${FLASHPOINT}\` or `${folder:Desktop}\` (read, never written), with no
+  `..`, `$` or `:` after it. Ruffle Together itself stays defined in launcher.json (`players`), and the game files
+  still come from the flash-games catalog. Our Flash games' `repo` is `multiplayereverything/flash-games`.
+- `repo` must be `multiplayereverything/<name>`. For a PC mod, `mod.package.github` must be that repo: the mod follows its newest
   release, checked against GitHub's SHA-256 at download (no review per version). A pinned `url` must be one of its
   release files. Every `extras` download must come from a `multiplayereverything` repository.
 - `categories` may not hold `community`, and must be launcher.json's categories. The card has no "made by" credit.
@@ -145,5 +152,7 @@ team/<id>.json       one of our own mods
 - The download is checked against the pinned SHA-256 before anything is installed, as for every mod.
 - `FL_NO_COMMUNITY` leaves community and team mods out (both sides). The lab's `communitymods` scenario installs one
   from a stand-in mods-info and github.com and checks Uninstall leaves the game folder byte-identical; `teammods`
-  does the same for a team record that follows its newest release and brings BepInEx, and shows a record for a newer
-  launcher.
+  does the same for a team record that follows its newest release and brings BepInEx, plays a Flash game from a team
+  record (and leaves out one whose button runs a program), and shows a record for a newer launcher. A Flash game from
+  a record starts, lists its rooms and downloads its files like one in launcher.json (launch.rs, rooms.rs,
+  install.rs read the records too).

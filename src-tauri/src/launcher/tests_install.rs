@@ -829,7 +829,8 @@ fn shipped_entry(id: &str) -> (serde_json::Value, super::config::Config) {
 
 fn team_record(id: &str) -> (serde_json::Value, super::config::Config) {
     let (mut r, cfg) = shipped_entry(id);
-    let repo = r["mod"]["package"]["github"].as_str().unwrap().to_string();
+    // A PC mod's repository is its package's; our Flash games' files live in flash-games.
+    let repo = r["mod"]["package"]["github"].as_str().unwrap_or("multiplayereverything/flash-games").to_string();
     r["repo"] = repo.into();
     r["approved_at"] = "2026-11-04".into();
     r["approved_by"] = "Multiplayer Everything Team".into();
@@ -853,6 +854,49 @@ fn a_team_record_is_the_same_game_as_its_launcher_json_entry() {
     }
 }
 
+/// Our Flash games as team records: the same card, the same buttons with the same arguments, the same host options.
+#[test]
+fn a_flash_team_record_is_the_same_game_as_its_launcher_json_entry() {
+    for id in ["gunmayhem2", "zombotron", "fireboywatergirlforesttemple"] {
+        let (r, cfg) = team_record(id);
+        let from_record = read_team(&r, &cfg).unwrap_or_else(|e| panic!("{id}: {e}"));
+        let shipped = shipped_config();
+        let from_json = shipped.games.iter().find(|g| g.id == id).unwrap();
+        assert!(!from_json.actions.is_empty() && from_json.mod_spec.is_none());
+        assert_eq!(format!("{from_record:?}"), format!("{from_json:?}"), "{id}");
+    }
+}
+
+/// A Flash record's buttons only ever start one of launcher.json's players with a game file: no program, page, server
+/// or link of their own, and no files outside the games folder (or a copy Flashpoint or the Desktop has).
+#[test]
+fn a_flash_team_record_only_starts_our_player_with_a_game_file() {
+    let (base, cfg) = team_record("zombotron");
+    let mut cases: Vec<(serde_json::Value, &str)> = Vec::new();
+    let mut add = |f: &dyn Fn(&mut serde_json::Value), want: &'static str| {
+        let mut r = base.clone();
+        f(&mut r);
+        cases.push((r, want));
+    };
+    add(&|r| r["actions"][0]["exe"] = serde_json::json!(["cmd.exe"]), "actions[0].exe: not allowed");
+    add(&|r| r["actions"][0]["server"] = serde_json::json!({ "exe": ["x.exe"] }), "actions[0].server: not allowed");
+    add(&|r| r["actions"][0]["url"] = "https://example.com".into(), "actions[0].url: not allowed");
+    add(&|r| r["actions"][0]["link"] = "https://example.com".into(), "actions[0].link: not allowed");
+    add(&|r| r["actions"][0]["cwd"] = "C:\\".into(), "actions[0].cwd: not allowed");
+    add(&|r| { r["actions"][0].as_object_mut().unwrap().remove("swf"); }, "actions[0].swf: game files");
+    add(&|r| r["actions"][0]["swf"] = "C:\\Windows\\x.swf".into(), "actions[0].swf: game files");
+    add(&|r| r["actions"][0]["swf"] = "${GAMES_DIR}\\..\\..\\x.swf".into(), "actions[0].swf: game files");
+    add(&|r| r["actions"][0]["swf"] = "${GAMES_DIR}\\${env:TEMP}\\x.swf".into(), "actions[0].swf: game files");
+    add(&|r| r["actions"][0]["players"] = serde_json::json!(["ghost"]), "players");
+    add(&|r| r["actions"] = serde_json::json!([]), "actions: one to twenty");
+    add(&|r| r["mod"] = serde_json::json!({ "id": "zombotron" }), "not both");
+    add(&|r| { r.as_object_mut().unwrap().remove("actions"); }, "no \"mod\" object or Flash \"actions\"");
+    for (r, want) in cases {
+        let e = read_team(&r, &cfg).map(|g| g.id).unwrap_err();
+        assert!(e.contains(want), "wanted {want:?}, got {e:?}");
+    }
+}
+
 #[test]
 fn a_team_record_comes_only_from_the_teams_repositories() {
     let (base, cfg) = team_record("spooky-together");
@@ -868,7 +912,7 @@ fn a_team_record_comes_only_from_the_teams_repositories() {
     add(&|r| r["mod"]["package"]["url"] = "https://evil.example/x.zip".into(), "mod.package.url must be a release file");
     add(&|r| r["mod"]["package"]["url"] = "https://github.com/multiplayereverything/other/releases/download/v1/x.zip".into(), "mod.package.url must be a release file");
     add(&|r| r["categories"] = serde_json::json!(["community"]), "\"community\" is for developers' records");
-    add(&|r| r["actions"] = serde_json::json!([]), "team record.actions: not allowed");
+    add(&|r| r["actions"] = serde_json::json!([]), "not both");
     add(&|r| r["kind"] = "link".into(), "team record.kind: not allowed");
     add(&|r| r["mod"]["id"] = "other".into(), "mod.id must be the record's id");
     add(&|r| r["mod"] = serde_json::Value::Null, "no \"mod\" object");

@@ -154,7 +154,19 @@ export function makeSandbox(work, fakePlayer) {
     { tag_name: 'v2.0.0', draft: false, prerelease: false, assets: [asset(teamZip, 'LabTeam-2.0.0.zip')] },
     { tag_name: 'bepinex-5', draft: false, prerelease: false, assets: [asset(loaderZip, 'BepInEx_lab.zip')] },
   ]))
-  write(join(work, 'www', 'team', 'index.json'), JSON.stringify({ mods: ['lab-team', 'lab-next'] }))
+  write(join(work, 'www', 'team', 'index.json'), JSON.stringify({ mods: ['lab-team', 'lab-next', 'lab-flash', 'lab-badflash'] }))
+  // One of our Flash games as a team record: buttons that start launcher.json's player with a game file.
+  write(join(work, 'games', 'flashteam.swf'), 'not a real swf')
+  write(join(work, 'www', 'team', 'lab-flash.json'), JSON.stringify({
+    id: 'lab-flash', repo: 'multiplayereverything/flash-games', minLauncher: '1.0.42', approved_at: '2026-11-04', approved_by: 'lab',
+    name: 'Flash Team', players: '1-2 players', maxPlayers: 2, categories: ['flash'], description: 'One of our Flash games, from mods-info.',
+    actions: [{ id: 'play', label: 'Play', swf: ['${GAMES_DIR}\\flashteam.swf'], args: ['--from-record'] }],
+  }))
+  // And one whose button would run a program of its own: refused whole, so it never shows.
+  write(join(work, 'www', 'team', 'lab-badflash.json'), JSON.stringify({
+    id: 'lab-badflash', repo: 'multiplayereverything/flash-games', name: 'Bad Flash', categories: ['flash'],
+    actions: [{ id: 'play', label: 'Play', swf: ['${GAMES_DIR}\\flashteam.swf'], exe: ['cmd.exe'] }],
+  }))
   write(join(work, 'www', 'team', 'lab-team.json'), JSON.stringify({
     id: 'lab-team', repo: 'multiplayereverything/lab-team', minLauncher: '1.0.42', approved_at: '2026-11-04', approved_by: 'lab',
     name: 'Lab Team', players: '2-4 players (co-op)', maxPlayers: 4, categories: ['pc', 'coop'], color: '#D6264F', colorEnd: '#2A0A16',

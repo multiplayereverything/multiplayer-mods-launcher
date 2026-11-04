@@ -1775,6 +1775,41 @@ namespace {
 constexpr const wchar_t* kTeamOwner = L"multiplayereverything";
 
 bool teamRepo(const std::wstring& repo) { return repoName(repo) && iequals(repo.substr(0, repo.find(L'/')), kTeamOwner); }
+
+// Where a Flash game's file may be looked for: the games folder (the catalog's downloads), or a copy Flashpoint or the
+// Desktop already has. It is read, never written.
+bool flashFile(const std::wstring& p) {
+    bool root = startsWithI(p, L"${GAMES_DIR}\\") || startsWithI(p, L"${FLASHPOINT}\\") || startsWithI(p, L"${folder:Desktop}\\");
+    return root && p.find(L"..") == std::wstring::npos && p.find_first_of(L"$:", p.find(L'}') + 1) == std::wstring::npos;
+}
+
+// A Flash game's buttons: the game file, the player's arguments and its texts. No program, page, server, working
+// folder or link of their own: a team record's button only ever starts one of launcher.json's players.
+bool checkFlashActions(const Value& actions, std::wstring& error) {
+    if (!actions.isArray() || actions.size() == 0 || actions.size() > 20) return refuse(error, L"actions: one to twenty buttons");
+    for (size_t i = 0; i < actions.size(); ++i) {
+        const Value& a = actions.at(i);
+        std::wstring where = L"actions[" + std::to_wstring(i) + L"]";
+        if (!a.isObject()) return refuse(error, where + L": must be an object");
+        if (!onlyKeys(a, {"id", "label", "icon", "description", "hint", "swf", "args", "joinArgs", "more", "offline", "edition", "flashvars", "players"},
+                      L"team record." + where, error))
+            return false;
+        std::vector<const Value*> files;
+        if (const Value* s = a.find("swf")) {
+            if (s->isArray())
+                for (size_t k = 0; k < s->size(); ++k) files.push_back(&s->at(k));
+            else files.push_back(s);
+        }
+        bool ok = !files.empty();
+        for (const Value* f : files) ok = ok && f->isString() && flashFile(widen(f->str()));
+        if (!ok) return refuse(error, where + L".swf: game files in ${GAMES_DIR}, ${FLASHPOINT} or ${folder:Desktop}");
+    }
+    return true;
+}
+}  // namespace
+
+namespace {
+bool checkTeamPackage(const Value& mv, const std::wstring& id, const std::wstring& repo, bool localRelease, std::wstring& error);
 }  // namespace
 
 bool readTeamMod(std::string_view text, const Config& cfg, bool localRelease, GameSpec& out, std::wstring& error) {
@@ -1789,7 +1824,7 @@ bool readTeamMod(std::string_view text, const Config& cfg, bool localRelease, Ga
     if (tooNew(r, error)) return false;
     // The record's own keys; the rest is a launcher.json games[] entry: the card and the mod, no buttons of its own.
     if (!onlyKeys(r, {"id", "repo", "minLauncher", "approved_at", "approved_by", "name", "description", "players", "maxPlayers", "color",
-                      "colorEnd", "guide", "categories", "site", "online", "image", "imageFocus", "mod"},
+                      "colorEnd", "guide", "categories", "site", "online", "image", "imageFocus", "mod", "actions", "settings"},
                   L"team record", error))
         return false;
     std::string sid = narrow(id);
@@ -1799,10 +1834,34 @@ bool readTeamMod(std::string_view text, const Config& cfg, bool localRelease, Ga
         for (size_t i = 0; i < cats->size(); ++i)
             if (cats->at(i).isString() && cats->at(i).str() == "community")
                 return refuse(error, L"categories: \"community\" is for developers' records");
+    // A Flash game: buttons, and nothing to install. Its record is read as the games[] entry it is, below.
     const Value* m = r.find("mod");
-    if (!m || !m->isObject()) return refuse(error, L"no \"mod\" object");
+    if (!m) {
+        const Value* actions = r.find("actions");
+        if (!actions) return refuse(error, L"no \"mod\" object or Flash \"actions\"");
+        if (!checkFlashActions(*actions, error)) return false;
+    } else if (r.find("actions")) {
+        return refuse(error, L"a team record is a PC mod (\"mod\") or a Flash game (\"actions\"), not both");
+    }
+    if (m && !m->isObject()) return refuse(error, L"no \"mod\" object");
+    if (m && !checkTeamPackage(*m, id, repo, localRelease, error)) return false;
+    Value entry = Value::object();
+    for (size_t i = 0; i < r.size(); ++i) {
+        const std::string& k = r.keyAt(i);
+        if (k == "id" || (k != "repo" && k != "minLauncher" && k != "approved_at" && k != "approved_by")) entry.set(k, r.at(i));
+    }
+    std::vector<ConfigIssue> issues;
+    GameSpec g = readGame(entry, L"team." + id, issues);  // exactly what launcher.json makes of it
+    if (!checkedLikeLauncherJson(g, cfg, issues, localRelease, error)) return false;
+    out = std::move(g);
+    return true;
+}
+
+namespace {
+// A team PC mod downloads only from the team's own repositories: the record's for the mod, the team's for a loader.
+bool checkTeamPackage(const Value& mv, const std::wstring& id, const std::wstring& repo, bool localRelease, std::wstring& error) {
+    const Value* m = &mv;
     if (m->find("id") && strOf(*m, "id") != id) return refuse(error, L"mod.id must be the record's id");
-    // Downloads only from the team's own repositories: the record's for the mod, the team's for a loader.
     const Value* p = m->find("package");
     if (!p || !p->isObject()) return refuse(error, L"mod.package is missing");
     std::wstring gh = strOf(*p, "github");
@@ -1818,17 +1877,8 @@ bool readTeamMod(std::string_view text, const Config& cfg, bool localRelease, Ga
             if (ex->at(i).find("url") && !releaseUrlOf(strOf(ex->at(i), "url"), from, localRelease))
                 return refuse(error, where + L".url must be a release file of " + from);
         }
-    Value entry = Value::object();
-    for (size_t i = 0; i < r.size(); ++i) {
-        const std::string& k = r.keyAt(i);
-        if (k == "id" || (k != "repo" && k != "minLauncher" && k != "approved_at" && k != "approved_by")) entry.set(k, r.at(i));
-    }
-    std::vector<ConfigIssue> issues;
-    GameSpec g = readGame(entry, L"team." + id, issues);
-    if (g.siteId.empty()) g.siteId = sid;
-    if (!checkedLikeLauncherJson(g, cfg, issues, localRelease, error)) return false;
-    out = std::move(g);
     return true;
 }
+}  // namespace
 
 }  // namespace fl

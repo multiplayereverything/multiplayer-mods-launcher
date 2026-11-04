@@ -4,7 +4,8 @@
 //!   GitHub release; at approval the website pins the release and writes the record. Strict: the keys below only.
 //! - team/: Multiplayer Everything's own mods, written by the website's team-only path, from repositories owned by
 //!   multiplayereverything only. A team record is a launcher.json games[] entry with the record's keys added, so it may
-//!   use every building block launcher.json has, and it follows its repository's newest release.
+//!   use every building block launcher.json has, and it follows its repository's newest release. It is a PC mod (a
+//!   "mod") or a Flash game (its "actions": buttons that start the launcher's own player with a game file).
 //!
 //! Either may say "minLauncher": an older launcher shows the game as needing an update instead of reading the rest.
 //!
@@ -527,8 +528,43 @@ fn update_card(r: &Value, cfg: &Config, id: &str, min: &str, categories: Vec<Str
 const TEAM_OWNER: &str = "multiplayereverything";
 /// The record's own keys; the rest is a launcher.json games[] entry: the card and the mod, no buttons of its own.
 const TEAM_RECORD_KEYS: &[&str] = &["id", "repo", "minLauncher", "approved_at", "approved_by"];
-const TEAM_GAME_KEYS: &[&str] =
-    &["name", "description", "players", "maxPlayers", "color", "colorEnd", "guide", "categories", "site", "online", "image", "imageFocus", "mod"];
+const TEAM_GAME_KEYS: &[&str] = &[
+    "name", "description", "players", "maxPlayers", "color", "colorEnd", "guide", "categories", "site", "online", "image", "imageFocus",
+    "mod", "actions", "settings",
+];
+/// What a Flash game's button may say: the game file, the player's arguments and its texts. No program, page, server,
+/// working folder or link of its own: a team record's button only ever starts one of launcher.json's players.
+const FLASH_ACTION_KEYS: &[&str] = &["id", "label", "icon", "description", "hint", "swf", "args", "joinArgs", "more", "offline", "edition", "flashvars", "players"];
+
+/// Where a Flash game's file may be looked for: the games folder (the catalog's downloads), or a copy Flashpoint or the
+/// Desktop already has. It is read, never written.
+fn flash_file(p: &str) -> bool {
+    ["${GAMES_DIR}\\", "${FLASHPOINT}\\", "${folder:Desktop}\\"].iter().any(|root| starts_with_i(p, root))
+        && !p.contains("..")
+        && !p[p.find('}').unwrap_or(0) + 1..].contains(['$', ':'])
+}
+
+fn check_flash_actions(actions: &Value) -> Result<(), String> {
+    if !actions.is_array() || actions.items().is_empty() || actions.items().len() > 20 {
+        return Err("actions: one to twenty buttons".into());
+    }
+    for (i, a) in actions.items().iter().enumerate() {
+        let place = format!("actions[{i}]");
+        if !a.is_object() {
+            return Err(format!("{place}: must be an object"));
+        }
+        only_keys(a, FLASH_ACTION_KEYS, &format!("team record.{place}"))?;
+        let files: Vec<&Value> = match a.find("swf") {
+            Some(v) if v.is_array() => v.items().iter().collect(),
+            Some(v) => vec![v],
+            None => Vec::new(),
+        };
+        if files.is_empty() || files.iter().any(|f| f.as_str().is_none_or(|f| !flash_file(f))) {
+            return Err(format!("{place}.swf: game files in ${{GAMES_DIR}}, ${{FLASHPOINT}} or ${{folder:Desktop}}"));
+        }
+    }
+    Ok(())
+}
 
 fn team_repo(repo: &str) -> bool {
     repo_name(repo) && repo.split('/').next().is_some_and(|o| o.eq_ignore_ascii_case(TEAM_OWNER))
@@ -559,6 +595,15 @@ pub fn read_team_record(text_: &str, cfg: &Config, local_release: bool) -> Resul
     if categories.iter().any(|c| c == "community") {
         return Err("categories: \"community\" is for developers' records".into());
     }
+    // A Flash game: buttons, and nothing to install.
+    if r.find("mod").is_none() {
+        let actions = r.find("actions").ok_or("no \"mod\" object or Flash \"actions\"")?;
+        check_flash_actions(actions)?;
+        return team_game(&r, id, cfg, local_release);
+    }
+    if r.find("actions").is_some() {
+        return Err("a team record is a PC mod (\"mod\") or a Flash game (\"actions\"), not both".into());
+    }
     let m = r.find("mod").filter(|m| m.is_object()).ok_or("no \"mod\" object")?;
     if m.find("id").is_some_and(|v| v.as_str() != Some(id)) {
         return Err("mod.id must be the record's id".into());
@@ -586,6 +631,11 @@ pub fn read_team_record(text_: &str, cfg: &Config, local_release: bool) -> Resul
             }
         }
     }
+    team_game(&r, id, cfg, local_release)
+}
+
+/// The record without its own keys, read as the launcher.json games[] entry it is, then checked like one.
+fn team_game(r: &Value, id: &str, cfg: &Config, local_release: bool) -> Result<GameSpec, String> {
     let mut entry = Value::object();
     for (k, v) in r.entries() {
         if k == "id" || !TEAM_RECORD_KEYS.contains(&k.as_str()) {
@@ -593,10 +643,8 @@ pub fn read_team_record(text_: &str, cfg: &Config, local_release: bool) -> Resul
         }
     }
     let issues: Issues = Default::default();
-    let mut g = read_game(&entry, &format!("team.{id}"), &issues);
-    if g.site_id.is_empty() {
-        g.site_id = id.to_string();
-    }
+    // Exactly what launcher.json makes of it: no website id it doesn't give.
+    let g = read_game(&entry, &format!("team.{id}"), &issues);
     checked(g, cfg, issues, local_release)
 }
 

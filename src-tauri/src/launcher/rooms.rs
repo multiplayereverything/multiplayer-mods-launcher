@@ -16,7 +16,7 @@ use serde_json::{Map, Value, json};
 use super::config::Config;
 use super::http;
 use super::json;
-use super::library_json::{load_launcher_config, open_library};
+use super::library_json::{load_with_community, open_library};
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct RoomInfo {
@@ -297,13 +297,14 @@ pub fn all_rooms_from(cfg: &Config) -> Value {
 
 /// The C++ launcher's set-up before `--rooms` (launcher.json, the data, games and players folders), then one game.
 pub fn game_rooms(game: &str) -> Result<(Value, bool), String> {
-    let cfg = load_launcher_config()?;
+    // With mods-info's records, so a Flash game from team/ lists its rooms too.
+    let cfg = load_with_community()?;
     open_library(&cfg);
     game_rooms_from(&cfg, game)
 }
 
 pub fn all_rooms() -> Result<Value, String> {
-    let cfg = load_launcher_config()?;
+    let cfg = load_with_community()?;
     open_library(&cfg);
     Ok(all_rooms_from(&cfg))
 }
