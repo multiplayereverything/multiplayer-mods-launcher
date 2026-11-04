@@ -859,7 +859,8 @@ fn a_flash_team_record_is_the_same_game_as_its_launcher_json_entry() {
 /// or link of their own, and no files outside the games folder (or a copy Flashpoint or the Desktop has).
 #[test]
 fn a_flash_team_record_only_starts_our_player_with_a_game_file() {
-    let (base, cfg) = team_record("zombotron");
+    // Bad Ice-Cream is the one published Flash record that still writes its buttons out.
+    let (base, cfg) = team_record("badicecream");
     let mut cases: Vec<(serde_json::Value, &str)> = Vec::new();
     let mut add = |f: &dyn Fn(&mut serde_json::Value), want: &'static str| {
         let mut r = base.clone();
@@ -958,8 +959,9 @@ fn command_of(a: &super::config::ActionSpec) -> String {
 }
 
 /// Our Flash games in the short form (tests/fixtures/team-short, made by scripts/flash-records-short.py from the
-/// published records) make the same buttons with the same command lines, the same card and the same host options as
-/// the hand-written records. Only a few button texts may read differently, as launcher.json words them now.
+/// hand-written records 1.0.42 read, kept in tests/fixtures/team-long; mods-info has the short form since 1.0.43)
+/// make the same buttons with the same command lines, the same card and the same host options as the hand-written
+/// records. Only a few button texts may read differently, as launcher.json words them now.
 #[test]
 fn flash_team_records_in_the_short_form_make_the_same_buttons() {
     let dir = format!("{}\\..\\tests\\fixtures\\team-short", env!("CARGO_MANIFEST_DIR"));
@@ -972,10 +974,13 @@ fn flash_team_records_in_the_short_form_make_the_same_buttons() {
         }
         let short = short_team_record(id);
         let (published, cfg) = team_record(id);
+        assert_eq!(short, published, "{id}: tests/fixtures/team is the published copy, and mods-info has the short form");
         if short.get("flash").is_none() {
-            assert_eq!(short, published, "{id}: only Flash records change");
             continue;
         }
+        // What the record said before, its buttons written out by hand.
+        let long = format!("{}\\..\\tests\\fixtures\\team-long\\{id}.json", env!("CARGO_MANIFEST_DIR"));
+        let published: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(long).unwrap()).unwrap();
         assert!(published.get("actions").is_some() && short.get("actions").is_none(), "{id}");
         let a = read_team(&short, &cfg).unwrap_or_else(|e| panic!("{id}: {e}"));
         let b = read_team(&published, &cfg).unwrap_or_else(|e| panic!("{id}: {e}"));

@@ -237,6 +237,7 @@ launcher this way). `MultiplayerEverythingLauncher.exe --help` lists everything.
 The launcher is one Tauri app: the window in `src/`, its Rust side in `src-tauri/`, how to build and test it in
 [DEVELOPING.md](DEVELOPING.md). Until the Rust side takes over every job, the window still runs on the C++
 launcher, which now lives in `old/`. The plan and what's done so far are in [PORTING.md](PORTING.md).
+Every update ships for both Windows and Linux: see [PLATFORMS.md](PLATFORMS.md).
 
 The C++ launcher requires Visual Studio 2022 (or Build Tools) with the C++ workload.
 

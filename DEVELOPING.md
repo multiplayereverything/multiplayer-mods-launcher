@@ -81,6 +81,9 @@ sandbox, and it works the same for clicking through one by hand.
 
 ## Release build
 
+Every update is released for Windows and Linux together; the steps and the log of what each platform has are
+in [PLATFORMS.md](PLATFORMS.md).
+
 ```powershell
 .\scripts\release.ps1 -Notes 'What changed, for players'
 ```
