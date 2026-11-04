@@ -205,12 +205,12 @@ A team record may give `flash` instead of `actions`. Its `file` is a path, as `s
 `{ "files": [one to eight paths], "description": "..." }` ("Play the original"). The other keys are a team record's
 (`settings`, `online`, `image` and the rest stay as they are).
 
-`scripts/flash-records-short.py <team folder> <out folder>` rewrites the published records this way, and
-`tests/fixtures/team-short` is its output for our 17 games. The test
-`flash_team_records_in_the_short_form_make_the_same_buttons` proves each makes the same buttons with the same command
-lines, card and host options as its published record. Bad Ice-Cream keeps its own buttons (its online ones pass no key
-map). Publish them only once most players have 1.0.43: a record with `"minLauncher": "1.0.43"` is an update card in
-1.0.42.
+`scripts/flash-records-short.py <team folder> <out folder>` rewrites records this way. 16 of our 17 Flash games are
+published in this form since 1.0.43 (2026-11-04); Bad Ice-Cream keeps its own buttons (its online ones pass no key
+map). `tests/fixtures/team-short` is the script's output and `tests/fixtures/team-long` the hand-written records
+1.0.42 read. The test `flash_team_records_in_the_short_form_make_the_same_buttons` proves each short record makes the
+same buttons with the same command lines, card and host options as its long one. 1.0.42 shows these games as update
+cards (`"minLauncher": "1.0.43"`). The C++ engine leaves them out, so its own Flash tests read `team-long`.
 
 ## In the launcher
 

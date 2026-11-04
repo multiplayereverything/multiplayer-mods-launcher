@@ -25,12 +25,18 @@ inline std::string readText(const std::wstring& path) {
     return std::string(b.begin(), b.end());
 }
 
+// Since 1.0.43 our Flash games are published in the short "flash" form, which only the app reads; this engine leaves
+// them out. Its own Flash code is still tested on the hand-written records they were (tests/fixtures/team-long).
+inline std::wstring teamFixture(const std::wstring& id) {
+    std::wstring long_ = repoPath(L"tests\\fixtures\\team-long\\" + id + L".json");
+    return fs::isFile(long_) ? long_ : repoPath(L"tests\\fixtures\\team\\" + id + L".json");
+}
+
 inline void addTeamFixtures(Config& c) {
-    std::wstring dir = repoPath(L"tests\\fixtures\\team");
-    json::Value index = json::parse(readText(fs::join(dir, L"index.json")), nullptr);
+    json::Value index = json::parse(readText(repoPath(L"tests\\fixtures\\team\\index.json")), nullptr);
     CommunityCache cache;
     if (const json::Value* ids = index.find("mods"))
-        for (size_t i = 0; i < ids->size(); ++i) cache.raw.push_back(readText(fs::join(dir, widen(ids->at(i).str()) + L".json")));
+        for (size_t i = 0; i < ids->size(); ++i) cache.raw.push_back(readText(teamFixture(widen(ids->at(i).str()))));
     mergeTeam(c, cache);
 }
 

@@ -865,11 +865,10 @@ TEST(community_record_for_a_newer_launcher_is_left_out) {
 }
 
 namespace {
-// The published team record `id` (tests/fixtures/team), compact as the site writes it, and the shipped config without
-// that game: where reading the record must make the game again.
+// The team record `id` as this engine reads it (fl::test::teamFixture: a Flash game's hand-written form), compact as
+// the site writes it, and the shipped config without that game: where reading the record must make the game again.
 std::string teamRecord(const std::string& id, Config& without) {
-    std::wstring path = fs::join(fs::parent(fs::parent(fs::parent(fs::parent(fs::selfExePath())))), L"tests\\fixtures\\team\\" + widen(id) + L".json");
-    if (!fs::isFile(path)) path = L"tests\\fixtures\\team\\" + widen(id) + L".json";
+    std::wstring path = fl::test::teamFixture(widen(id));
     std::vector<uint8_t> bytes;
     fs::readFile(path, bytes);
     json::Value rec = json::parse(std::string(bytes.begin(), bytes.end()), nullptr);
