@@ -134,6 +134,24 @@ pub fn fill_placeholders(args: &mut [String], name: &str, code: &str, server: &s
     None
 }
 
+/// A friend's address typed without a port gets the one the game's direct hosts listen on, since most people copy only
+/// the IP. A bare IPv6 address is left alone: its colons can't be told from a port.
+pub fn with_default_port(address: &str, port: i32) -> String {
+    let a = address.trim();
+    if a.is_empty() {
+        return String::new();
+    }
+    if let Some(host) = a.strip_suffix(':') {
+        if !host.contains(':') || host.ends_with(']') {
+            return format!("{host}:{port}");
+        }
+    }
+    if a.ends_with(']') || !a.contains(':') {
+        return format!("{a}:{port}");
+    }
+    a.to_string()
+}
+
 pub fn state_reason(cfg: &Config, a: &ActionSpec, state: ActionState) -> String {
     match state {
         ActionState::NoRuntime => cfg.t("status.noRuntime", &[("RUNTIME", &a.server.name)]),
@@ -230,7 +248,7 @@ pub fn run(req: &Request, report: &mut dyn FnMut(&str), stop: &Stop) -> (i32, St
         return fail(3, format!("\"{}\" has no action \"{}\"", game.name, req.action));
     };
     let join_code = normalize_code(&req.join);
-    let address = req.address.as_str();
+    let address = with_default_port(&req.address, game.lobby.port);
     let save_choice = match req.coop_save.as_str() {
         "" | "continue" => 0,
         "solo" => 1,
@@ -293,7 +311,7 @@ pub fn run(req: &Request, report: &mut dyn FnMut(&str), stop: &Stop) -> (i32, St
         if room_server.is_empty() {
             room_server = cfg.rooms.server.clone();
         }
-        if let Some(missing) = fill_placeholders(&mut r.args, &user.player_name, &join_code, &room_server, address) {
+        if let Some(missing) = fill_placeholders(&mut r.args, &user.player_name, &join_code, &room_server, &address) {
             let what = if missing == "CODE" { "room code".to_string() } else { format!("value for ${{{missing}}}") };
             return fail(3, format!("\"{}\" needs a {what} and needs the launcher window.", action.label));
         }

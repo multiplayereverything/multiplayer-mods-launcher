@@ -167,7 +167,7 @@ doesn't match.
 | `description` | Second line on the button |
 | `hint` | Shown in the status bar after starting (e.g. "press F9, click HOST") |
 | `swf` | Candidate files (string or list); `http(s)://` URLs are passed through as-is |
-| `args` | Extra player arguments for this action. `${PLAYER_NAME}`, `${SERVER}` (the central server), `${CODE}` (a room code) and `${ADDRESS}` (a `host:port` copied to the clipboard) are filled in when the game starts |
+| `args` | Extra player arguments for this action. `${PLAYER_NAME}`, `${SERVER}` (the central server), `${CODE}` (a room code) and `${ADDRESS}` (a `host:port` copied to the clipboard; typed without a port, it gets the game's `online.lobby.port`, 7790 by default) are filled in when the game starts |
 | `joinArgs` | Used instead of `args` when a room code comes with the launch (the Rooms list, Join by code) |
 | `link` | An `https://` address the button opens in the browser; no player or file is needed. For a mod made by someone else that has its own setup (put the game in the `community` category) |
 | `players` | Allowed player ids, in order; default all. `["ruffle"]` keeps a game on Ruffle. |
