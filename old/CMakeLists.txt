@@ -1,9 +1,9 @@
 cmake_minimum_required(VERSION 3.20)
 if(WIN32)
-  project(MultiplayerEverythingLauncher VERSION 1.0.43 LANGUAGES CXX RC)
+  project(MultiplayerEverythingLauncher VERSION 1.0.44 LANGUAGES CXX RC)
 else()
   # Linux: the engine alone (no window), for the app's mod commands and lobby; docs/LINUX.md.
-  project(MultiplayerEverythingLauncher VERSION 1.0.43 LANGUAGES CXX ASM)
+  project(MultiplayerEverythingLauncher VERSION 1.0.44 LANGUAGES CXX ASM)
 endif()
 
 set(CMAKE_CXX_STANDARD 20)

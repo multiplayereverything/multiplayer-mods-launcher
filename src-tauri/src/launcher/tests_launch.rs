@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use super::config::{ActionSpec, PlayerSpec};
 use super::discord::{DiscordPresence, Presence, activity, frame, handshake};
-use super::launch::{add_flash_vars, fill_placeholders, game_values, normalize_code, stable_port};
+use super::launch::{add_flash_vars, fill_placeholders, game_values, normalize_code, stable_port, with_default_port};
 use super::library::ResolvedAction;
 use super::process::{build_command_line, quote_arg};
 #[cfg(windows)]
@@ -413,6 +413,21 @@ fn placeholders_are_filled_or_named() {
     assert_eq!(fill_placeholders(&mut need, "n", "c", "s", ""), Some("ADDRESS"));
     let mut code = vec!["${CODE}".to_string()];
     assert_eq!(fill_placeholders(&mut code, "n", "", "s", "a"), Some("CODE"));
+}
+
+#[test]
+fn an_address_without_a_port_gets_the_games_port() {
+    assert_eq!(with_default_port("26.1.2.3", 7790), "26.1.2.3:7790");
+    assert_eq!(with_default_port(" 26.1.2.3 ", 7800), "26.1.2.3:7800");
+    assert_eq!(with_default_port("26.1.2.3:", 7790), "26.1.2.3:7790");
+    assert_eq!(with_default_port("host.example.com", 7790), "host.example.com:7790");
+    assert_eq!(with_default_port("[fe80::1]", 7790), "[fe80::1]:7790");
+    assert_eq!(with_default_port("[fe80::1]:", 7790), "[fe80::1]:7790");
+    // What the person typed wins, and no address stays no address so the launch still reports it missing.
+    assert_eq!(with_default_port("26.1.2.3:9000", 7790), "26.1.2.3:9000");
+    assert_eq!(with_default_port("[fe80::1]:9000", 7790), "[fe80::1]:9000");
+    assert_eq!(with_default_port("fe80::1", 7790), "fe80::1");
+    assert_eq!(with_default_port("  ", 7790), "");
 }
 
 #[test]

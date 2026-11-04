@@ -84,7 +84,7 @@ function JoinDialog({ game, onJoin, onClose }: { game: Game; onJoin: (a: Action,
     <Dialog title={`Join ${game.name}`} onClose={onClose}>
       <label className="opt-h" htmlFor="join-code">{byAddress ? 'Room code or the host\'s address' : 'Room code'}</label>
       <input id="join-code" className="field code" value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), go())} placeholder="ABCDE" spellCheck={false} />
-      <p className="dialog-note">{address ? (byAddress ? 'Connects straight to the host.' : 'This game joins with a room code.') : 'The five letters the host sees.'}</p>
+      <p className="dialog-note">{address ? (byAddress ? 'Connects straight to the host. No port? The usual one is added.' : 'This game joins with a room code.') : 'The five letters the host sees.'}</p>
       <div className="dialog-row">
         <button className="btn" onClick={onClose}>Cancel</button>
         <button className="btn main" disabled={!ok} onClick={go}>Join</button>
