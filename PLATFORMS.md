@@ -32,8 +32,9 @@ Newest first. One line per update: version, what changed, and whether each platf
 
 | Date | Version | Change | Windows | Linux |
 |---|---|---|---|---|
+| 2026-11-04 | 1.0.44 | First Linux release: unsigned AppImage and source tar.gz, added to the Windows release. Real Proton, Ruffle through Wine and Windows-Linux cross-play are still to be checked by hand | yes | yes |
 | 2026-11-04 | 1.0.44 | Join by IP adds the game's port to an address typed without one | yes | yes, on `linux-port` |
 | 2026-11-04 | 1.0.43 | Lab: `communitymods` waits for the previous game to close and for the zip's subfolders (`ec1f773`) | yes | yes, on `linux-port` |
 | 2026-11-04 | 1.0.43 | Developers' Flash games come from mods-info, and the launcher makes their buttons | yes | yes, on `linux-port` |
 | 2026-11-04 | 1.0.42 | The app updates itself from a signed `latest.json` | yes | yes, on `linux-port`; needs a signed AppImage to take effect |
-| 2026-11-04 | — | Linux port started on `linux-port` (AppImage and source tar.gz, Steam with Proton or native builds) | — | in progress |
+| 2026-11-04 | — | Linux port started on `linux-port` (AppImage and source tar.gz, Steam with Proton or native builds) | — | released in 1.0.44 |
