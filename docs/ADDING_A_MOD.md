@@ -48,7 +48,13 @@ Mods we make ourselves skip steps 1 and 3 (and can use "newest release", step 5)
 - [ ] BepInEx 6 builds from `builds.bepinex.dev` have no published checksum. Mirror the build somewhere we control
       (a release of our own) so the launcher can check it, or leave the mod out until it can be installed with a checksum.
 
-## 5. The entry in `launcher.json`
+## 5. The entry
+
+Since 1.0.42 our own mods are team records in mods-info (`team/<id>.json`, docs/COMMUNITY_MODS.md), not
+launcher.json entries: the record is the same games[] entry with `id`, `repo` and the approval added. Write the entry
+below, check and publish it on the website's dashboard (Team mods), then copy mods-info's `team/` into
+`tests/fixtures/team` so the tests know it. A mod made by someone else goes through the developer SDK instead
+(community records, below).
 
 - [ ] Copy the closest existing mod (`spooky-together`, `baldi-together`, `miside-together`) and change the
       id, name, game folder detection (Steam app id, install folder name, game exe, validation files),
@@ -86,7 +92,8 @@ Mods we make ourselves skip steps 1 and 3 (and can use "newest release", step 5)
 ## 8. Later
 
 - [ ] When the author publishes a new version of an outside mod, repeat steps 3 and 6 for it, then move the pin.
-- [ ] If the mod needs a different loader build, that is a new loader release (new tag) and a `launcher.json` change.
+- [ ] If the mod needs a different loader build, that is a new loader release (new tag) and a change to its record
+      (republish it on the dashboard; no launcher release needed).
 - [ ] If the author stops answering or the mod breaks the game, take the entry out. That also removes its Uninstall button
       for players who already installed it, so say in the release notes how to remove it by hand (delete the mod's folder under
       `BepInEx\plugins`), or keep the entry for one more release with its install disabled.

@@ -454,8 +454,9 @@ fn website_covers_are_pictures_or_nothing() {
 
 fn shipped_config() -> super::config::Config {
     let path = format!("{}\\..\\launcher\\launcher.json", env!("CARGO_MANIFEST_DIR"));
-    let r = load_config_file(&paths::normalize(&path));
+    let mut r = load_config_file(&paths::normalize(&path));
     assert!(r.ok());
+    super::tests::add_team_fixtures(&mut r.config);
     r.config
 }
 
@@ -679,24 +680,21 @@ fn the_records_in_a_mods_info_checkout_pass() {
     assert!(!ids.is_empty());
 }
 
-/// The team records in a mods-info checkout (FL_TEST_COMMUNITY_DIR): each one, read where launcher.json no longer has
-/// its game, is exactly the game launcher.json makes today, so moving our mods to mods-info changes nothing for players.
+/// The team records in a mods-info checkout (FL_TEST_COMMUNITY_DIR) are exactly the published copy the tests use
+/// (tests/fixtures/team), so what the tests prove holds for what players get. After a record changes on mods-info,
+/// copy team/ into tests/fixtures/team.
 #[test]
-fn the_team_records_in_a_mods_info_checkout_are_the_games_launcher_json_has() {
+fn the_team_records_in_a_mods_info_checkout_are_the_published_copy() {
     let Ok(dir) = std::env::var("FL_TEST_COMMUNITY_DIR") else { return };
     let Ok(index) = std::fs::read(format!("{dir}\\team\\index.json")) else { return };
     let ids = super::community::parse_index(&index).unwrap();
-    let shipped = shipped_config();
-    for id in &ids {
-        let text = std::fs::read_to_string(format!("{dir}\\team\\{id}.json")).unwrap();
-        let mut cfg = shipped.clone();
-        let before = cfg.games.iter().position(|g| &g.id == id).map(|i| cfg.games.remove(i));
-        let g = super::community::read_team_record(&text, &cfg, false).unwrap_or_else(|e| panic!("{id}: {e}"));
-        if let Some(b) = before {
-            assert_eq!(format!("{g:?}"), format!("{b:?}"), "{id}");
-        }
+    let copy = super::tests::team_fixtures();
+    assert_eq!(ids.len(), copy.raw.len(), "the number of records");
+    let norm = |t: String| t.replace("\r\n", "\n");
+    for (id, mine) in ids.iter().zip(copy.raw) {
+        let theirs = std::fs::read_to_string(format!("{dir}\\team\\{id}.json")).unwrap();
+        assert_eq!(norm(theirs), norm(mine), "{id}: mods-info and tests/fixtures/team differ");
     }
-    assert!(!ids.is_empty());
 }
 
 #[test]
@@ -816,24 +814,13 @@ fn a_record_for_a_newer_launcher_asks_for_an_update() {
 
 // ---- team records (team/<id>.json): our own mods, as launcher.json holds them today ------------------------------
 
-/// launcher.json's games[] entry `id`, as JSON, and the shipped config without that game (where a record of it
-/// would be read once the entry has moved to mods-info).
-fn shipped_entry(id: &str) -> (serde_json::Value, super::config::Config) {
-    let path = format!("{}\\..\\launcher\\launcher.json", env!("CARGO_MANIFEST_DIR"));
-    let root = super::json::parse(&std::fs::read(paths::normalize(&path)).unwrap()).unwrap();
-    let entry = root.find("games").unwrap().items().iter().find(|g| g.text("id") == id).unwrap().clone();
+/// The published team record `id` (tests/fixtures/team), and the shipped config without that game: where reading the
+/// record must make the game again.
+fn team_record(id: &str) -> (serde_json::Value, super::config::Config) {
+    let path = format!("{}\\..\\tests\\fixtures\\team\\{id}.json", env!("CARGO_MANIFEST_DIR"));
+    let r: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
     let mut cfg = shipped_config();
     cfg.games.retain(|g| g.id != id);
-    (serde_json::from_str(&super::json::serialize(&entry, false)).unwrap(), cfg)
-}
-
-fn team_record(id: &str) -> (serde_json::Value, super::config::Config) {
-    let (mut r, cfg) = shipped_entry(id);
-    // A PC mod's repository is its package's; our Flash games' files live in flash-games.
-    let repo = r["mod"]["package"]["github"].as_str().unwrap_or("multiplayereverything/flash-games").to_string();
-    r["repo"] = repo.into();
-    r["approved_at"] = "2026-11-04".into();
-    r["approved_by"] = "Multiplayer Everything Team".into();
     (r, cfg)
 }
 
@@ -841,8 +828,9 @@ fn read_team(r: &serde_json::Value, cfg: &super::config::Config) -> Result<super
     super::community::read_team_record(&r.to_string(), cfg, false)
 }
 
-/// A team record is the launcher.json entry with the record's keys added: it makes the very same game (card, guide,
-/// categories, the online rooms, every building block of the mod), so moving a mod to mods-info changes nothing.
+/// A published team record read on its own makes the very game the shipped config has (card, guide, categories, the
+/// online rooms, every building block of the mod). That these are the games launcher.json had was proved, record by
+/// record, before the entries left it (commits 24f88f4 and 87aa2e7).
 #[test]
 fn a_team_record_is_the_same_game_as_its_launcher_json_entry() {
     for id in ["spooky-together", "gta-coop"] {

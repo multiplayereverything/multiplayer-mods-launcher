@@ -3,6 +3,7 @@
 #include "core/config.h"
 #include "core/guide.h"
 #include "core/site.h"
+#include "shipped.h"
 #include "test.h"
 
 using namespace fl;
@@ -120,7 +121,7 @@ TEST(the_guide_adds_what_the_website_says_and_a_github_link_once) {
 TEST(every_shipped_game_has_a_guide_page_with_steps) {
     std::wstring path = fs::join(fs::parent(fs::parent(fs::parent(fs::parent(fs::selfExePath())))), L"launcher\\launcher.json");
     if (!fs::isFile(path)) path = L"launcher\\launcher.json";
-    LoadResult r = loadConfigFile(path);
+    LoadResult r = test::loadShippedFile(path);
     REQUIRE(r.ok());
     int withOwn = 0;
     for (const auto& g : r.config.games) {

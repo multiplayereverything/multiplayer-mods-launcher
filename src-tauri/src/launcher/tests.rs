@@ -70,9 +70,26 @@ fn base_vars(dir: &TempDir) -> Vars {
 
 fn shipped() -> LoadResult {
     let path = format!("{}\\..\\launcher\\launcher.json", env!("CARGO_MANIFEST_DIR"));
-    let r = load_config_file(&paths::normalize(&path));
+    let mut r = load_config_file(&paths::normalize(&path));
     assert!(r.ok(), "{}", super::config::format_issues(&r.issues));
+    add_team_fixtures(&mut r.config);
     r
+}
+
+/// Our own games left launcher.json for mods-info team/ (1.0.42). tests/fixtures/team is the published copy (the test
+/// the_team_records_in_a_mods_info_checkout_are_the_published_copy keeps it equal), merged in as the app merges
+/// team.json, so "the shipped config" means what players get.
+pub(super) fn team_fixtures() -> super::community::Cache {
+    let dir = format!("{}\\..\\tests\\fixtures\\team", env!("CARGO_MANIFEST_DIR"));
+    let index = std::fs::read(format!("{dir}\\index.json")).unwrap();
+    let ids = super::community::parse_index(&index).unwrap();
+    let raw = ids.iter().map(|id| std::fs::read_to_string(format!("{dir}\\{id}.json")).unwrap()).collect();
+    super::community::Cache { fetched_at: 0, raw }
+}
+
+pub(super) fn add_team_fixtures(cfg: &mut super::config::Config) {
+    let left_out = super::community::merge_team(cfg, &team_fixtures());
+    assert!(left_out.is_empty(), "published team records left out: {left_out:?}");
 }
 
 #[test]

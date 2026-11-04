@@ -15,6 +15,7 @@
 #include "core/rooms.h"
 #include "core/webserver.h"
 #include "core/settings.h"
+#include "shipped.h"
 #include "test.h"
 // win.h first.
 #include <winsock2.h>
@@ -53,7 +54,7 @@ TEST(config_loads_shipped_launcher_json) {
     // The real config must stay valid: it is what users run.
     std::wstring path = fs::join(fs::parent(fs::parent(fs::parent(fs::parent(fs::selfExePath())))), L"launcher\\launcher.json");
     if (!fs::isFile(path)) path = L"launcher\\launcher.json";
-    LoadResult r = loadConfigFile(path);
+    LoadResult r = test::loadShippedFile(path);
     if (!r.ok()) fprintf(stderr, "%ls\n", formatIssues(r.issues).c_str());
     REQUIRE(r.ok());
     CHECK(r.issues.empty());
@@ -107,7 +108,7 @@ TEST(config_updates_hand_over_to_the_app) {
     // And the shipped launcher.json hands over to where the installer puts the app.
     std::wstring path = fs::join(fs::parent(fs::parent(fs::parent(fs::parent(fs::selfExePath())))), L"launcher\\launcher.json");
     if (!fs::isFile(path)) path = L"launcher\\launcher.json";
-    LoadResult shipped = loadConfigFile(path);
+    LoadResult shipped = test::loadShippedFile(path);
     CHECK(shipped.config.updates.handsOver());
     CHECK(shipped.config.updates.appExe.find(L"\\Multiplayer Everything\\MultiplayerEverything.exe") != std::wstring::npos);
 }
@@ -570,7 +571,7 @@ TEST(shipped_config_keeps_stealth_hunter_2_on_ruffle) {
     // Together's own options, which only that player understands.
     std::wstring path = fs::join(fs::parent(fs::parent(fs::parent(fs::parent(fs::selfExePath())))), L"launcher\\launcher.json");
     if (!fs::isFile(path)) path = L"launcher\\launcher.json";
-    LoadResult r = loadConfigFile(path);
+    LoadResult r = test::loadShippedFile(path);
     REQUIRE(r.ok());
     const GameSpec* g = r.config.findGame("stealthhunter2");
     REQUIRE(g != nullptr);
@@ -586,7 +587,7 @@ TEST(shipped_config_keeps_stealth_hunter_2_on_ruffle) {
 TEST(shipped_config_gives_dad_n_me_a_friendly_fire_host_option) {
     std::wstring path = fs::join(fs::parent(fs::parent(fs::parent(fs::parent(fs::selfExePath())))), L"launcher\\launcher.json");
     if (!fs::isFile(path)) path = L"launcher\\launcher.json";
-    LoadResult r = loadConfigFile(path);
+    LoadResult r = test::loadShippedFile(path);
     REQUIRE(r.ok());
     const GameSpec* g = r.config.findGame("dadnme");
     REQUIRE(g != nullptr);
@@ -600,7 +601,7 @@ TEST(shipped_config_gives_dad_n_me_a_friendly_fire_host_option) {
 TEST(shipped_config_gives_zombotron_four_host_options_and_up_to_four_players) {
     std::wstring path = fs::join(fs::parent(fs::parent(fs::parent(fs::parent(fs::selfExePath())))), L"launcher\\launcher.json");
     if (!fs::isFile(path)) path = L"launcher\\launcher.json";
-    LoadResult r = loadConfigFile(path);
+    LoadResult r = test::loadShippedFile(path);
     REQUIRE(r.ok());
     const GameSpec* g = r.config.findGame("zombotron");
     REQUIRE(g != nullptr);
@@ -629,7 +630,7 @@ TEST(catalog_settings_accept_the_live_dad_n_me_camera_choice) {
 TEST(shipped_config_keeps_chaos_faction_2_to_six_players_on_its_key_map) {
     std::wstring path = fs::join(fs::parent(fs::parent(fs::parent(fs::parent(fs::selfExePath())))), L"launcher\\launcher.json");
     if (!fs::isFile(path)) path = L"launcher\\launcher.json";
-    LoadResult r = loadConfigFile(path);
+    LoadResult r = test::loadShippedFile(path);
     REQUIRE(r.ok());
     const GameSpec* g = r.config.findGame("chaosfaction2");
     REQUIRE(g != nullptr);
@@ -729,7 +730,7 @@ std::string communityRecord(const std::string& extraMod = "", const std::string&
 Config shippedConfig() {
     std::wstring path = fs::join(fs::parent(fs::parent(fs::parent(fs::parent(fs::selfExePath())))), L"launcher\\launcher.json");
     if (!fs::isFile(path)) path = L"launcher\\launcher.json";
-    return loadConfigFile(path).config;
+    return test::loadShippedFile(path).config;
 }
 
 }  // namespace
@@ -860,24 +861,14 @@ TEST(community_record_for_a_newer_launcher_is_left_out) {
 }
 
 namespace {
-// launcher.json's games[] entry `id` as a team record (team/<id>.json), and the shipped config without that game.
+// The published team record `id` (tests/fixtures/team), compact as the site writes it, and the shipped config without
+// that game: where reading the record must make the game again.
 std::string teamRecord(const std::string& id, Config& without) {
-    std::wstring path = fs::join(fs::parent(fs::parent(fs::parent(fs::parent(fs::selfExePath())))), L"launcher\\launcher.json");
-    if (!fs::isFile(path)) path = L"launcher\\launcher.json";
+    std::wstring path = fs::join(fs::parent(fs::parent(fs::parent(fs::parent(fs::selfExePath())))), L"tests\\fixtures\\team\\" + widen(id) + L".json");
+    if (!fs::isFile(path)) path = L"tests\\fixtures\\team\\" + widen(id) + L".json";
     std::vector<uint8_t> bytes;
     fs::readFile(path, bytes);
-    json::Value root = json::parse(std::string(bytes.begin(), bytes.end()), nullptr);
-    const json::Value* games = root.find("games");
-    json::Value entry;
-    for (size_t i = 0; i < games->size(); ++i)
-        if (games->at(i).find("id") && games->at(i).find("id")->str() == id) entry = games->at(i);
-    json::Value rec = json::Value::object();
-    rec.set("id", id);
-    // A PC mod's repository is its package's; our Flash games' files live in flash-games.
-    rec.set("repo", entry.find("mod") ? entry.find("mod")->find("package")->find("github")->str() : std::string("multiplayereverything/flash-games"));
-    rec.set("approved_by", std::string("Multiplayer Everything Team"));
-    for (size_t i = 0; i < entry.size(); ++i)
-        if (entry.keyAt(i) != "id") rec.set(entry.keyAt(i), entry.at(i));
+    json::Value rec = json::parse(std::string(bytes.begin(), bytes.end()), nullptr);
     without = shippedConfig();
     std::erase_if(without.games, [&](const GameSpec& g) { return g.id == id; });
     return json::serialize(rec, false);

@@ -94,6 +94,10 @@ may also carry what launcher.json gives a card, and may be a card that only link
   someone else: its pinned SWF and SHA-256, key map, player counts and the Ruffle Together version it needs) never
   shows half a card in an older launcher.
 
+Our own 7 PC mods and 17 Flash games became team records on 2026-11-04 (mods-info 107816f) and left launcher.json in
+1.0.42; `tests/fixtures/team` is the published copy the tests read, kept equal to mods-info by
+`the_team_records_in_a_mods_info_checkout_are_the_published_copy`.
+
 MDK2 HD, The Witness, Little Nightmares and Forager came to mods-info this way (2026-11-04), with the ids and pins
 they had in launcher.json, so installs, favorites and play stats carry over. Spore stays in launcher.json: it
 writes beside its folder (`..\Data`) and keeps the game's own `steam_api.dll` with `sourceGame`.

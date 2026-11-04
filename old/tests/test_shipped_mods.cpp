@@ -6,11 +6,13 @@
 #include <thread>
 
 #include "core/config.h"
+#include "core/community.h"
 #include "core/install.h"
 #include "core/json.h"
 #include "core/mod/manager.h"
 #include "core/mod/package.h"
 #include "core/win.h"
+#include "shipped.h"
 #include "test.h"
 // win.h first (WIN32_LEAN_AND_MEAN keeps the old winsock.h out).
 #include <winsock2.h>
@@ -86,6 +88,7 @@ Config loadShipped() {
     if (!fs::isFile(path)) path = L"launcher\\launcher.json";
     LoadResult r = loadConfigFile(path);
     if (!r.ok()) throw std::runtime_error(narrow(formatIssues(r.issues)));
+    test::addTeamFixtures(r.config);
     return r.config;
 }
 
