@@ -40,6 +40,7 @@ impl RoomInfo {
 
 /// UTF-8 decoded by Windows (MultiByteToWideChar), as the C++ launcher widens what the server sends: a bad byte
 /// becomes U+FFFD exactly where Windows puts one.
+#[cfg(windows)]
 fn widen(bytes: &[u8]) -> String {
     use windows_sys::Win32::Globalization::{CP_UTF8, MultiByteToWideChar};
     if bytes.is_empty() {
@@ -50,6 +51,12 @@ fn widen(bytes: &[u8]) -> String {
     let mut w = vec![0u16; n.max(0) as usize];
     unsafe { MultiByteToWideChar(CP_UTF8, 0, bytes.as_ptr(), len, w.as_mut_ptr(), n) };
     String::from_utf16_lossy(&w)
+}
+
+/// Linux: the C++ launcher's own UTF-8 decoding there; a bad byte becomes U+FFFD.
+#[cfg(unix)]
+fn widen(bytes: &[u8]) -> String {
+    String::from_utf8_lossy(bytes).into_owned()
 }
 
 /// `atoi` on the bytes of a field.
@@ -105,6 +112,7 @@ pub fn parse_room_list(reply: &[u8]) -> Option<Vec<RoomInfo>> {
 
 /// The first IPv4 address `getaddrinfo` gives, as the C++ side asks for it: a port may also be a service name
 /// ("127.0.0.1:http"), which Rust's own lookup refuses. None when nothing is found; Err when Winsock won't start.
+#[cfg(windows)]
 pub(crate) fn resolve_v4(host: &str, port: &str) -> Result<Option<SocketAddr>, ()> {
     use windows_sys::Win32::Networking::WinSock::{ADDRINFOA, AF_INET, SOCK_STREAM, SOCKADDR_IN, WSACleanup, WSADATA, WSAStartup, freeaddrinfo, getaddrinfo};
     // A C string ends at the first NUL, as c_str() did.
@@ -127,6 +135,28 @@ pub(crate) fn resolve_v4(host: &str, port: &str) -> Result<Option<SocketAddr>, (
         unsafe { freeaddrinfo(res) };
     }
     unsafe { WSACleanup() };
+    Ok(found)
+}
+
+/// Linux: the same through libc's getaddrinfo (nothing to start first).
+#[cfg(unix)]
+pub(crate) fn resolve_v4(host: &str, port: &str) -> Result<Option<SocketAddr>, ()> {
+    let c = |s: &str| std::ffi::CString::new(s.split('\0').next().unwrap_or("")).unwrap_or_default();
+    let (h, p) = (c(host), c(port));
+    let mut hints: libc::addrinfo = unsafe { std::mem::zeroed() };
+    hints.ai_family = libc::AF_INET;
+    hints.ai_socktype = libc::SOCK_STREAM;
+    let mut res: *mut libc::addrinfo = std::ptr::null_mut();
+    let mut found = None;
+    if unsafe { libc::getaddrinfo(h.as_ptr(), p.as_ptr(), &hints, &mut res) } == 0 && !res.is_null() {
+        let ai = unsafe { &*res };
+        if !ai.ai_addr.is_null() && ai.ai_addrlen as usize >= std::mem::size_of::<libc::sockaddr_in>() {
+            let sin = unsafe { &*(ai.ai_addr as *const libc::sockaddr_in) };
+            let ip = std::net::Ipv4Addr::from(u32::from_be(sin.sin_addr.s_addr));
+            found = Some(SocketAddr::from((ip, u16::from_be(sin.sin_port))));
+        }
+        unsafe { libc::freeaddrinfo(res) };
+    }
     Ok(found)
 }
 

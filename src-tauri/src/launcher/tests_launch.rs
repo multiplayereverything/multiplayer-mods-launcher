@@ -10,7 +10,9 @@ use super::config::{ActionSpec, PlayerSpec};
 use super::discord::{DiscordPresence, Presence, activity, frame, handshake};
 use super::launch::{add_flash_vars, fill_placeholders, game_values, normalize_code, stable_port};
 use super::library::ResolvedAction;
-use super::process::{build_command_line, environment_block, quote_arg};
+use super::process::{build_command_line, quote_arg};
+#[cfg(windows)]
+use super::process::environment_block;
 use super::relay::Relay;
 use super::tests::TempDir;
 use super::webserver::{WebServer, mime_type};
@@ -207,6 +209,7 @@ fn command_line_quoting() {
     );
 }
 
+#[cfg(windows)]
 #[test]
 fn environment_block_sets_and_replaces() {
     // "A=1", "=C:=C:\d", "Path=x" as Windows hands them over, NUL-separated and NUL-ended.
@@ -276,6 +279,7 @@ fn discord_presence_messages() {
 
 /// The presence talks to a stand-in for the Discord app on a pipe of its own: the handshake, the activity, and the
 /// clearing message when it goes.
+#[cfg(windows)]
 #[test]
 fn discord_presence_over_a_pipe() {
     use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};
@@ -336,6 +340,43 @@ fn discord_presence_over_a_pipe() {
     assert!(got.last().unwrap().1.contains("\"activity\":null"));
 }
 
+/// The same over the Unix socket the Discord app listens on in Linux.
+#[cfg(unix)]
+#[test]
+fn discord_presence_over_a_socket() {
+    let dir = TempDir::new("discord");
+    let prefix = format!("{}/discord-ipc-", dir.path());
+    let listener = std::os::unix::net::UnixListener::bind(format!("{prefix}0")).unwrap();
+    let server = std::thread::spawn(move || {
+        let (mut s, _) = listener.accept().unwrap();
+        let mut got = Vec::new();
+        loop {
+            let mut head = [0u8; 8];
+            if s.read_exact(&mut head).is_err() {
+                break;
+            }
+            let mut body = vec![0u8; u32::from_le_bytes(head[4..].try_into().unwrap()) as usize];
+            if s.read_exact(&mut body).is_err() {
+                break;
+            }
+            got.push((u32::from_le_bytes(head[..4].try_into().unwrap()), String::from_utf8(body).unwrap()));
+            let _ = s.write_all(&frame(1, r#"{"evt":"READY"}"#));
+        }
+        got
+    });
+    {
+        let d = DiscordPresence::with_pipe("1234", &prefix);
+        d.set(&Presence { details: "Playing Test".into(), state: "Room ABCDE".into(), start: 1700000000 });
+        std::thread::sleep(Duration::from_millis(800));
+    }
+    let got = server.join().unwrap();
+    assert!(got.len() >= 3, "{got:?}");
+    assert_eq!(got[0], (0, handshake("1234")));
+    assert_eq!(got[1].0, 1);
+    assert!(got[1].1.contains("\"details\":\"Playing Test\"") && got[1].1.contains("\"nonce\":\"1\""));
+    assert!(got.last().unwrap().1.contains("\"activity\":null"));
+}
+
 fn player(flashvar_arg: &str) -> PlayerSpec {
     let text = format!(r#"{{ "players": [{{ "id": "p", "paths": ["p.exe"], "flashvarArg": "{flashvar_arg}" }}], "games": [] }}"#);
     super::config::load_config(text.as_bytes(), r"C:\x").config.players.remove(0)
@@ -383,4 +424,25 @@ fn room_codes_and_stable_ports() {
     assert_eq!(stable_port(""), 47000 + (2166136261u32 % 2000) as i32);
     let p = stable_port("web");
     assert!((47000..49000).contains(&p) && p == stable_port("web") && p != stable_port("web2"));
+}
+
+/// Linux: a game run through Wine with BepInEx's winhttp.dll beside it gets Wine told to load that one.
+#[cfg(unix)]
+#[test]
+fn wine_loads_a_winhttp_loader_beside_the_game() {
+    use super::process::needs_winhttp_override;
+    let dir = TempDir::new("wine");
+    let exe = dir.join("Game.exe");
+    std::fs::write(&exe, b"MZ").unwrap();
+    let args = vec!["-x".to_string()];
+    let via_wine = vec!["/usr/bin/wine".to_string(), exe.clone(), "-x".to_string()];
+    let direct = vec![exe.clone(), "-x".to_string()];
+    let none: Vec<(String, String)> = Vec::new();
+    let set = vec![("WINEDLLOVERRIDES".to_string(), "d3d9=n".to_string())];
+    let outside = std::env::var_os("WINEDLLOVERRIDES").is_some();
+    assert!(!needs_winhttp_override(&exe, &args, &via_wine, &none), "no loader there yet");
+    std::fs::write(dir.join("WinHttp.dll"), b"MZ").unwrap();
+    assert_eq!(needs_winhttp_override(&exe, &args, &via_wine, &none), !outside);
+    assert!(!needs_winhttp_override(&exe, &args, &direct, &none));
+    assert!(!needs_winhttp_override(&exe, &args, &via_wine, &set), "the mod's own setting wins");
 }

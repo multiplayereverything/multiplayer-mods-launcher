@@ -15,7 +15,7 @@ export class Driver {
       body: body === undefined ? undefined : JSON.stringify(body),
     })
     const json = await res.json().catch(() => ({}))
-    if (!res.ok) throw new Error(`${method} ${path}: ${json.value?.message ?? res.status}`)
+    if (!res.ok) throw new Error(`${method} ${path}: ${json.value?.message || json.value?.error || res.status}`)
     return json.value
   }
 
@@ -60,13 +60,33 @@ export class Driver {
   }
 
   async click(xpath, ms) {
-    const id = await this.find(xpath, ms)
-    await this.call('POST', this.s(`/element/${id}/click`), {})
+    // A window still moving things may refuse the first try (WebKitWebDriver); a refused click did nothing.
+    // The same goes for a button under a passing toast or the status bar: bring it to the middle and wait the toast out.
+    for (let tries = 20; ; tries--) {
+      const id = await this.find(xpath, ms)
+      try {
+        return await this.call('POST', this.s(`/element/${id}/click`), {})
+      } catch (e) {
+        if (tries <= 1) throw e
+        await this.exec('arguments[0].scrollIntoView({ block: "center" })', { [ELEMENT]: id }).catch(() => {})
+        await sleep(500)
+      }
+    }
   }
 
   async type(xpath, text, clear = true) {
     const id = await this.find(xpath)
     if (clear) await this.call('POST', this.s(`/element/${id}/clear`), {})
+    // WebKitWebDriver's clear doesn't reach React, which puts the old text back: empty it the way typing would.
+    if (clear) {
+      await this.exec(
+        `const e = arguments[0]
+         Object.getOwnPropertyDescriptor(Object.getPrototypeOf(e), 'value').set.call(e, '')
+         e.dispatchEvent(new Event('input', { bubbles: true }))`,
+        { [ELEMENT]: id },
+      )
+      await sleep(50)
+    }
     await this.call('POST', this.s(`/element/${id}/value`), { text })
   }
 

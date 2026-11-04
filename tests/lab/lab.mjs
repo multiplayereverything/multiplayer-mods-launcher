@@ -7,10 +7,12 @@
 // Needs: tauri-driver (cargo install tauri-driver --locked), Microsoft Edge WebDriver matching WebView2 (MSEDGEDRIVER,
 // or %LOCALAPPDATA%\fl-lab\edgedriver-<version>\msedgedriver.exe), and the C++ launcher's Debug build (FL_LAUNCHER_EXE,
 // default old\build\Debug), whose launcher_tests.exe is the fake player.
+// Linux: WebKitWebDriver instead (the webkitgtk-webdriver package; WEBKIT_WEBDRIVER to point elsewhere), the engine from
+// old/build-linux, zip, wl-clipboard or xclip, and a display (WSLg's works); docs/LINUX.md.
 import { execFileSync, spawn, spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { PORTS, makeSandbox, snapshot } from './sandbox.mjs'
 import { relayClient, startServers } from './servers.mjs'
@@ -30,13 +32,18 @@ function need(path, what) {
   return path
 }
 
-const launcher = need(process.env.FL_LAUNCHER_EXE ?? resolve(tauriDir, 'old', 'build', 'Debug', 'MultiplayerEverythingLauncher.exe'),
+const win = process.platform === 'win32'
+const exe = win ? '.exe' : ''
+const launcher = need(process.env.FL_LAUNCHER_EXE ??
+  (win ? resolve(tauriDir, 'old', 'build', 'Debug', 'MultiplayerEverythingLauncher.exe') : resolve(tauriDir, 'old', 'build-linux', 'MultiplayerEverythingLauncher')),
   'the C++ launcher (set FL_LAUNCHER_EXE)')
-const fakePlayer = need(join(dirname(launcher), 'launcher_tests.exe'), 'launcher_tests.exe next to the launcher')
+const fakePlayer = need(join(dirname(launcher), `launcher_tests${exe}`), `launcher_tests${exe} next to the launcher`)
 const edgeDir = join(process.env.LOCALAPPDATA ?? '', 'fl-lab')
-const edgeDriver = need(process.env.MSEDGEDRIVER ??
-  (existsSync(edgeDir) ? readdirSync(edgeDir).filter((d) => d.startsWith('edgedriver-')).map((d) => join(edgeDir, d, 'msedgedriver.exe')).find(existsSync) : undefined),
+const edgeDriver = win
+  ? need(process.env.MSEDGEDRIVER ??
+    (existsSync(edgeDir) ? readdirSync(edgeDir).filter((d) => d.startsWith('edgedriver-')).map((d) => join(edgeDir, d, 'msedgedriver.exe')).find(existsSync) : undefined),
   'msedgedriver.exe (set MSEDGEDRIVER)')
+  : need(process.env.WEBKIT_WEBDRIVER ?? '/usr/bin/WebKitWebDriver', 'WebKitWebDriver (sudo apt install webkitgtk-webdriver, or set WEBKIT_WEBDRIVER)')
 const targetDir = process.env.CARGO_TARGET_DIR ?? join(tauriDir, 'src-tauri', 'target')
 
 if (!argv.includes('--no-build')) {
@@ -44,7 +51,7 @@ if (!argv.includes('--no-build')) {
   const b = spawnSync('npx tauri build --debug --no-bundle', { cwd: tauriDir, shell: true, stdio: 'inherit' })
   if (b.status !== 0) process.exit(b.status ?? 1)
 }
-const app = need(join(targetDir, 'debug', 'app.exe'), 'the built window')
+const app = need(join(targetDir, 'debug', `app${exe}`), 'the built window')
 
 const work = join(tmpdir(), `fl-tauri-lab-${process.pid}`)
 const box = makeSandbox(work, fakePlayer)
@@ -64,6 +71,8 @@ const env = {
   FL_UPDATE_ENDPOINT: `http://127.0.0.1:${PORTS.http}/upd/latest.json`, FL_UPDATE_PUBKEY: readFileSync(`${updKey}.pub`, 'utf8').trim(),
   FL_LAUNCHER_EXE: launcher, FL_LAUNCHER_CONFIG: box.config, FL_FAKE_OUT: box.args, FL_FAKE_MS: String(FAKE_MS),
   FL_NO_NAME_PROMPT: '1', FL_NO_DISCORD: '1', FL_FAKE_ENV: 'FAKE_TV',
+  // XDG_DATA_HOME: the window's own storage (TV mode, the last page) stays in the sandbox.
+  ...(win ? {} : { FL_UPDATE_TARGET: join(work, 'Installed.AppImage'), XDG_DATA_HOME: join(work, 'xdg-data') }),
 }
 const driverProc = spawn('tauri-driver', ['--port', '4444', '--native-driver', edgeDriver], { env, stdio: 'ignore' })
 const wd = new Driver('http://127.0.0.1:4444')
@@ -95,7 +104,11 @@ const settings = () => JSON.parse(readFileSync(box.settings, 'utf8'))
 const clearArgs = () => rmSync(box.args, { force: true })
 // What the fake player was started with, once it has been.
 const launchedWith = async () => (await waitFor(() => existsSync(box.args) && readFileSync(box.args, 'utf8').trim(), 10000) || '').split(/\r?\n/)
-const clipboard = () => execFileSync('powershell', ['-NoProfile', '-Command', 'Get-Clipboard'], { encoding: 'utf8' }).trim()
+const clipboard = () => (win
+  ? execFileSync('powershell', ['-NoProfile', '-Command', 'Get-Clipboard'], { encoding: 'utf8' })
+  : process.env.WAYLAND_DISPLAY && !process.env.GDK_BACKEND
+    ? execFileSync('wl-paste', ['-n'], { encoding: 'utf8' })
+    : execFileSync('xclip', ['-selection', 'clipboard', '-o'], { encoding: 'utf8' })).trim()
 
 // ---- moving around the window ------------------------------------------------------------------------------------
 const nav = (label) => `//nav[contains(@class,'navs')]//button[.//span[contains(@class,'lbl') and normalize-space(.)=${q(label)}]]`
@@ -107,6 +120,23 @@ const pill = () => wd.exec("return document.querySelector('.spill')?.textContent
 const toast = () => wd.exec("return [...document.querySelectorAll('.isl.note')].map(e => e.textContent).join(' ')")
 const key = (k) => wd.exec(`window.dispatchEvent(new KeyboardEvent('keydown', { key: ${JSON.stringify(k)} }))`)
 const labPick = (path) => wd.exec('window.__flLabPick = arguments[0]', path)
+
+// The pad only counts while the window has the focus, which a desktop may not give a window nobody clicked (WSLg).
+const HAS_FOCUS = win ? '' : 'document.hasFocus = () => true; '
+
+// The launcher reads the pad once a frame, so a press lasts until frames have seen it, however slow they run.
+async function nextFrames() {
+  await new Promise((r) => setTimeout(r, 120))
+  await wd.execAsync('const done = arguments[arguments.length - 1]; setTimeout(done, 1500, false); requestAnimationFrame(() => requestAnimationFrame(() => done(true)))')
+}
+
+async function desktopReportsMinimized() {
+  const windowCall = (cmd) => wd.execAsync(`const done = arguments[arguments.length - 1]; window.__TAURI_INTERNALS__.invoke('plugin:window|${cmd}', { label: 'main' }).then(() => done(true), () => done(false))`)
+  await windowCall('minimize')
+  const reported = (await waitFor(async () => (await isMinimized()) === true, 1500)) === true
+  await windowCall('unminimize')
+  return reported
+}
 
 async function openGame(name) {
   await wd.click(nav('All games'))
@@ -258,7 +288,9 @@ const scenarios = {
     await check('Minimize while a game runs is saved', (await waitFor(() => settings().minimize === 1 || settings().minimize === true)) === true)
     await openGame('Relay Test')
     await launch('Play')
-    await check('the window minimizes while the game runs', (await waitFor(async () => (await isMinimized()) === true, 5000)) === true)
+    // Wayland has no minimized state to read, and WSLg doesn't report it for X11 windows either.
+    if (!win && !(await desktopReportsMinimized())) console.log('  SKIP  the window minimizes while the game runs: this desktop does not report it')
+    else await check('the window minimizes while the game runs', (await waitFor(async () => (await isMinimized()) === true, 5000)) === true)
     await check('the window comes back when the game closes', (await waitFor(async () => (await isMinimized()) === false, FAKE_MS + 8000)) === true)
     await wd.click("//button[contains(@class,'setbtn')]")
     await wd.click("//button[@role='switch' and contains(@aria-label,'Minimize')]")
@@ -675,16 +707,16 @@ const scenarios = {
     // A controller, as the Gamepad API reports one: the D-pad moves the focus, A presses, Y searches.
     await wd.click(nav('All games'))
     await wd.find("//button[contains(@class,'card-c')]")
-    await wd.exec(`window.__pad = { buttons: Array.from({ length: 17 }, () => ({ pressed: false })), axes: [0, 0, 0, 0] }
+    await wd.exec(`${HAS_FOCUS}window.__pad = { buttons: Array.from({ length: 17 }, () => ({ pressed: false })), axes: [0, 0, 0, 0] }
       navigator.getGamepads = () => [window.__pad]
       window.dispatchEvent(new Event('gamepadconnected'))
       document.querySelector('.card-c').focus()`)
     await check('a controller shows its own hints', !!(await waitFor(async () => (await wd.exec("return document.querySelector('.statusbar .hints')?.textContent ?? ''")).includes('Select'), 4000)))
     const press = async (i) => {
       await wd.exec('window.__pad.buttons[arguments[0]].pressed = true', i)
-      await new Promise((r) => setTimeout(r, 120))
+      await nextFrames()
       await wd.exec('window.__pad.buttons[arguments[0]].pressed = false', i)
-      await new Promise((r) => setTimeout(r, 120))
+      await nextFrames()
     }
     const first = await wd.exec('return document.activeElement?.textContent')
     await press(15)
@@ -844,16 +876,16 @@ const scenarios = {
     // opens the on-screen keyboard, and Done saves the name as typing would.
     await key('Escape')  // the joined game's starting screen
     await wd.click("//button[contains(@class,'tv-tab') and normalize-space(.)='Settings']")
-    await wd.exec(`const pad = { id: 'Lab controller', index: 0, connected: true, mapping: 'standard', axes: [0, 0, 0, 0],
+    await wd.exec(`${HAS_FOCUS}const pad = { id: 'Lab controller', index: 0, connected: true, mapping: 'standard', axes: [0, 0, 0, 0],
         buttons: Array.from({ length: 17 }, () => ({ pressed: false, value: 0 })) }
       window.__labPad = pad
       navigator.getGamepads = () => [window.__labPad]
       window.dispatchEvent(new Event('gamepadconnected'))`)
     const padPress = async (b) => {
       await wd.exec(`window.__labPad.buttons[${b}] = { pressed: true, value: 1 }`)
-      await new Promise((r) => setTimeout(r, 150))
+      await nextFrames()
       await wd.exec(`window.__labPad.buttons[${b}] = { pressed: false, value: 0 }`)
-      await new Promise((r) => setTimeout(r, 150))
+      await nextFrames()
     }
     await wd.exec("document.querySelector('.tv-page input.field')?.focus()")
     await padPress(0)
@@ -892,11 +924,14 @@ scenarios.appupdate = async () => {
     spawnSync(`npx tauri signer sign -f "${updKey}" -p "" "${file}"`, { cwd: tauriDir, shell: true, stdio: 'ignore' })
     return readFileSync(`${file}.sig`, 'utf8').trim()
   }
-  const setup = join(updDir, 'MultiplayerEverything-setup.exe')
+  // Windows downloads an installer and runs it; Linux writes the AppImage over the installed one and opens that.
+  const setup = join(updDir, win ? 'MultiplayerEverything-setup.exe' : 'MultiplayerEverything.AppImage')
+  const installed = env.FL_UPDATE_TARGET
+  if (installed) writeFileSync(installed, 'the AppImage before the update', { mode: 0o755 })
   writeFileSync(setup, readFileSync(fakePlayer))  // a copy of the test exe: it notes "RAN <name> <arguments>"
   const feed = (signature) => writeFileSync(join(updDir, 'latest.json'), JSON.stringify({
     version: '9.9.9', notes: 'Lab release', pub_date: '2026-11-04T00:00:00Z',
-    platforms: { 'windows-x86_64': { signature, url: `http://127.0.0.1:${PORTS.http}/upd/MultiplayerEverything-setup.exe` } },
+    platforms: { [win ? 'windows-x86_64' : 'linux-x86_64']: { signature, url: `http://127.0.0.1:${PORTS.http}/upd/${basename(setup)}` } },
   }))
   const restart = async () => {
     await wd.stop()
@@ -923,13 +958,15 @@ scenarios.appupdate = async () => {
   await wd.click(`${prompt}${button('Update now')}`, 15000)
   await check('an installer whose signature doesn\'t match is refused', !!(await waitFor(async () => /couldn't be installed/i.test(await toast()), 15000)), await toast())
   await check('and never runs', !existsSync(box.args) || !readFileSync(box.args, 'utf8').includes('RAN '))
+  if (installed) await check('and the installed AppImage stays as it was', readFileSync(installed, 'utf8') === 'the AppImage before the update')
 
   feed(sign(setup))
   await restart()
   await wd.click(`${prompt}${button('Update now')}`, 15000)
   const ran = await waitFor(() => existsSync(box.args) && readFileSync(box.args, 'utf8').split(/\r?\n/).find((l) => l.startsWith('RAN ')), 20000)
   await check('Update now downloads, checks the signature and starts the installer', !!ran, ran || '')
-  await check('the installer runs passive, as an update, and opens the app again', !!ran && / \/P\b/.test(ran) && /\/UPDATE\b/.test(ran) && /\/R\b/.test(ran), ran || '')
+  if (win) await check('the installer runs passive, as an update, and opens the app again', !!ran && / \/P\b/.test(ran) && /\/UPDATE\b/.test(ran) && /\/R\b/.test(ran), ran || '')
+  else await check('the AppImage is replaced by the signed one', readFileSync(installed).equals(readFileSync(setup)))
 }
 
 // ---- run ---------------------------------------------------------------------------------------------------------

@@ -18,6 +18,8 @@ pub mod library;
 pub mod library_json;
 pub mod log;
 pub mod paths;
+#[cfg(unix)]
+pub mod posix;
 pub mod process;
 pub mod relay;
 pub mod reports;
@@ -26,6 +28,8 @@ pub mod settings;
 pub mod site;
 pub mod text;
 pub mod texts;
+#[cfg(unix)]
+pub mod unzip;
 pub mod vars;
 pub mod webserver;
 

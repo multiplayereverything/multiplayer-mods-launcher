@@ -69,7 +69,7 @@ fn base_vars(dir: &TempDir) -> Vars {
 }
 
 fn shipped() -> LoadResult {
-    let path = format!("{}\\..\\launcher\\launcher.json", env!("CARGO_MANIFEST_DIR"));
+    let path = format!("{}/../launcher/launcher.json", env!("CARGO_MANIFEST_DIR"));
     let mut r = load_config_file(&paths::normalize(&path));
     assert!(r.ok(), "{}", super::config::format_issues(&r.issues));
     add_team_fixtures(&mut r.config);
@@ -80,10 +80,10 @@ fn shipped() -> LoadResult {
 /// the_team_records_in_a_mods_info_checkout_are_the_published_copy keeps it equal), merged in as the app merges
 /// team.json, so "the shipped config" means what players get.
 pub(super) fn team_fixtures() -> super::community::Cache {
-    let dir = format!("{}\\..\\tests\\fixtures\\team", env!("CARGO_MANIFEST_DIR"));
-    let index = std::fs::read(format!("{dir}\\index.json")).unwrap();
+    let dir = format!("{}/../tests/fixtures/team", env!("CARGO_MANIFEST_DIR"));
+    let index = std::fs::read(format!("{dir}/index.json")).unwrap();
     let ids = super::community::parse_index(&index).unwrap();
-    let raw = ids.iter().map(|id| std::fs::read_to_string(format!("{dir}\\{id}.json")).unwrap()).collect();
+    let raw = ids.iter().map(|id| std::fs::read_to_string(format!("{dir}/{id}.json")).unwrap()).collect();
     super::community::Cache { fetched_at: 0, raw }
 }
 
@@ -489,7 +489,7 @@ fn embedded_names_match_the_resource_script() {
     assert_eq!(embedded_name("covers/Pb2.jpg"), "F_COVERS_PB2_JPG");
     assert!(read_embedded("covers\\nope.png").is_none());
     // Unlike the C++ test exe, the app carries its files, and the built-in launcher.json is the shipped one.
-    let shipped = std::fs::read(format!("{}\\..\\launcher\\launcher.json", env!("CARGO_MANIFEST_DIR"))).unwrap();
+    let shipped = std::fs::read(format!("{}/../launcher/launcher.json", env!("CARGO_MANIFEST_DIR"))).unwrap();
     assert_eq!(read_embedded("launcher.json"), Some(shipped.as_slice()));
 }
 
@@ -735,7 +735,8 @@ fn the_website_cannot_steer_a_file_name_or_a_link_the_launcher_uses() {
     // The cover file always sits directly in the covers folder.
     for s in &list {
         let file = site_cover_file("covers", s);
-        assert!(!file.contains("..") && !file.contains('/'));
+        let name = file.strip_prefix("covers").and_then(|r| r.strip_prefix(['/', '\\'])).unwrap_or("");
+        assert!(!file.contains("..") && !name.is_empty() && !name.contains(['/', '\\']), "{file}");
     }
 }
 

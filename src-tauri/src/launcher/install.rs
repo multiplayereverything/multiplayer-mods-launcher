@@ -6,7 +6,9 @@
 
 use std::sync::atomic::AtomicBool;
 
+#[cfg(windows)]
 use windows_sys::Win32::System::SystemInformation::GetSystemDirectoryW;
+#[cfg(windows)]
 use windows_sys::Win32::System::Threading::{GetExitCodeProcess, WaitForSingleObject};
 
 use super::catalog::{CatalogFile, PLAYER_VERSION_FILE, parse_catalog};
@@ -16,6 +18,7 @@ use super::json::{self, Value, serialize};
 use super::library::Library;
 use super::library_json::{load_launcher_config_issues, open_library};
 use super::paths;
+#[cfg(windows)]
 use super::process::start_process;
 use super::text::{compare_versions, format_bytes, glob_match, replace_all, to_lower, trim};
 use super::{log, vars::Vars};
@@ -196,6 +199,7 @@ fn bare_version(v: &str) -> &str {
     v.strip_prefix(['v', 'V']).unwrap_or(v)
 }
 
+#[cfg(windows)]
 fn system_dir() -> String {
     let mut buf = [0u16; 260];
     let n = unsafe { GetSystemDirectoryW(buf.as_mut_ptr(), buf.len() as u32) } as usize;
@@ -254,24 +258,37 @@ pub fn install_player(player: &PlayerSpec, vars: &Vars, progress: Progress, canc
     }
 
     report!(Stage::Unpacking);
-    // tar.exe ships with Windows 10 1803+ and unpacks .zip archives; it refuses entries that climb out with "..".
     let unpacked = paths::join(&work, "files");
     paths::ensure_dir(&unpacked);
-    let tar = paths::join(&system_dir(), "tar.exe");
-    let args = ["-xf".to_string(), archive.clone(), "-C".to_string(), unpacked.clone()];
-    let p = match start_process(&tar, &args, &work, true, &[]) {
-        Ok(p) => p,
+    #[cfg(windows)]
+    let code = {
+        // tar.exe ships with Windows 10 1803+ and unpacks .zip archives; it refuses entries that climb out with "..".
+        let tar = paths::join(&system_dir(), "tar.exe");
+        let args = ["-xf".to_string(), archive.clone(), "-C".to_string(), unpacked.clone()];
+        let p = match start_process(&tar, &args, &work, true, &[]) {
+            Ok(p) => p,
+            Err(e) => {
+                paths::remove_tree(&work);
+                fail!(format!("Cannot unpack the download: {e}"));
+            }
+        };
+        unsafe { WaitForSingleObject(p.raw(), 120000) };
+        let mut code: u32 = 1;
+        if unsafe { GetExitCodeProcess(p.raw(), &mut code) } == 0 {
+            code = 1;
+        }
+        drop(p);
+        code
+    };
+    // Linux: a zip is read by the launcher itself, anything else by the system's tar (src/launcher/unzip.rs).
+    #[cfg(unix)]
+    let code: u32 = match super::unzip::unpack_archive(&archive, &unpacked) {
+        Ok(()) => 0,
         Err(e) => {
-            paths::remove_tree(&work);
-            fail!(format!("Cannot unpack the download: {e}"));
+            log::error(&format!("Unpacking {archive} failed: {e}"));
+            1
         }
     };
-    unsafe { WaitForSingleObject(p.raw(), 120000) };
-    let mut code: u32 = 1;
-    if unsafe { GetExitCodeProcess(p.raw(), &mut code) } == 0 {
-        code = 1;
-    }
-    drop(p);
     let root = if code == 0 { folder_with(&unpacked, &exe) } else { String::new() };
     if root.is_empty() {
         paths::remove_tree(&work);

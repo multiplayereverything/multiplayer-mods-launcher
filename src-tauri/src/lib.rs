@@ -470,13 +470,26 @@ async fn reports(game: String) -> Result<serde_json::Value, String> {
     blocking(move || launcher::reports::game_reports(&game)).await
 }
 
-/// Opens a folder or file's folder in Explorer, or a link in the browser.
+/// Opens a folder or file's folder in Explorer (Linux: the file manager, through xdg-open), or a link in the browser.
 #[tauri::command]
 fn open(target: String) -> Result<(), String> {
     if !(target.starts_with("https://") || target.starts_with("http://") || std::path::Path::new(&target).exists()) {
         return Err(format!("Not a folder or web link: {target}"));
     }
-    std::process::Command::new("explorer").arg(&target).spawn().map(|_| ()).map_err(|e| e.to_string())
+    #[cfg(windows)]
+    let opener = "explorer";
+    #[cfg(unix)]
+    let opener = "xdg-open";
+    let mut c = std::process::Command::new(opener);
+    c.arg(&target);
+    // Linux: an AppImage's own library paths would load into the file manager or browser and can break them.
+    #[cfg(unix)]
+    for v in ["LD_LIBRARY_PATH", "GDK_PIXBUF_MODULE_FILE", "GIO_MODULE_DIR", "GTK_PATH", "GTK_EXE_PREFIX", "GSETTINGS_SCHEMA_DIR"] {
+        if std::env::var_os("APPIMAGE").is_some() {
+            c.env_remove(v);
+        }
+    }
+    c.spawn().map(|_| ()).map_err(|e| e.to_string())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

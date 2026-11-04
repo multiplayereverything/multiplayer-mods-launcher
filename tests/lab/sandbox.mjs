@@ -10,6 +10,13 @@ export const PORTS = { http: 48811, rooms: 48812, relay: 48813, lobby: 48814 }
 
 const sha256 = (file) => createHash('sha256').update(readFileSync(file)).digest('hex')
 
+// Compress-Archive on Windows, zip elsewhere: the folder's contents at the zip's top, as a release zip has them.
+function zipDir(src, zip) {
+  mkdirSync(join(zip, '..'), { recursive: true })
+  if (process.platform === 'win32') execFileSync('powershell', ['-NoProfile', '-Command', `Compress-Archive -Path '${src}\\*' -DestinationPath '${zip}'`])
+  else execFileSync('zip', ['-qrD', zip, '.'], { cwd: src })
+}
+
 function write(file, text) {
   mkdirSync(join(file, '..'), { recursive: true })
   writeFileSync(file, text)
@@ -52,7 +59,7 @@ export function makeSandbox(work, fakePlayer) {
   write(join(pkg, 'override', 'Data', 'original.dat'), 'MODDED 1.0.0')
   const zip = join(work, 'www', 'dl', 'modtest.zip')
   mkdirSync(join(zip, '..'), { recursive: true })
-  execFileSync('powershell', ['-NoProfile', '-Command', `Compress-Archive -Path '${pkg}\\*' -DestinationPath '${zip}'`])
+  zipDir(pkg, zip)
   write(join(work, 'www', 'mods', 'modtest.json'), JSON.stringify({
     schema: 1, id: 'modtest', name: 'Mod Test', game: 'Fake Game', engine: 'none', status: 'testing',
     latest_version: '1.0.0', min_version: '1.0.0', protocol: 'x', download_url: `http://127.0.0.1:${PORTS.http}/dl/modtest.zip`,
@@ -64,7 +71,7 @@ export function makeSandbox(work, fakePlayer) {
   const ruffleSrc = join(work, 'ruffle-src')
   write(join(ruffleSrc, 'ruffle.exe'), 'not a real player')
   const ruffleZip = join(work, 'www', 'ruffle.zip')
-  execFileSync('powershell', ['-NoProfile', '-Command', `Compress-Archive -Path '${ruffleSrc}\\*' -DestinationPath '${ruffleZip}'`])
+  zipDir(ruffleSrc, ruffleZip)
 
   // A player the launcher installed from a GitHub release, one release behind: the local server answers as GitHub's
   // API does with v1.0.1, so the window offers the update at start and the lab installs it with its progress.
@@ -73,7 +80,7 @@ export function makeSandbox(work, fakePlayer) {
   const rtSrc = join(work, 'rt-src')
   write(join(rtSrc, 'rt.exe'), randomBytes(3_000_000))  // random, so the zip stays big enough to show progress
   const rtZip = join(work, 'www', 'rt-1.0.1.zip')
-  execFileSync('powershell', ['-NoProfile', '-Command', `Compress-Archive -Path '${rtSrc}\\*' -DestinationPath '${rtZip}'`])
+  zipDir(rtSrc, rtZip)
   write(join(work, 'www', 'repos', 'o', 'rt', 'releases', 'latest'), JSON.stringify({
     tag_name: 'v1.0.1', draft: false,
     assets: [{ name: 'rt-1.0.1.zip', browser_download_url: `http://127.0.0.1:${PORTS.http}/rt-1.0.1.zip`, digest: `sha256:${sha256(rtZip)}` }],
@@ -90,7 +97,7 @@ export function makeSandbox(work, fakePlayer) {
   write(join(labPkg, 'release', 'LabCoop', 'lang', 'en.txt'), 'hello')
   const labZip = join(work, 'www', 'someone', 'lab-coop', 'releases', 'download', 'v1.2.0', 'LabCoop-1.2.0.zip')
   mkdirSync(join(labZip, '..'), { recursive: true })
-  execFileSync('powershell', ['-NoProfile', '-Command', `Compress-Archive -Path '${labPkg}\\*' -DestinationPath '${labZip}'`])
+  zipDir(labPkg, labZip)
   write(join(work, 'www', 'community', 'index.json'), JSON.stringify({ mods: ['lab-coop', 'lab-link', 'lab-solo', 'lab-devflash', 'lab-newflash'] }))
   // A developer's Flash game (1.0.43): the game file and its key map pinned from their release, the buttons made by the
   // launcher. And one that needs a Ruffle Together newer than any there is.
@@ -153,12 +160,12 @@ export function makeSandbox(work, fakePlayer) {
   write(join(teamPkg, 'LabTeam', 'LabTeam.dll'), 'lab team 2.0.0')
   const teamZip = join(work, 'www', 'dl', 'LabTeam-2.0.0.zip')
   mkdirSync(join(teamZip, '..'), { recursive: true })
-  execFileSync('powershell', ['-NoProfile', '-Command', `Compress-Archive -Path '${teamPkg}\\*' -DestinationPath '${teamZip}'`])
+  zipDir(teamPkg, teamZip)
   const loaderPkg = join(work, 'loaderpkg')
   write(join(loaderPkg, 'BepInEx', 'core', 'BepInEx.dll'), 'bepinex 5')
   write(join(loaderPkg, 'winhttp.dll'), 'doorstop')
   const loaderZip = join(work, 'www', 'dl', 'BepInEx_lab.zip')
-  execFileSync('powershell', ['-NoProfile', '-Command', `Compress-Archive -Path '${loaderPkg}\\*' -DestinationPath '${loaderZip}'`])
+  zipDir(loaderPkg, loaderZip)
   const teamApi = join(work, 'www', 'repos', 'multiplayereverything', 'lab-team', 'releases')
   const asset = (file, name) => ({ name, size: readFileSync(file).length, browser_download_url: `http://127.0.0.1:${PORTS.http}/dl/${name}`, digest: `sha256:${sha256(file)}` })
   // GitHub answers both /releases (the list) and /releases/tags/<tag>; a folder and a file can't share a name, so the

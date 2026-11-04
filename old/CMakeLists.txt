@@ -90,7 +90,8 @@ fl_res_${name}_end:
     file(APPEND "${EMBED_S}" "fl_name_${name}: .asciz \"F_${name}\"
 ")
   endforeach()
-  file(APPEND "${EMBED_S}" ".balign 8
+  file(APPEND "${EMBED_S}" ".section .data.rel.ro,\"aw\"
+.balign 8
 .globl fl_embedded_table
 fl_embedded_table:
 ${EMBED_TABLE}.quad 0, 0, 0

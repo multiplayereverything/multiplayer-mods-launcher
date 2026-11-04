@@ -184,8 +184,11 @@ fn asset_patterns_and_sizes_read_as_the_cpp_helpers() {
     assert_eq!(format_bytes(1000), "1000 bytes");
     assert_eq!(format_bytes(600_214), "586 KB");
     assert_eq!(format_bytes(3 * 1024 * 1024 + 400_000), "3.4 MB");
-    assert!(paths::is_dangerous_root("C:\\") && paths::is_dangerous_root(&paths::known_folder("Documents")));
-    assert!(paths::is_dangerous_root(&paths::join(&paths::known_folder("Windows"), "System32")));
+    assert!(paths::is_dangerous_root(&paths::known_folder("Documents")));
+    #[cfg(windows)]
+    assert!(paths::is_dangerous_root("C:\\") && paths::is_dangerous_root(&paths::join(&paths::known_folder("Windows"), "System32")));
+    #[cfg(unix)]
+    assert!(paths::is_dangerous_root("/") && paths::is_dangerous_root("/usr/lib") && paths::is_dangerous_root("/home"));
     assert!(!paths::is_dangerous_root(&paths::join(&paths::known_folder("Documents"), "MultiplayerEverythingLauncher\\players\\x")));
 }
 
@@ -305,8 +308,10 @@ fn install_player_checks_the_download_and_keeps_the_working_copy() {
     assert_eq!(read(&exe), "fake player");
 
     // A drive root is never an install folder.
-    let (root, _) = player(&dir, &format!(r#"{{ "url": "{}", "dir": "C:\\", "exe": "x.exe" }}"#, web.url("/fake.zip")));
-    assert_eq!(install_player(&root, &vars, &mut |_| {}, None).error, "Unsafe install folder: C:\\");
+    // (Linux: the filesystem root.)
+    let (json_root, root_dir) = if cfg!(windows) { ("C:\\\\", "C:\\") } else { ("/", "/") };
+    let (root, _) = player(&dir, &format!(r#"{{ "url": "{}", "dir": "{json_root}", "exe": "x.exe" }}"#, web.url("/fake.zip")));
+    assert_eq!(install_player(&root, &vars, &mut |_| {}, None).error, format!("Unsafe install folder: {root_dir}"));
 
     // GitHub's rate limit is worded for the player.
     let (gh, _) = player(&dir, &format!(r#"{{ "github": "o/r", "asset": "*.zip", "api": "{}", "dir": "${{PLAYERS_DIR}}\\gh" }}"#, web.url("")));
@@ -453,7 +458,7 @@ fn website_covers_are_pictures_or_nothing() {
 // ---- community mods from mods-info (src/launcher/community.rs) ---------------------------------------------------
 
 fn shipped_config() -> super::config::Config {
-    let path = format!("{}\\..\\launcher\\launcher.json", env!("CARGO_MANIFEST_DIR"));
+    let path = format!("{}/../launcher/launcher.json", env!("CARGO_MANIFEST_DIR"));
     let mut r = load_config_file(&paths::normalize(&path));
     assert!(r.ok());
     super::tests::add_team_fixtures(&mut r.config);
@@ -817,7 +822,7 @@ fn a_record_for_a_newer_launcher_asks_for_an_update() {
 /// The published team record `id` (tests/fixtures/team), and the shipped config without that game: where reading the
 /// record must make the game again.
 fn team_record(id: &str) -> (serde_json::Value, super::config::Config) {
-    let path = format!("{}\\..\\tests\\fixtures\\team\\{id}.json", env!("CARGO_MANIFEST_DIR"));
+    let path = format!("{}/../tests/fixtures/team/{id}.json", env!("CARGO_MANIFEST_DIR"));
     let r: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
     let mut cfg = shipped_config();
     cfg.games.retain(|g| g.id != id);
@@ -946,7 +951,7 @@ fn team_records_merge_first_and_win_their_ids() {
 // ---- Flash records: the launcher makes the buttons (1.0.43) --------------------------------------------------------
 
 fn short_team_record(id: &str) -> serde_json::Value {
-    let path = format!("{}\\..\\tests\\fixtures\\team-short\\{id}.json", env!("CARGO_MANIFEST_DIR"));
+    let path = format!("{}/../tests/fixtures/team-short/{id}.json", env!("CARGO_MANIFEST_DIR"));
     serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
 }
 
@@ -964,7 +969,7 @@ fn command_of(a: &super::config::ActionSpec) -> String {
 /// records. Only a few button texts may read differently, as launcher.json words them now.
 #[test]
 fn flash_team_records_in_the_short_form_make_the_same_buttons() {
-    let dir = format!("{}\\..\\tests\\fixtures\\team-short", env!("CARGO_MANIFEST_DIR"));
+    let dir = format!("{}/../tests/fixtures/team-short", env!("CARGO_MANIFEST_DIR"));
     let mut seen = 0;
     for e in std::fs::read_dir(dir).unwrap() {
         let name = e.unwrap().file_name().to_string_lossy().to_string();
@@ -979,7 +984,7 @@ fn flash_team_records_in_the_short_form_make_the_same_buttons() {
             continue;
         }
         // What the record said before, its buttons written out by hand.
-        let long = format!("{}\\..\\tests\\fixtures\\team-long\\{id}.json", env!("CARGO_MANIFEST_DIR"));
+        let long = format!("{}/../tests/fixtures/team-long/{id}.json", env!("CARGO_MANIFEST_DIR"));
         let published: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(long).unwrap()).unwrap();
         assert!(published.get("actions").is_some() && short.get("actions").is_none(), "{id}");
         let a = read_team(&short, &cfg).unwrap_or_else(|e| panic!("{id}: {e}"));

@@ -12,7 +12,7 @@
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { makeSandbox } from '../lab/sandbox.mjs'
@@ -22,14 +22,16 @@ const args = process.argv.slice(2)
 const keep = args.includes('--keep')
 const only = args.includes('--only') ? args[args.indexOf('--only') + 1].split(',') : null
 
-const cpp = process.env.FL_LAUNCHER_EXE ?? join(root, 'old', 'build', 'Release', 'MultiplayerEverythingLauncher.exe')
-const fakePlayer = join(root, 'old', 'build', 'Debug', 'launcher_tests.exe')
+const win = process.platform === 'win32'
+const exe = win ? '.exe' : ''
+const cpp = process.env.FL_LAUNCHER_EXE ?? (win ? join(root, 'old', 'build', 'Release', 'MultiplayerEverythingLauncher.exe') : join(root, 'old', 'build-linux', 'MultiplayerEverythingLauncher'))
+const fakePlayer = win ? join(root, 'old', 'build', 'Debug', 'launcher_tests.exe') : join(dirname(cpp), 'launcher_tests')
 if (!existsSync(cpp)) throw new Error(`No C++ launcher at ${cpp}: run old\\build.ps1 or set FL_LAUNCHER_EXE`)
 
 console.log('Building the Rust side (cargo build --example library_json)...')
 const b = spawnSync('cargo', ['build', '--example', 'library_json', '--quiet'], { cwd: join(root, 'src-tauri'), stdio: 'inherit', shell: true })
 if (b.status !== 0) process.exit(1)
-const rust = join(root, 'src-tauri', 'target', 'debug', 'examples', 'library_json.exe')
+const rust = join(root, 'src-tauri', 'target', 'debug', 'examples', `library_json${exe}`)
 
 const work = join(tmpdir(), 'fl-parity')
 rmSync(work, { recursive: true, force: true })
@@ -146,7 +148,7 @@ const scenarios = [
     name: 'shipped',
     about: 'the shipped launcher/launcher.json as it is, fresh data folder (reads the real Documents folders)',
     prepare: (dir) => {
-      const docs = spawnSync('powershell', ['-NoProfile', '-Command', "[Environment]::GetFolderPath('MyDocuments')"], { encoding: 'utf8' }).stdout.trim()
+      const docs = win ? spawnSync('powershell', ['-NoProfile', '-Command', "[Environment]::GetFolderPath('MyDocuments')"], { encoding: 'utf8' }).stdout.trim() : join(homedir(), 'Documents')
       for (const d of ['games', 'players'])
         if (!existsSync(join(docs, 'MultiplayerEverythingLauncher', d))) throw new Error(`${docs}\\MultiplayerEverythingLauncher\\${d} doesn't exist; this input would create it`)
       mkdirSync(dir, { recursive: true })

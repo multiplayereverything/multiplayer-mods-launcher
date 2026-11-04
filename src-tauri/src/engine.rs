@@ -14,7 +14,11 @@ use std::os::windows::process::CommandExt;
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
+#[cfg(windows)]
 const EXE: &str = "MultiplayerEverythingLauncher.exe";
+/// Linux: the engine built from old/ (CMake's LAUNCHER_NAME), beside the app in the AppImage's usr/bin.
+#[cfg(unix)]
+const EXE: &str = "MultiplayerEverythingLauncher";
 
 /// `FL_LAUNCHER_EXE` (development), else the launcher next to this app (the shipped layout).
 pub fn find_exe() -> Result<PathBuf, String> {

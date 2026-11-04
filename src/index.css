@@ -64,6 +64,7 @@ h3 { font: 17.3px/1.2 var(--font-title); }
 :focus-visible { outline: 1.5px solid var(--online); outline-offset: 3px; }
 input:focus-visible, select:focus-visible { outline: 0; }
 .glyph { font-family: var(--font-icon); font-style: normal; font-weight: 400; line-height: 1; }
+.glyph-svg { display: inline-block; width: 1em; height: 1em; vertical-align: -.125em; }
 
 * { scrollbar-width: thin; scrollbar-color: var(--line3) transparent; }
 

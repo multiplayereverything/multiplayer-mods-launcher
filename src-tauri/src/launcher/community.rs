@@ -840,6 +840,9 @@ fn read_dev_flash(f: &Value, id: &str, repo: &str, tag: &str, local_release: boo
         Some(k) if k.is_object() => {
             let map = PinnedFile { dir: dir.clone(), ..pinned_file(Some(k), "flash.keys", repo, tag, ".keys", local_release)? };
             let path = format!("${{GAMES_DIR}}\\{dir}\\{}", map.name);
+            // This one reaches the player as an argument, which nothing normalizes as it does a file's path.
+            #[cfg(unix)]
+            let path = path.replace('\\', "/");
             files.push(map);
             path
         }

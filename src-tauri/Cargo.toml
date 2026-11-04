@@ -35,5 +35,13 @@ tauri-plugin-notification = "2"
 # loop, this PC's addresses, Discord's named pipe.
 sha2 = "0.10"
 regex = "1"
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_UI_Shell", "Win32_System_Com", "Win32_Networking_WinHttp", "Win32_Networking_WinSock", "Win32_System_Diagnostics_Debug", "Win32_Globalization", "Win32_Security", "Win32_System_Threading", "Win32_System_JobObjects", "Win32_System_Pipes", "Win32_System_Environment", "Win32_System_IO", "Win32_NetworkManagement_IpHelper", "Win32_NetworkManagement_Ndis", "Win32_System_SystemInformation", "Win32_System_Registry"] }
 tauri-plugin-updater = "2"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_UI_Shell", "Win32_System_Com", "Win32_Networking_WinHttp", "Win32_Networking_WinSock", "Win32_System_Diagnostics_Debug", "Win32_Globalization", "Win32_Security", "Win32_System_Threading", "Win32_System_JobObjects", "Win32_System_Pipes", "Win32_System_Environment", "Win32_System_IO", "Win32_NetworkManagement_IpHelper", "Win32_NetworkManagement_Ndis", "Win32_System_SystemInformation", "Win32_System_Registry"] }
+
+# Linux: the same calls through libc (fork/exec and process groups, getifaddrs, sockets). See docs/LINUX.md.
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+flate2 = "1.1"
+crc32fast = "1.5"

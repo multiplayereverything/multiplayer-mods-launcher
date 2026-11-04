@@ -19,7 +19,8 @@
 #brand { display: flex; align-items: center; gap: 10px; text-align: left; padding: 0; border-radius: 6px; width: 100%; }
 .logo { width: 32px; height: 32px; flex: none; }
 .word { display: flex; flex-direction: column; gap: 3px; white-space: nowrap; }
-.word b { font: 19.3px/1.15 var(--font-title); color: var(--side-ink); font-weight: 400; }
+.word { min-width: 0; }
+.word b { font: 19.3px/1.15 var(--font-title); color: var(--side-ink); font-weight: 400; overflow: hidden; text-overflow: ellipsis; }
 .word small { font-size: 12px; color: var(--side-muted); }
 .navs { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; gap: 2px; padding: 6px 10px; }
 .nav { position: relative; display: flex; align-items: center; gap: 14px; height: 38px; flex: none; padding: 0 12px; border-radius: 6px; color: var(--side-ink); font-size: 13.3px; white-space: nowrap; text-align: left; width: 100%; transition: background .12s; }

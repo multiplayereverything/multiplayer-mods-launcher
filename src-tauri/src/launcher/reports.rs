@@ -52,6 +52,7 @@ pub struct Pc {
     pub ram_gb: u64,
 }
 
+#[cfg(windows)]
 fn reg_string(key: &str, value: &str) -> Option<String> {
     use windows_sys::Win32::System::Registry::{HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ, RegGetValueW};
     let w = |s: &str| s.encode_utf16().chain(Some(0)).collect::<Vec<u16>>();
@@ -67,6 +68,7 @@ fn reg_string(key: &str, value: &str) -> Option<String> {
 }
 
 /// "Windows 11 26200": the registry's ProductName still says Windows 10 on 11, so the build number decides.
+#[cfg(windows)]
 fn windows_version() -> String {
     const KEY: &str = r"SOFTWARE\Microsoft\Windows NT\CurrentVersion";
     let build = reg_string(KEY, "CurrentBuildNumber").unwrap_or_default();
@@ -76,6 +78,7 @@ fn windows_version() -> String {
 }
 
 /// The display adapters' names, the separate card first: a laptop lists its built-in graphics too.
+#[cfg(windows)]
 fn graphics_card() -> String {
     const CLASS: &str = r"SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}";
     let names: Vec<String> = (0..10)
@@ -90,6 +93,7 @@ pub fn pick_gpu(names: &[String]) -> String {
     names.iter().find(|n| separate(n)).or(names.first()).cloned().unwrap_or_default()
 }
 
+#[cfg(windows)]
 fn memory_gb() -> u64 {
     use windows_sys::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
     let mut m: MEMORYSTATUSEX = unsafe { std::mem::zeroed() };
@@ -101,9 +105,83 @@ fn memory_gb() -> u64 {
     (m.ullTotalPhys as f64 / (1u64 << 30) as f64).round() as u64
 }
 
+#[cfg(windows)]
 pub fn this_pc() -> Pc {
     let cpu = reg_string(r"HARDWARE\DESCRIPTION\System\CentralProcessor\0", "ProcessorNameString").unwrap_or_default();
     Pc { os: windows_version(), gpu: graphics_card(), cpu: cpu.split_whitespace().collect::<Vec<_>>().join(" "), ram_gb: memory_gb() }
+}
+
+/// Linux: "Ubuntu 24.04.3 LTS" from os-release, the graphics cards' names from their PCI ids, /proc for the rest.
+#[cfg(unix)]
+pub fn this_pc() -> Pc {
+    let read = |p: &str| std::fs::read_to_string(p).unwrap_or_default();
+    let os_release = [read("/etc/os-release"), read("/usr/lib/os-release")].concat();
+    let os = os_release
+        .lines()
+        .find_map(|l| l.strip_prefix("PRETTY_NAME="))
+        .map(|v| v.trim_matches('"').to_string())
+        .unwrap_or_else(|| "Linux".into());
+    let cpu = read("/proc/cpuinfo")
+        .lines()
+        .find_map(|l| l.strip_prefix("model name").and_then(|r| r.split_once(':')).map(|(_, v)| v.split_whitespace().collect::<Vec<_>>().join(" ")))
+        .unwrap_or_default();
+    let kb: u64 = read("/proc/meminfo")
+        .lines()
+        .find_map(|l| l.strip_prefix("MemTotal:"))
+        .and_then(|v| v.split_whitespace().next()?.parse().ok())
+        .unwrap_or(0);
+    let ram_gb = (kb as f64 / (1u64 << 20) as f64).round() as u64;
+    Pc { os, gpu: pick_gpu(&linux_gpus()), cpu, ram_gb }
+}
+
+/// Every display card in /sys, named from the system's pci.ids: "NVIDIA GeForce RTX 3070", "AMD Radeon RX 6700 XT".
+#[cfg(unix)]
+fn linux_gpus() -> Vec<String> {
+    let ids = ["/usr/share/hwdata/pci.ids", "/usr/share/misc/pci.ids", "/usr/share/pci.ids"]
+        .iter()
+        .find_map(|p| std::fs::read_to_string(p).ok())
+        .unwrap_or_default();
+    let mut out = Vec::new();
+    let Ok(cards) = std::fs::read_dir("/sys/bus/pci/devices") else { return out };
+    for c in cards.flatten() {
+        let read = |f: &str| std::fs::read_to_string(c.path().join(f)).unwrap_or_default().trim().trim_start_matches("0x").to_lowercase();
+        if !read("class").starts_with("03") {
+            continue; // not a display controller
+        }
+        let (vendor, device) = (read("vendor"), read("device"));
+        let name = pci_name(&ids, &vendor, &device);
+        // As on Windows: a virtual machine's or remote session's adapter isn't the player's card.
+        if !name.contains("Basic Render") && !name.contains("Basic Display") && !name.contains("Virtual") {
+            out.push(name);
+        }
+    }
+    out
+}
+
+/// A vendor's short name and a device's marketing name (the part in brackets) from pci.ids.
+#[cfg(unix)]
+pub fn pci_name(ids: &str, vendor: &str, device: &str) -> String {
+    let short = match vendor {
+        "10de" => "NVIDIA",
+        "1002" => "AMD",
+        "8086" => "Intel",
+        _ => "",
+    };
+    let mut lines = ids.lines().skip_while(|l| !l.starts_with(&format!("{vendor}  ")));
+    let vendor_name = lines.next().map(|l| l[vendor.len()..].trim().to_string()).unwrap_or_default();
+    let device_name = lines
+        .take_while(|l| l.starts_with('\t') || l.starts_with('#') || l.is_empty())
+        .find_map(|l| l.strip_prefix('\t').and_then(|r| r.strip_prefix(&format!("{device}  "))))
+        .map(|n| {
+            let n = n.trim();
+            match (n.find('['), n.rfind(']')) {
+                (Some(a), Some(b)) if b > a => n[a + 1..b].to_string(),
+                _ => n.to_string(),
+            }
+        })
+        .unwrap_or_else(|| format!("graphics ({vendor}:{device})"));
+    let vendor_part = if short.is_empty() { vendor_name } else { short.to_string() };
+    if vendor_part.is_empty() || device_name.starts_with(&vendor_part) { device_name } else { format!("{vendor_part} {device_name}") }
 }
 
 /// The report the Worker reads.
@@ -193,7 +271,7 @@ mod tests {
     #[test]
     fn this_pc_is_described() {
         let pc = this_pc();
-        assert!(pc.os.starts_with("Windows"), "{pc:?}");
+        assert!(if cfg!(windows) { pc.os.starts_with("Windows") } else { !pc.os.is_empty() }, "{pc:?}");
         assert!(pc.ram_gb > 0, "{pc:?}");
     }
 

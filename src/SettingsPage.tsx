@@ -16,9 +16,10 @@ function Row({ title, note, children }: { title: string; note?: string; children
 // What the C++ lobby's Copy diagnostics gives a bug report: versions, folders, the server, the players.
 function diagnostics(lib: Library, server: string): string {
   const win = /Windows NT ([\d.]+)/.exec(navigator.userAgent)?.[1]
+  const linux = !win && /Linux/.test(navigator.userAgent)
   return [
     `Multiplayer Everything Launcher ${lib.launcherVersion} (Tauri window)`,
-    `Windows NT ${win ?? 'unknown'}`,
+    linux ? 'Linux' : `Windows NT ${win ?? 'unknown'}`,
     `Config: ${lib.configDir}`,
     `Data: ${lib.dataDir}`,
     `Online features: ${lib.user.online ? 'on' : 'off'}, name set: ${lib.user.playerName ? 'yes' : 'no'}`,

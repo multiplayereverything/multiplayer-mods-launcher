@@ -18,7 +18,14 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
+#[cfg(windows)]
 use windows_sys::Win32::Networking::WinSock::{
+    AF_INET, FD_SET, FIONBIO, INVALID_SOCKET, IPPROTO_TCP, SO_EXCLUSIVEADDRUSE, SOCK_STREAM, SOCKADDR, SOCKADDR_IN, SOCKET,
+    SOCKET_ERROR, SOL_SOCKET, TCP_NODELAY, TIMEVAL, WSACleanup, WSADATA, WSAEACCES, WSAEADDRINUSE, WSAEWOULDBLOCK,
+    WSAGetLastError, WSAStartup, accept, bind, closesocket, ioctlsocket, listen, recv, select, send, setsockopt, socket,
+};
+#[cfg(unix)]
+use super::posix::winsock::{
     AF_INET, FD_SET, FIONBIO, INVALID_SOCKET, IPPROTO_TCP, SO_EXCLUSIVEADDRUSE, SOCK_STREAM, SOCKADDR, SOCKADDR_IN, SOCKET,
     SOCKET_ERROR, SOL_SOCKET, TCP_NODELAY, TIMEVAL, WSACleanup, WSADATA, WSAEACCES, WSAEADDRINUSE, WSAEWOULDBLOCK,
     WSAGetLastError, WSAStartup, accept, bind, closesocket, ioctlsocket, listen, recv, select, send, setsockopt, socket,

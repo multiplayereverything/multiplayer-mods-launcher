@@ -421,10 +421,20 @@ bool startProcess(const std::wstring& exe, const std::vector<std::wstring>& args
         logger().error(L"Starting failed: " + error);
         return false;
     }
+    // BepInEx (any Doorstop loader) is a winhttp.dll beside the game, which Wine passes over for its own builtin one
+    // unless told.
+    EnvVars vars = env;
+    bool viaWine = argv.size() == args.size() + 2;
+    bool overridden = getenv("WINEDLLOVERRIDES") != nullptr ||
+                      std::any_of(env.begin(), env.end(), [](const auto& x) { return x.first == L"WINEDLLOVERRIDES"; });
+    if (viaWine && !overridden && fs::isFile(fs::join(fs::parent(exe), L"winhttp.dll"))) {
+        logger().info(L"A winhttp.dll loader (BepInEx) is beside it: WINEDLLOVERRIDES=winhttp=n,b");
+        vars.push_back({L"WINEDLLOVERRIDES", L"winhttp=n,b"});
+    }
     std::vector<std::string> block;
-    if (!env.empty()) block = environmentFor(env);
+    if (!vars.empty()) block = environmentFor(vars);
     // Its own session: the game outlives the launcher, as on Windows.
-    pid_t pid = spawn(argv, env.empty() ? nullptr : &block, workDir.empty() ? "" : flOsPath(workDir), -1, false, true,
+    pid_t pid = spawn(argv, vars.empty() ? nullptr : &block, workDir.empty() ? "" : flOsPath(workDir), -1, false, true,
                       error);
     if (!pid) {
         logger().error(L"Starting failed: " + error);

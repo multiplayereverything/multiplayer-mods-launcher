@@ -6,13 +6,31 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
+#[cfg(windows)]
 use windows_sys::Win32::Foundation::{CloseHandle, GENERIC_READ, GENERIC_WRITE, HANDLE, INVALID_HANDLE_VALUE};
+#[cfg(windows)]
 use windows_sys::Win32::Storage::FileSystem::{CreateFileW, OPEN_EXISTING, ReadFile, WriteFile};
+#[cfg(windows)]
 use windows_sys::Win32::System::Pipes::PeekNamedPipe;
+#[cfg(windows)]
 use windows_sys::Win32::System::Threading::GetCurrentProcessId;
 
 use super::json::{Value, serialize};
+#[cfg(windows)]
 use super::paths::wide;
+
+#[cfg(windows)]
+type Pipe = HANDLE;
+#[cfg(windows)]
+const NO_PIPE: Pipe = INVALID_HANDLE_VALUE;
+#[cfg(windows)]
+fn close_pipe(p: Pipe) {
+    unsafe { CloseHandle(p) };
+}
+#[cfg(windows)]
+fn current_pid() -> u32 {
+    unsafe { GetCurrentProcessId() }
+}
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Presence {
@@ -75,6 +93,7 @@ pub fn frame(op: u32, json: &str) -> Vec<u8> {
     buf
 }
 
+#[cfg(windows)]
 fn write_frame(pipe: HANDLE, op: u32, json: &str) -> bool {
     let buf = frame(op, json);
     let mut done = 0u32;
@@ -82,6 +101,7 @@ fn write_frame(pipe: HANDLE, op: u32, json: &str) -> bool {
 }
 
 /// Reads one reply if one arrives within `ms`, without ever blocking longer.
+#[cfg(windows)]
 fn read_frame(pipe: HANDLE, ms: u64) -> Option<(u32, String)> {
     let until = Instant::now() + Duration::from_millis(ms);
     loop {
@@ -118,6 +138,7 @@ fn read_frame(pipe: HANDLE, ms: u64) -> Option<(u32, String)> {
     Some((op, String::from_utf8_lossy(&json).into_owned()))
 }
 
+#[cfg(windows)]
 fn connect_pipe(prefix: &str) -> HANDLE {
     for i in 0..10 {
         let name = wide(&format!("{prefix}{i}"));
@@ -144,7 +165,8 @@ pub struct DiscordPresence {
 
 impl DiscordPresence {
     pub fn new(client_id: &str) -> Self {
-        Self::with_pipe(client_id, r"\\.\pipe\discord-ipc-")
+        // Linux: an empty prefix looks where the Discord app (native, Flatpak or Snap) puts its socket.
+        Self::with_pipe(client_id, if cfg!(windows) { r"\\.\pipe\discord-ipc-" } else { "" })
     }
 
     /// `pipe`: the pipe names without their number (tests stand in for Discord under another name).
@@ -188,14 +210,14 @@ impl Drop for DiscordPresence {
 }
 
 fn run(state: &(Mutex<Wanted>, Condvar), client_id: &str, prefix: &str) {
-    let mut pipe = INVALID_HANDLE_VALUE;
+    let mut pipe = NO_PIPE;
     let mut nonce = 0;
-    let pid = unsafe { GetCurrentProcessId() };
-    let drop_pipe = |pipe: &mut HANDLE| {
-        if *pipe != INVALID_HANDLE_VALUE {
-            unsafe { CloseHandle(*pipe) };
+    let pid = current_pid();
+    let drop_pipe = |pipe: &mut Pipe| {
+        if *pipe != NO_PIPE {
+            close_pipe(*pipe);
         }
-        *pipe = INVALID_HANDLE_VALUE;
+        *pipe = NO_PIPE;
     };
     let mut w = state.0.lock().unwrap();
     while !w.stop {
@@ -204,19 +226,19 @@ fn run(state: &(Mutex<Wanted>, Condvar), client_id: &str, prefix: &str) {
         if w.stop {
             break;
         }
-        if !w.dirty && (pipe != INVALID_HANDLE_VALUE || !w.has) {
+        if !w.dirty && (pipe != NO_PIPE || !w.has) {
             continue;
         }
         let (p, has) = (w.presence.clone(), w.has);
         w.dirty = false;
         drop(w);
-        if pipe == INVALID_HANDLE_VALUE && has {
+        if pipe == NO_PIPE && has {
             pipe = connect_pipe(prefix);
-            if pipe != INVALID_HANDLE_VALUE && !(write_frame(pipe, 0, &handshake(client_id)) && read_frame(pipe, 3000).is_some_and(|(op, _)| op == 1)) {
+            if pipe != NO_PIPE && !(write_frame(pipe, 0, &handshake(client_id)) && read_frame(pipe, 3000).is_some_and(|(op, _)| op == 1)) {
                 drop_pipe(&mut pipe);
             }
         }
-        if pipe != INVALID_HANDLE_VALUE {
+        if pipe != NO_PIPE {
             nonce += 1;
             if !write_frame(pipe, 1, &activity(has.then_some(&p), pid, nonce)) {
                 drop_pipe(&mut pipe);
@@ -232,9 +254,114 @@ fn run(state: &(Mutex<Wanted>, Condvar), client_id: &str, prefix: &str) {
         w = state.0.lock().unwrap();
     }
     drop(w);
-    if pipe != INVALID_HANDLE_VALUE {
+    if pipe != NO_PIPE {
         nonce += 1;
         write_frame(pipe, 1, &activity(None, pid, nonce));
         drop_pipe(&mut pipe);
     }
+}
+
+// ---- Linux (old/src/core/discord.cpp's #else half) -------------------------------------------------------------
+// The Discord app listens on a Unix socket, discord-ipc-N, in $XDG_RUNTIME_DIR (or the temp folder); the Flatpak and
+// Snap builds put theirs one folder down. The frames are the same.
+
+#[cfg(unix)]
+type Pipe = i32;
+#[cfg(unix)]
+const NO_PIPE: Pipe = -1;
+#[cfg(unix)]
+fn close_pipe(p: Pipe) {
+    unsafe { libc::close(p) };
+}
+#[cfg(unix)]
+fn current_pid() -> u32 {
+    std::process::id()
+}
+
+#[cfg(unix)]
+fn write_frame(pipe: Pipe, op: u32, json: &str) -> bool {
+    let buf = frame(op, json);
+    let mut off = 0;
+    while off < buf.len() {
+        let n = unsafe { libc::send(pipe, buf[off..].as_ptr().cast(), buf.len() - off, libc::MSG_NOSIGNAL) };
+        if n <= 0 {
+            return false;
+        }
+        off += n as usize;
+    }
+    true
+}
+
+/// `len` bytes, waiting at most until `until` for each part.
+#[cfg(unix)]
+fn read_exact(pipe: Pipe, buf: &mut [u8], until: Instant) -> bool {
+    let mut off = 0;
+    while off < buf.len() {
+        let left = until.saturating_duration_since(Instant::now()).as_millis().min(i32::MAX as u128) as i32;
+        let mut pfd = libc::pollfd { fd: pipe, events: libc::POLLIN, revents: 0 };
+        if unsafe { libc::poll(&mut pfd, 1, left) } <= 0 {
+            return false;
+        }
+        let n = unsafe { libc::recv(pipe, buf[off..].as_mut_ptr().cast(), buf.len() - off, 0) };
+        if n <= 0 {
+            return false;
+        }
+        off += n as usize;
+    }
+    true
+}
+
+/// Reads one reply if one arrives within `ms`, without ever blocking longer.
+#[cfg(unix)]
+fn read_frame(pipe: Pipe, ms: u64) -> Option<(u32, String)> {
+    let until = Instant::now() + Duration::from_millis(ms);
+    let mut head = [0u8; 8];
+    if !read_exact(pipe, &mut head, until) {
+        return None;
+    }
+    let op = u32::from_le_bytes(head[..4].try_into().unwrap());
+    let len = u32::from_le_bytes(head[4..].try_into().unwrap()) as usize;
+    if len > 1 << 20 {
+        return None;
+    }
+    let mut json = vec![0u8; len];
+    // The body follows the header at once; a second's grace covers a slow app.
+    if !read_exact(pipe, &mut json, until.max(Instant::now() + Duration::from_secs(1))) {
+        return None;
+    }
+    Some((op, String::from_utf8_lossy(&json).into_owned()))
+}
+
+/// The socket prefixes to try: `prefix` itself, or with none, every place a Discord build puts its socket.
+#[cfg(unix)]
+fn socket_prefixes(prefix: &str) -> Vec<String> {
+    if !prefix.is_empty() {
+        return vec![prefix.to_string()];
+    }
+    let mut dirs: Vec<String> = ["XDG_RUNTIME_DIR", "TMPDIR", "TMP", "TEMP"].iter().filter_map(|v| std::env::var(v).ok()).filter(|d| d.starts_with('/')).collect();
+    dirs.push("/tmp".into());
+    let mut out = Vec::new();
+    for d in dirs {
+        let d = d.trim_end_matches('/').to_string();
+        for sub in ["", "app/com.discordapp.Discord/", "app/com.discordapp.DiscordCanary/", "snap.discord/", "snap.discord-canary/"] {
+            let p = format!("{d}/{sub}discord-ipc-");
+            if !out.contains(&p) {
+                out.push(p);
+            }
+        }
+    }
+    out
+}
+
+#[cfg(unix)]
+fn connect_pipe(prefix: &str) -> Pipe {
+    use std::os::fd::IntoRawFd;
+    for p in socket_prefixes(prefix) {
+        for i in 0..10 {
+            if let Ok(s) = std::os::unix::net::UnixStream::connect(format!("{p}{i}")) {
+                return s.into_raw_fd();
+            }
+        }
+    }
+    NO_PIPE
 }

@@ -2,10 +2,14 @@
 //! trailing '\'. The lookups (file attributes, wildcards, PATH, known folders) call the same Windows functions the
 //! C++ launcher calls, so a path that is found there is found here.
 
+#[cfg(windows)]
 use std::ffi::OsString;
+#[cfg(windows)]
 use std::os::windows::ffi::{OsStrExt, OsStringExt};
 
+#[cfg(windows)]
 use windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE;
+#[cfg(windows)]
 use windows_sys::Win32::Storage::FileSystem::{
     FILE_ATTRIBUTE_DIRECTORY, FindClose, FindFirstFileW, FindNextFileW, GetFileAttributesW, GetTempPathW,
     INVALID_FILE_ATTRIBUTES, SearchPathW, WIN32_FIND_DATAW,
@@ -13,10 +17,12 @@ use windows_sys::Win32::Storage::FileSystem::{
 
 use super::text::{iequals, trim};
 
+#[cfg(windows)]
 pub(crate) fn wide(s: &str) -> Vec<u16> {
     std::ffi::OsStr::new(s).encode_wide().chain(std::iter::once(0)).collect()
 }
 
+#[cfg(windows)]
 pub(crate) fn from_wide(w: &[u16]) -> String {
     OsString::from_wide(w).to_string_lossy().into_owned()
 }
@@ -27,6 +33,7 @@ fn is_sep(c: char) -> bool {
 
 /// std::filesystem's lexically_normal on Windows: one separator between parts, "." dropped, "name\.." cancelled,
 /// ".." at a root dropped; a trailing separator is kept when the path ended on one, a "." or a cancelled "..".
+#[cfg(windows)]
 fn lexically_normal(s: &str) -> String {
     if s.is_empty() {
         return String::new();
@@ -95,6 +102,7 @@ fn lexically_normal(s: &str) -> String {
 }
 
 /// Trims quotes and space, uses backslashes, collapses `..`, drops a trailing '\' (not a drive root's).
+#[cfg(windows)]
 pub fn normalize(input: &str) -> String {
     let mut s = trim(input).to_string();
     while s.chars().count() >= 2 && s.starts_with('"') && s.ends_with('"') {
@@ -125,6 +133,7 @@ pub fn normalize(input: &str) -> String {
     out
 }
 
+#[cfg(windows)]
 pub fn is_absolute(p: &str) -> bool {
     let c: Vec<char> = p.chars().take(3).collect();
     if c.len() >= 3 && c[0].is_alphabetic() && c[1] == ':' && c[2] == '\\' {
@@ -134,6 +143,7 @@ pub fn is_absolute(p: &str) -> bool {
 }
 
 /// `child` is `parent_dir` or inside it, compared as Windows compares paths.
+#[cfg(windows)]
 pub fn is_under(child: &str, parent_dir: &str) -> bool {
     let (c, mut p) = (normalize(child), normalize(parent_dir));
     if c.is_empty() || p.is_empty() {
@@ -148,6 +158,7 @@ pub fn is_under(child: &str, parent_dir: &str) -> bool {
     super::text::starts_with_i(&c, &p)
 }
 
+#[cfg(windows)]
 pub fn join(a: &str, b: &str) -> String {
     if a.is_empty() {
         return b.to_string();
@@ -163,6 +174,7 @@ pub fn join(a: &str, b: &str) -> String {
     r.replace('/', "\\")
 }
 
+#[cfg(windows)]
 pub fn parent(path: &str) -> String {
     let Some(pos) = path.rfind(is_sep) else { return String::new() };
     let b = path.as_bytes();
@@ -183,6 +195,7 @@ pub fn file_name(path: &str) -> String {
 }
 
 /// Paths of 240 characters and more go to Windows with the \\?\ prefix, as in the C++ launcher.
+#[cfg(windows)]
 pub(crate) fn long_path(p: &str) -> String {
     if p.encode_utf16().count() < 240 || p.starts_with("\\\\?\\") {
         return p.to_string();
@@ -193,6 +206,7 @@ pub(crate) fn long_path(p: &str) -> String {
     format!("\\\\?\\{p}")
 }
 
+#[cfg(windows)]
 fn attrs(p: &str) -> u32 {
     if p.is_empty() {
         return INVALID_FILE_ATTRIBUTES;
@@ -201,21 +215,25 @@ fn attrs(p: &str) -> u32 {
     unsafe { GetFileAttributesW(w.as_ptr()) }
 }
 
+#[cfg(windows)]
 pub fn is_dir(p: &str) -> bool {
     let a = attrs(p);
     a != INVALID_FILE_ATTRIBUTES && a & FILE_ATTRIBUTE_DIRECTORY != 0
 }
 
+#[cfg(windows)]
 pub fn is_file(p: &str) -> bool {
     let a = attrs(p);
     a != INVALID_FILE_ATTRIBUTES && a & FILE_ATTRIBUTE_DIRECTORY == 0
 }
 
+#[cfg(windows)]
 pub fn exists(p: &str) -> bool {
     attrs(p) != INVALID_FILE_ATTRIBUTES
 }
 
 /// A drive root, a share, Windows or one of the user's top folders: never replaced or emptied as an install folder.
+#[cfg(windows)]
 pub fn is_dangerous_root(path: &str) -> bool {
     let n = normalize(path);
     if n.encode_utf16().count() <= 3 {
@@ -235,6 +253,7 @@ pub fn is_dangerous_root(path: &str) -> bool {
 }
 
 /// MoveFileExW, with Windows' error code when it refuses.
+#[cfg(windows)]
 pub fn move_file(from: &str, to: &str, replace: bool) -> Result<(), u32> {
     use windows_sys::Win32::Storage::FileSystem::{MOVEFILE_REPLACE_EXISTING, MoveFileExW};
     let (f, t) = (wide(&long_path(from)), wide(&long_path(to)));
@@ -245,6 +264,7 @@ pub fn move_file(from: &str, to: &str, replace: bool) -> Result<(), u32> {
     }
 }
 
+#[cfg(windows)]
 pub fn delete_file(path: &str) {
     let w = wide(&long_path(path));
     unsafe { windows_sys::Win32::Storage::FileSystem::DeleteFileW(w.as_ptr()) };
@@ -307,6 +327,7 @@ pub fn sha256_file(path: &str) -> String {
     h.finalize().iter().map(|b| format!("{b:02x}")).collect()
 }
 
+#[cfg(windows)]
 pub fn temp_dir() -> String {
     let mut buf = [0u16; 261];
     let n = unsafe { GetTempPathW(buf.len() as u32, buf.as_mut_ptr()) } as usize;
@@ -332,6 +353,7 @@ pub fn full_path(p: &str) -> String {
 
 /// Desktop, StartMenu, Documents, LocalAppData, RoamingAppData, ProgramFiles, ProgramFilesX86, SavedGames, Profile,
 /// Windows, ProgramData, PublicDesktop, CommonStartMenu and Temp, for `${folder:...}`.
+#[cfg(windows)]
 pub fn known_folder(name: &str) -> String {
     use windows_sys::Win32::System::Com::CoTaskMemFree;
     use windows_sys::Win32::UI::Shell::*;
@@ -368,6 +390,7 @@ pub fn known_folder(name: &str) -> String {
 }
 
 /// The files (not folders) a wildcard pattern matches, as FindFirstFile matches them.
+#[cfg(windows)]
 pub fn find_files(pattern: &str) -> Vec<String> {
     let w = wide(&long_path(pattern));
     let mut fd: WIN32_FIND_DATAW = unsafe { std::mem::zeroed() };
@@ -391,6 +414,7 @@ pub fn find_files(pattern: &str) -> Vec<String> {
 
 /// A bare program name looked up the way SearchPath does (the program's folder, the current folder, the system
 /// folders, then PATH). Empty when it isn't anywhere.
+#[cfg(windows)]
 pub fn search_path(name: &str) -> String {
     let w = wide(name);
     let mut buf = vec![0u16; 260 * 4];
@@ -402,7 +426,7 @@ pub fn search_path(name: &str) -> String {
     from_wide(&buf[..n])
 }
 
-#[cfg(test)]
+#[cfg(all(test, windows))]
 mod tests {
     use super::*;
 
@@ -429,5 +453,323 @@ mod tests {
         assert_eq!(parent("x"), "");
         assert_eq!(file_name("C:\\a\\b.swf"), "b.swf");
         assert!(is_absolute("C:\\x") && is_absolute("\\\\srv\\x") && !is_absolute("covers\\x.png"));
+    }
+}
+
+// ---- Linux (old/src/core/fs.cpp's #else half and the Win32 layer under it) ------------------------------------
+// '/' paths. A '\' from launcher.json or a mod spec ("${GAME_DIR}\Mods") is a separator here too, so the shared
+// configs work unchanged; results always use '/'. Names are matched ignoring case, as on Windows (posix::os_path).
+
+/// std::filesystem's lexically_normal on Linux.
+#[cfg(unix)]
+fn lexically_normal(s: &str) -> String {
+    if s.is_empty() {
+        return String::new();
+    }
+    let root = s.starts_with('/');
+    let raw: Vec<&str> = s.split('/').collect();
+    let mut parts: Vec<&str> = Vec::new();
+    let mut trailing = false;
+    let n = raw.len();
+    for (k, p) in raw.iter().enumerate() {
+        if p.is_empty() {
+            if k + 1 == n && k > 0 {
+                trailing = true;
+            }
+            continue;
+        }
+        trailing = false;
+        match *p {
+            "." => trailing = true,
+            ".." if parts.last().is_some_and(|l| *l != "..") => {
+                parts.pop();
+                trailing = true;
+            }
+            ".." if root => trailing = true,
+            _ => parts.push(p),
+        }
+    }
+    let mut out = if root { "/".to_string() } else { String::new() };
+    if parts.is_empty() {
+        return if out.is_empty() { ".".into() } else { out };
+    }
+    out.push_str(&parts.join("/"));
+    if trailing && parts.last() != Some(&"..") {
+        out.push('/');
+    }
+    out
+}
+
+/// Trims quotes and space, uses '/', collapses `..`, drops a trailing '/' (not the root's).
+#[cfg(unix)]
+pub fn normalize(input: &str) -> String {
+    let mut s = trim(input).to_string();
+    while s.chars().count() >= 2 && s.starts_with('"') && s.ends_with('"') {
+        s = trim(&s[1..s.len() - 1]).to_string();
+    }
+    if s.is_empty() {
+        return String::new();
+    }
+    let mut out = lexically_normal(&s.replace('\\', "/"));
+    while out.len() > 1 && out.ends_with('/') {
+        out.pop();
+    }
+    out
+}
+
+#[cfg(unix)]
+pub fn is_absolute(p: &str) -> bool {
+    p.starts_with(is_sep)
+}
+
+/// `child` is `parent_dir` or inside it.
+#[cfg(unix)]
+pub fn is_under(child: &str, parent_dir: &str) -> bool {
+    let (c, mut p) = (normalize(child), normalize(parent_dir));
+    if c.is_empty() || p.is_empty() {
+        return false;
+    }
+    if c == p {
+        return true;
+    }
+    if !p.ends_with('/') {
+        p.push('/');
+    }
+    c.starts_with(&p)
+}
+
+#[cfg(unix)]
+pub fn join(a: &str, b: &str) -> String {
+    if a.is_empty() {
+        return b.to_string();
+    }
+    if b.is_empty() {
+        return a.to_string();
+    }
+    let mut r = a.to_string();
+    if !r.ends_with(is_sep) {
+        r.push('/');
+    }
+    r.push_str(b.trim_start_matches(is_sep));
+    r.replace('\\', "/")
+}
+
+#[cfg(unix)]
+pub fn parent(path: &str) -> String {
+    match path.rfind(is_sep) {
+        None => String::new(),
+        Some(0) if path.len() > 1 => "/".into(),
+        Some(0) => String::new(),
+        Some(pos) => path[..pos].to_string(),
+    }
+}
+
+/// The path as Linux finds it (posix::os_path). The name comes from the Windows side, where it adds \\?\.
+#[cfg(unix)]
+pub(crate) fn long_path(p: &str) -> String {
+    super::posix::os_path(p)
+}
+
+#[cfg(unix)]
+fn stat(p: &str) -> Option<std::fs::Metadata> {
+    if p.is_empty() {
+        return None;
+    }
+    let lp = long_path(p);
+    std::fs::metadata(&lp).or_else(|_| std::fs::symlink_metadata(&lp)).ok()
+}
+
+#[cfg(unix)]
+pub fn is_dir(p: &str) -> bool {
+    stat(p).is_some_and(|m| m.is_dir())
+}
+
+#[cfg(unix)]
+pub fn is_file(p: &str) -> bool {
+    stat(p).is_some_and(|m| !m.is_dir())
+}
+
+#[cfg(unix)]
+pub fn exists(p: &str) -> bool {
+    stat(p).is_some()
+}
+
+/// The root, a system folder or one of the user's top folders: never replaced or emptied as an install folder.
+#[cfg(unix)]
+pub fn is_dangerous_root(path: &str) -> bool {
+    let n = normalize(path);
+    if n.len() <= 1 {
+        return true;
+    }
+    const TOP: [&str; 19] = [
+        "/usr", "/etc", "/bin", "/sbin", "/lib", "/lib64", "/boot", "/dev", "/proc", "/sys", "/var", "/opt", "/home",
+        "/root", "/run", "/srv", "/mnt", "/media", "/tmp",
+    ];
+    if TOP.contains(&n.as_str()) {
+        return true;
+    }
+    for r in ["Profile", "Desktop", "Documents"] {
+        let k = known_folder(r);
+        if !k.is_empty() && normalize(&k) == n {
+            return true;
+        }
+    }
+    ["/usr", "/etc", "/bin", "/sbin", "/boot", "/proc", "/sys", "/dev"].iter().any(|s| is_under(&n, s))
+}
+
+/// MoveFileExW as the C++ launcher's Win32 layer does it, with the Windows error code when it refuses.
+#[cfg(unix)]
+pub fn move_file(from: &str, to: &str, replace: bool) -> Result<(), u32> {
+    use super::posix::*;
+    let (f, mut t) = (long_path(from), long_path(to));
+    let src = std::fs::symlink_metadata(&f).map_err(|e| win32_from_io(&e))?;
+    if let Ok(dst) = std::fs::symlink_metadata(&t) {
+        if same_file(&src, &dst) {
+            // Renaming to another case of the same name: use the name as asked.
+            t = format!("{}{}", &t[..t.rfind('/').map_or(0, |i| i + 1)], file_name(to));
+        } else if !replace {
+            return Err(ERROR_ALREADY_EXISTS);
+        } else if dst.is_dir() {
+            return Err(ERROR_ACCESS_DENIED);
+        }
+    }
+    match std::fs::rename(&f, &t) {
+        Ok(()) => Ok(()),
+        Err(e) if e.raw_os_error() == Some(libc::ENOENT) => {
+            Err(if is_dir(&parent(&t)) { ERROR_FILE_NOT_FOUND } else { ERROR_PATH_NOT_FOUND })
+        }
+        Err(e) => Err(win32_from_io(&e)),
+    }
+}
+
+#[cfg(unix)]
+pub fn delete_file(path: &str) {
+    let _ = std::fs::remove_file(long_path(path));
+}
+
+/// $TMPDIR (or $TMP, $TEMP) when it is absolute, else /tmp.
+#[cfg(unix)]
+pub fn temp_dir() -> String {
+    let t = ["TMPDIR", "TMP", "TEMP"]
+        .iter()
+        .filter_map(|v| std::env::var(v).ok())
+        .find(|v| v.starts_with('/'))
+        .unwrap_or_else(|| "/tmp".into());
+    normalize(&t)
+}
+
+#[cfg(unix)]
+fn env_dir(var: &str, fallback: &str) -> String {
+    std::env::var(var).ok().filter(|v| v.starts_with('/')).unwrap_or_else(|| fallback.to_string())
+}
+
+/// XDG_DESKTOP_DIR="$HOME/Desktop" in ~/.config/user-dirs.dirs, as xdg-user-dir reads it.
+#[cfg(unix)]
+fn user_dir(key: &str, fallback: &str) -> String {
+    let home = env_dir("HOME", "/tmp");
+    let file = format!("{}/user-dirs.dirs", env_dir("XDG_CONFIG_HOME", &format!("{home}/.config")));
+    if let Ok(text) = std::fs::read_to_string(file) {
+        let prefix = format!("{key}=\"");
+        for line in text.lines() {
+            let Some(v) = line.strip_prefix(&prefix).and_then(|r| r.strip_suffix('"')) else { continue };
+            if let Some(rest) = v.strip_prefix("$HOME") {
+                return format!("{home}{rest}");
+            }
+            if v.starts_with('/') {
+                return v.to_string();
+            }
+        }
+    }
+    format!("{home}/{fallback}")
+}
+
+/// The Windows folder names launcher.json uses, mapped to their Linux places. Program Files, Windows and
+/// ProgramData have none: a Windows game's copy of them is inside its Proton prefix.
+#[cfg(unix)]
+pub fn known_folder(name: &str) -> String {
+    let home = env_dir("HOME", "/tmp");
+    let data = env_dir("XDG_DATA_HOME", &format!("{home}/.local/share"));
+    match name.to_ascii_lowercase().as_str() {
+        "temp" => temp_dir(),
+        "profile" => home,
+        "desktop" => user_dir("XDG_DESKTOP_DIR", "Desktop"),
+        "documents" => user_dir("XDG_DOCUMENTS_DIR", "Documents"),
+        "localappdata" | "savedgames" => data,
+        "roamingappdata" => env_dir("XDG_CONFIG_HOME", &format!("{home}/.config")),
+        "startmenu" => format!("{data}/applications"),
+        "commonstartmenu" => "/usr/share/applications".into(),
+        _ => String::new(),
+    }
+}
+
+/// The files (not folders) a wildcard pattern matches, as FindFirstFile matches them: ignoring case.
+#[cfg(unix)]
+pub fn find_files(pattern: &str) -> Vec<String> {
+    let (dir, mask) = match pattern.rfind(is_sep) {
+        Some(0) => ("/".to_string(), &pattern[1..]),
+        Some(i) => (pattern[..i].to_string(), &pattern[i + 1..]),
+        None => (".".to_string(), pattern),
+    };
+    let Ok(rd) = std::fs::read_dir(long_path(&dir)) else { return Vec::new() };
+    let wild = mask.contains(['*', '?']);
+    let mask_chars: Vec<char> = mask.chars().collect();
+    let mut names = Vec::new();
+    for e in rd.flatten() {
+        let name = e.file_name().to_string_lossy().into_owned();
+        let hit = if wild { super::posix::wild_match(&mask_chars, &name.chars().collect::<Vec<_>>()) } else { iequals(&name, mask) };
+        if hit && !std::fs::metadata(e.path()).is_ok_and(|m| m.is_dir()) {
+            names.push(name);
+        }
+    }
+    names
+}
+
+/// A bare program name looked up on PATH; "node.exe" is "node" here. Empty when it isn't anywhere.
+#[cfg(unix)]
+pub fn search_path(name: &str) -> String {
+    use std::os::unix::fs::PermissionsExt;
+    let mut names = vec![name.to_string()];
+    if name.len() > 4 && name.is_char_boundary(name.len() - 4) && name[name.len() - 4..].eq_ignore_ascii_case(".exe") {
+        names.push(name[..name.len() - 4].to_string());
+    }
+    let dirs = std::env::var("PATH").unwrap_or_else(|_| "/usr/local/bin:/usr/bin:/bin".into());
+    for d in dirs.split([':', ';']).filter(|d| !d.is_empty()) {
+        for n in &names {
+            let full = format!("{d}/{n}");
+            if std::fs::metadata(&full).is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0) {
+                return full;
+            }
+        }
+    }
+    String::new()
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalize_like_the_cpp_launcher() {
+        assert_eq!(normalize("  \"/games/x/../y/\" "), "/games/y");
+        assert_eq!(normalize("/"), "/");
+        assert_eq!(normalize("/a/../.."), "/");
+        assert_eq!(normalize("a/.."), ".");
+        assert_eq!(normalize("..\\x\\.\\y"), "../x/y");
+        assert_eq!(normalize("${GAME_DIR}\\Mods\\"), "${GAME_DIR}/Mods");
+        assert_eq!(normalize(""), "");
+    }
+
+    #[test]
+    fn join_parent_and_name() {
+        assert_eq!(join("/a", "\\b\\c"), "/a/b/c");
+        assert_eq!(join("/a/", "b"), "/a/b");
+        assert_eq!(parent("/a"), "/");
+        assert_eq!(parent("/"), "");
+        assert_eq!(parent("/a/b.swf"), "/a");
+        assert_eq!(parent("x"), "");
+        assert_eq!(file_name("/a/b.swf"), "b.swf");
+        assert!(is_absolute("/x") && !is_absolute("covers/x.png"));
+        assert!(is_under("/a/b/c", "/a/b") && !is_under("/a/bc", "/a/b"));
+        assert!(is_dangerous_root("/") && is_dangerous_root("/usr/lib") && !is_dangerous_root("/home/x/Games"));
     }
 }

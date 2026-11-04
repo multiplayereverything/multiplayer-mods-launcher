@@ -4,7 +4,9 @@
 //! --wait [--tv] [--coop-save X] [--join CODE] [--address A]` did, without the C++ launcher; its exit codes and
 //! messages are kept, as the window shows them. PC mods still start through the C++ launcher (PORTING.md part 6).
 
+#[cfg(windows)]
 use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, WAIT_OBJECT_0};
+#[cfg(windows)]
 use windows_sys::Win32::System::Threading::{CreateEventW, SetEvent, WaitForMultipleObjects, WaitForSingleObject};
 
 use super::catalog::{GameOptions, cached_catalog_settings};
@@ -36,17 +38,22 @@ pub struct Request {
 
 /// Ends a running launch from another thread (Stop hosting), as killing the C++ launcher did: the relay, the web
 /// server and the game's server stop, the player keeps running, and its time isn't added.
+#[cfg(windows)]
 pub struct Stop(HANDLE);
 
+#[cfg(windows)]
 unsafe impl Send for Stop {}
+#[cfg(windows)]
 unsafe impl Sync for Stop {}
 
+#[cfg(windows)]
 impl Default for Stop {
     fn default() -> Self {
         Stop(unsafe { CreateEventW(std::ptr::null(), 1, 0, std::ptr::null()) })
     }
 }
 
+#[cfg(windows)]
 impl Stop {
     pub fn set(&self) {
         unsafe { SetEvent(self.0) };
@@ -56,9 +63,26 @@ impl Stop {
     }
 }
 
+#[cfg(windows)]
 impl Drop for Stop {
     fn drop(&mut self) {
         unsafe { CloseHandle(self.0) };
+    }
+}
+
+/// Linux: a flag and a condition variable stand in for the event.
+#[cfg(unix)]
+#[derive(Default)]
+pub struct Stop(std::sync::Mutex<bool>, std::sync::Condvar);
+
+#[cfg(unix)]
+impl Stop {
+    pub fn set(&self) {
+        *self.0.lock().unwrap() = true;
+        self.1.notify_all();
+    }
+    pub fn is_set(&self) -> bool {
+        *self.0.lock().unwrap()
     }
 }
 
@@ -68,12 +92,38 @@ enum Waited {
     Timeout,
 }
 
+#[cfg(windows)]
 fn wait(p: &Process, stop: &Stop, ms: u32) -> Waited {
     let handles = [p.raw(), stop.0];
     match unsafe { WaitForMultipleObjects(2, handles.as_ptr(), 0, ms) } {
         WAIT_OBJECT_0 => Waited::Exited,
         x if x == WAIT_OBJECT_0 + 1 => Waited::Stopped,
         _ => Waited::Timeout,
+    }
+}
+
+
+/// Linux: the player is looked at every 50 ms; Stop wakes it at once. u32::MAX waits for ever, as INFINITE does.
+#[cfg(unix)]
+fn wait(p: &Process, stop: &Stop, ms: u32) -> Waited {
+    let until = (ms != u32::MAX).then(|| std::time::Instant::now() + std::time::Duration::from_millis(ms as u64));
+    let mut set = stop.0.lock().unwrap();
+    loop {
+        if !p.running() {
+            return Waited::Exited;
+        }
+        if *set {
+            return Waited::Stopped;
+        }
+        let mut step = std::time::Duration::from_millis(50);
+        if let Some(u) = until {
+            let left = u.saturating_duration_since(std::time::Instant::now());
+            if left.is_zero() {
+                return Waited::Timeout;
+            }
+            step = step.min(left);
+        }
+        set = stop.1.wait_timeout(set, step).unwrap().0;
     }
 }
 

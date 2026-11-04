@@ -7,6 +7,9 @@ import { useEffect, useRef, useState } from 'react'
 
 type Dir = 'up' | 'down' | 'left' | 'right'
 
+// WebKitGTK builds without gamepad support have no getGamepads at all.
+const gamepads = () => navigator.getGamepads?.() ?? []
+
 const FOCUSABLE = 'button:not([disabled]), a[href], input, [tabindex]:not([tabindex="-1"])'
 
 function visible(el: HTMLElement): boolean {
@@ -74,13 +77,13 @@ export function usePad(handlers: PadHandlers): boolean {
     let repeatDir: Dir | null = null
     let repeatAt = 0
     const onChange = () => {
-      const any = [...navigator.getGamepads()].some(Boolean)
+      const any = [...gamepads()].some(Boolean)
       setConnected(any)
       if (any && !raf) raf = requestAnimationFrame(tick)
     }
     const tick = () => {
       raf = 0
-      const pad = [...navigator.getGamepads()].find(Boolean)
+      const pad = [...gamepads()].find(Boolean)
       if (!pad) return
       const now = performance.now()
       const stick = (i: number) => pad.axes[i] ?? 0

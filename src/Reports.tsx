@@ -73,7 +73,7 @@ export function RunAsk({ ask, tv, onSent, onClose }: { ask: RunAskRequest; tv: b
       {!verdict ? (
         <>
           <b>How did {ask.game.name} run?</b>
-          <small>It helps other players. Shows on its page with your graphics card and Windows version, no name.</small>
+          <small>It helps other players. Shows on its page with your graphics card and {/Windows NT/.test(navigator.userAgent) || !/Linux/.test(navigator.userAgent) ? 'Windows' : 'Linux'} version, no name.</small>
           <div className="rv">
             {VERDICTS.map((v) => (
               <button key={v.id} className={`btn v-${v.id}`} disabled={sending} onClick={() => pick(v.id)}>

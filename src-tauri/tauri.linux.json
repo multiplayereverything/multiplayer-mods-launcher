@@ -1,0 +1,13 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "mainBinaryName": "MultiplayerEverything",
+  "bundle": {
+    "targets": ["appimage"],
+    "linux": {
+      "appimage": {
+        "bundleMediaFramework": false,
+        "files": { "/usr/bin/MultiplayerEverythingLauncher": "engine/MultiplayerEverythingLauncher" }
+      }
+    }
+  }
+}

@@ -21,13 +21,15 @@ const args = process.argv.slice(2)
 const keep = args.includes('--keep')
 const only = args.includes('--only') ? args[args.indexOf('--only') + 1].split(',') : null
 
-const cpp = process.env.FL_LAUNCHER_EXE ?? join(root, 'old', 'build', 'Release', 'MultiplayerEverythingLauncher.exe')
+const win = process.platform === 'win32'
+const exe = win ? '.exe' : ''
+const cpp = process.env.FL_LAUNCHER_EXE ?? (win ? join(root, 'old', 'build', 'Release', 'MultiplayerEverythingLauncher.exe') : join(root, 'old', 'build-linux', 'MultiplayerEverythingLauncher'))
 if (!existsSync(cpp)) throw new Error(`No C++ launcher at ${cpp}: run old\\build.ps1 or set FL_LAUNCHER_EXE`)
 
 console.log('Building the Rust side (cargo build --example rooms_json)...')
 const b = spawnSync('cargo', ['build', '--example', 'rooms_json', '--quiet'], { cwd: join(root, 'src-tauri'), stdio: 'inherit', shell: true })
 if (b.status !== 0) process.exit(1)
-const rust = join(root, 'src-tauri', 'target', 'debug', 'examples', 'rooms_json.exe')
+const rust = join(root, 'src-tauri', 'target', 'debug', 'examples', `rooms_json${exe}`)
 
 const work = join(tmpdir(), 'fl-parity-rooms')
 rmSync(work, { recursive: true, force: true })

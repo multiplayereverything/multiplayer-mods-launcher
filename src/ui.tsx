@@ -1,4 +1,5 @@
 // The pieces every page uses: box-art tiles, shelves that page sideways, pickers, switches and a menu.
+import { iconPaths } from './iconPaths'
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { Cover } from './Cover'
 import type { Game, Library, ModInfo } from './api'
@@ -21,11 +22,26 @@ interface TileProps {
   onOpen: () => void
 }
 
+const hasSegoeIcons = navigator.userAgent.includes('Windows')
+
 // A glyph from Segoe Fluent Icons, as launcher.json and the C++ window name them: the character or its hex code.
 export function Glyph({ code, className, size }: { code: string; className?: string; size?: number }) {
   if (!code) return null
-  const ch = /^[0-9A-F]{4}$/i.test(code) ? String.fromCodePoint(parseInt(code, 16)) : code
-  return <i className={`glyph ${className ?? ''}`} style={size ? { fontSize: size } : undefined} aria-hidden="true">{ch}</i>
+  const hex = /^[0-9A-F]{4}$/i.test(code)
+  const ch = hex ? String.fromCodePoint(parseInt(code, 16)) : code
+  const style = size ? { fontSize: size } : undefined
+  // That font comes with Windows only. Elsewhere the same codes draw from our own set; one we don't have draws nothing.
+  if (!hasSegoeIcons && (hex || ch.charCodeAt(0) >= 0xe000)) {
+    const key = ch.codePointAt(0)!.toString(16).toUpperCase()
+    const filled = key === 'E735'
+    return (
+      <i className={`glyph ${className ?? ''}`} style={style} aria-hidden="true">
+        <svg className="glyph-svg" viewBox="0 0 24 24" fill={filled ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2"
+          strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: iconPaths[key] ?? '' }} />
+      </i>
+    )
+  }
+  return <i className={`glyph ${className ?? ''}`} style={style} aria-hidden="true">{ch}</i>
 }
 
 // The website's quality grade: a rounded square with the letter, in the grade's color.

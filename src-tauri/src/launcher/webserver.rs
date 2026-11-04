@@ -4,13 +4,17 @@
 
 use std::io::{Read, Write};
 use std::net::{Shutdown, TcpListener, TcpStream};
+#[cfg(windows)]
 use std::os::windows::io::FromRawSocket;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
+#[cfg(windows)]
 use windows_sys::Win32::Networking::WinSock::{INADDR_LOOPBACK, SOCKADDR, SOCKADDR_IN, WSACleanup, getsockname};
+#[cfg(unix)]
+use super::posix::winsock::{INADDR_LOOPBACK, SOCKADDR, SOCKADDR_IN, WSACleanup, getsockname};
 
 use super::http::win32_error_message;
 use super::log;
@@ -96,7 +100,10 @@ impl WebServer {
         unsafe { getsockname(s, (&mut addr as *mut SOCKADDR_IN).cast::<SOCKADDR>(), &mut len) };
         self.port = u16::from_be(addr.sin_port) as i32;
         let root = paths::normalize(root);
+        #[cfg(windows)]
         let listener = unsafe { TcpListener::from_raw_socket(s as u64) };
+        #[cfg(unix)]
+        let listener = unsafe { <TcpListener as std::os::fd::FromRawFd>::from_raw_fd(s) };
         self.stop = Arc::new(AtomicBool::new(false));
         let (stop, workers, served) = (self.stop.clone(), self.workers.clone(), root.clone());
         self.thread = Some(std::thread::spawn(move || {
