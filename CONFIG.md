@@ -38,7 +38,7 @@ Any path or argument can use these:
 | `downloads` | | See below |
 | `rooms` | | See below |
 | `discord` | | `{ "clientId": "<application id>" }`: Discord shows "Playing <game>" and the room code. Empty or missing: off. |
-| `updates` | | `{ "github": "owner/repo", "asset": "MultiplayerEverythingLauncher.exe" }`: the launcher installs newer releases of itself (checked against GitHub's SHA-256; a release without one is refused). Missing: no updates. |
+| `updates` | | `{ "github": "owner/repo", "asset": "MultiplayerEverythingLauncher.exe" }`: the launcher installs newer releases of itself (checked against GitHub's SHA-256; a release without one is refused). Missing: no updates. With `"app"` (the app's installer in the same releases, a file-name pattern) and `"appExe"` (where it installs) the C++ window hands over: started on its own it installs the app once, then only opens it. Give both or neither. |
 | `players` | required | Flash players, tried in this order |
 | `categories` | `[]` | Sidebar entries: `{ "id", "name", "icon", "group" }`; `icon` is a Segoe Fluent Icons code, e.g. `"E774"` (globe). Entries with the same `group` sit together and a line separates groups (the shipped config has *PC mods* and *Flash mods* in one, the kinds of game in another). |
 | `games` | required | The library |

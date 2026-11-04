@@ -1205,6 +1205,13 @@ pub fn load_config(text: &[u8], config_dir: &str) -> LoadResult {
             s.str("github", &mut c.updates.github);
             s.str("asset", &mut c.updates.asset);
             s.str("api", &mut c.updates.api);
+            // Read by the C++ launcher alone (its hand-over to this app); checked here so both accept one file.
+            let (mut app, mut app_exe) = (String::new(), String::new());
+            s.str("app", &mut app);
+            s.str("appExe", &mut app_exe);
+            if app.is_empty() != app_exe.is_empty() {
+                s.error(if app.is_empty() { "app" } else { "appExe" }, "give both \"app\" (the installer's file name) and \"appExe\" (where it installs)");
+            }
             if !c.updates.github.is_empty() && !c.updates.github.contains('/') {
                 s.error("github", "must look like \"owner/repo\"");
             }

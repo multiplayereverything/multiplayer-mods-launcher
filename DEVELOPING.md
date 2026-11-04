@@ -82,11 +82,13 @@ sandbox, and it works the same for clicking through one by hand.
 ## Release build
 
 ```powershell
-.\scripts\release.ps1
+.\scripts\release.ps1 -Notes 'What changed, for players'
 ```
 
 It builds and tests the C++ launcher (Release), copies it to `src-tauri/engine/`, runs the quick tests, and builds
-the installer with `src-tauri/tauri.release.json`. The installer puts `MultiplayerEverything.exe` next to
+the installer with `src-tauri/tauri.release.json`, signed for the updater. The files to attach to the GitHub release
+(tag `v<version>`) land in `release\v<version>\`: `MultiplayerEverything-setup.exe`, `latest.json` and
+`MultiplayerEverythingLauncher.exe`. Nothing is published. The installer puts `MultiplayerEverything.exe` next to
 `MultiplayerEverythingLauncher.exe`, which is where the window looks for the launcher, and installs WebView2 if
 the PC lacks it. It is for the current user only, so no admin prompt. Nothing is published.
 
@@ -96,4 +98,25 @@ first-run setup. Run again, it writes the files over the installed ones; setting
 Tauri's installer script is `src-tauri/installer/installer.nsi` (its changes are marked "Multiplayer
 Everything:"; carry them over when updating tauri-cli) and the screen is `src-tauri/installer/ui.nsh`.
 
-Not done yet: signing, and updates for the window itself. Those need a signing key and a release feed.
+### Updates
+
+The version is in two places, `src-tauri/tauri.conf.json` and `old/CMakeLists.txt`; `build.rs` stops a build where
+they differ. Raise both for a release.
+
+- **The app** updates itself with Tauri's updater. Once per start (when Settings allows updates) it reads
+  `latest.json` from the newest release and offers a newer version; "Update now" downloads the installer, checks
+  its minisign signature against `plugins.updater.pubkey` in tauri.conf.json, and runs it passive (`/P /UPDATE /R`):
+  the app closes and the installer opens the new version. The button waits while a game runs, a room is open or a
+  download or mod job is busy. The private key is `~\.tauri\multiplayer-everything.key` on the release PC (or
+  `TAURI_SIGNING_PRIVATE_KEY`), never in the repository. Keep a copy somewhere safe: without it no installed app
+  takes another update. Development builds also read `FL_UPDATE_ENDPOINT` and `FL_UPDATE_PUBKEY` (the lab's local
+  feed); a release build ignores them.
+- **Players on the C++ launcher (1.0.41 and older)** update themselves to the release's
+  `MultiplayerEverythingLauncher.exe`. From 1.0.42 that exe hands over (launcher.json `updates.app` and
+  `updates.appExe`): started on its own and online, it downloads `MultiplayerEverything-setup.exe` from the same
+  release (checked by GitHub's SHA-256), runs it and closes; once the app is installed it only opens the app. The
+  website's download button (`releases/latest/download/MultiplayerEverythingLauncher.exe`) leads to the app the same
+  way. Settings, favorites, play stats, games and players are already shared: both use
+  `%LOCALAPPDATA%\MultiplayerEverything\MultiplayerEverythingLauncher` and the Documents folders in launcher.json.
+
+Not done yet: signing the exe files themselves (SmartScreen warns about a new download).

@@ -114,6 +114,7 @@ pub const DEFAULT_TEXTS: &[(&str, &str)] = &[
     ("phase.rollback", "Undoing changes\u{2026}"),
     ("update.player", "${PLAYER} is installed."),
     ("update.nextTime", "Multiplayer Everything Launcher ${VERSION} is installed and starts next time."),
+    ("update.appNextTime", "The new Multiplayer Everything app installs the next time you start the launcher."),
     ("settings.autoUpdate", "Update the launcher automatically"),
     ("discord.room", "Room ${CODE}"),
     ("search.cue", "Search games  (Ctrl+F)"),

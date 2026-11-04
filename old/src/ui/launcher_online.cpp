@@ -518,7 +518,22 @@ void Launcher::startUpdateCheck() {
     InstallSpec source = cfg_.updates.source;
     std::vector<PlayerSpec> players = cfg_.players;
     Vars vars = lib_.vars();
-    updateThread_ = std::thread([wnd, selfUpdate, source, players, vars, this] {
+    // Not installed yet, the app that replaces this window (main.cpp opens it once it is): its installer comes
+    // from the same releases. Afterwards this window stays as it is; the app updates itself.
+    std::wstring appInstaller;
+    if (selfUpdate && cfg_.updates.handsOver() && !fs::isFile(fs::normalize(vars.expand(cfg_.updates.appExe))))
+        appInstaller = fs::join(lib_.dataDir(), L"MultiplayerEverything-setup.exe");
+    std::wstring appPattern = cfg_.updates.app;
+    updateThread_ = std::thread([wnd, selfUpdate, source, players, vars, appInstaller, appPattern, this] {
+        if (!appInstaller.empty()) {
+            UpdateResult r = downloadApp(source, appPattern, appInstaller, &installCancel_);
+            if (r.ok) {
+                logger().info(L"Downloaded the app's installer (" + r.version + L")");
+                PostMessageW(wnd, WM_APP_HANDOVER, 0, reinterpret_cast<LPARAM>(new std::wstring(appInstaller)));
+                return;
+            }
+            logger().warn(L"The app's installer: " + r.error);
+        }
         if (selfUpdate) {
             UpdateResult r = updateSelf(source, LAUNCHER_VERSION, fs::selfExePath(), &installCancel_);
             if (!r.ok) {
@@ -559,6 +574,27 @@ void Launcher::onPlayerUpdated(const std::wstring& what) {
     lib_.refresh();
     toast(cfg_.t("update.player", {{L"PLAYER", what}}), theme_.c.success);
     select(selected_);
+}
+
+void Launcher::onHandover(const std::wstring& installer) {
+    // The installer opens the app when it is done, and from then on this launcher only opens the app (main.cpp).
+    // While a game runs or a room is open the window stays; the installer runs at the next start.
+    bool busy = !sessions_.empty() || relay_.running() || installing_ || (lobby_ && lobby_->running()) || settingsWnd_ ||
+                (lobbyWnd_ && IsWindowVisible(lobbyWnd_));
+    if (busy) {
+        toast(cfg_.t("update.appNextTime"), theme_.c.success);
+        return;
+    }
+    save();
+    sys::Started p;
+    std::wstring err;
+    if (!sys::startProcess(installer, {}, fs::parent(installer), p, err)) {
+        notice(err, theme_.c.error);
+        return;
+    }
+    CloseHandle(p.process);
+    logger().info(L"Started " + installer + L"; this window closes");
+    PostMessageW(hwnd_, WM_CLOSE, 0, 0);
 }
 
 void Launcher::onUpdated(const std::wstring& version) {

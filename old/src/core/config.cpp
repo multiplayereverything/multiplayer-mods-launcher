@@ -214,6 +214,7 @@ const std::vector<std::pair<std::string, std::wstring>>& defaultTexts() {
         {"phase.rollback", L"Undoing changes\u2026"},
         {"update.player", L"${PLAYER} is installed."},
         {"update.nextTime", L"Multiplayer Everything Launcher ${VERSION} is installed and starts next time."},
+        {"update.appNextTime", L"The new Multiplayer Everything app installs the next time you start the launcher."},
         {"settings.autoUpdate", L"Update the launcher automatically"},
         {"discord.room", L"Room ${CODE}"},
         {"search.cue", L"Search games  (Ctrl+F)"},
@@ -1074,6 +1075,10 @@ LoadResult loadConfig(std::string_view jsonText, const std::wstring& configDir) 
         s.str("github", c.updates.source.github);
         s.str("asset", c.updates.source.asset);
         s.str("api", c.updates.source.api);
+        s.str("app", c.updates.app);
+        s.str("appExe", c.updates.appExe);
+        if (c.updates.app.empty() != c.updates.appExe.empty())
+            s.error(c.updates.app.empty() ? L"app" : L"appExe", L"give both \"app\" (the installer's file name) and \"appExe\" (where it installs)");
         if (!c.updates.source.github.empty() && c.updates.source.github.find('/') == std::string::npos)
             s.error(L"github", L"must look like \"owner/repo\"");
         if (!c.updates.source.github.empty() && c.updates.source.asset.empty())

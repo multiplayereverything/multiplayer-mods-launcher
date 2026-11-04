@@ -3,6 +3,7 @@
   "mainBinaryName": "MultiplayerEverything",
   "bundle": {
     "targets": ["nsis"],
+    "createUpdaterArtifacts": true,
     "resources": { "engine/MultiplayerEverythingLauncher.exe": "MultiplayerEverythingLauncher.exe" },
     "windows": {
       "webviewInstallMode": { "type": "downloadBootstrapper", "silent": true },

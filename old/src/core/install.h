@@ -89,6 +89,10 @@ struct UpdateResult {
 UpdateResult updateSelf(const InstallSpec& source, const std::wstring& currentVersion, const std::wstring& exePath,
                         const std::atomic<bool>* cancel);
 void removeOldUpdate(const std::wstring& exePath);
+// The app that replaces this launcher: downloads the newest release's file matching `pattern` (its installer) to
+// `dest`, checked by SHA-256 (required, from GitHub). Any version will do: the app is newer than this window.
+UpdateResult downloadApp(const InstallSpec& source, const std::wstring& pattern, const std::wstring& dest,
+                         const std::atomic<bool>* cancel);
 
 // What a GitHub "rate limit used up" answer says to the player, given the seconds until it resets.
 std::wstring rateLimitMessage(int64_t secondsLeft);

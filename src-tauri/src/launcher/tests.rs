@@ -119,6 +119,20 @@ fn config_reports_typos_and_bad_references() {
     assert!(has_issue(&r, "games[1].actions", Severity::Error)); // no actions
 }
 
+/// The C++ launcher's hand-over keys (config_updates_hand_over_to_the_app in old/tests/test_core.cpp): the app accepts
+/// the same file, and one key without the other is the same mistake.
+#[test]
+fn config_accepts_the_updates_hand_over_keys() {
+    let with = |updates: &str| {
+        let c = minimal_config(r#"[{ "id": "a", "actions": [{ "id": "play", "swf": "x.swf" }] }]"#, None);
+        load(&format!("{{ \"updates\": {updates}, {}", &c[c.find('{').unwrap() + 1..]), "C:\\x")
+    };
+    let both = with(r#"{ "github": "o/r", "asset": "L.exe", "app": "A-setup.exe", "appExe": "${LAUNCHER_DIR}\\A.exe" }"#);
+    assert!(both.ok() && both.issues.is_empty(), "{:?}", both.issues.iter().map(|i| &i.message).collect::<Vec<_>>());
+    assert!(has_issue(&with(r#"{ "github": "o/r", "asset": "L.exe", "app": "A.exe" }"#), "updates.appExe", Severity::Error));
+    assert!(has_issue(&with(r#"{ "github": "o/r", "asset": "L.exe", "appExe": "A.exe" }"#), "updates.app", Severity::Error));
+}
+
 #[test]
 fn config_rejects_bad_json_with_position() {
     let r = load("{ \"games\": [ }", "C:\\x");

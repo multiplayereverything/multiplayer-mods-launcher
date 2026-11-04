@@ -42,6 +42,7 @@ constexpr UINT WM_APP_LOBBYNET = WM_APP + 15;   // direct-IP checks finished; lP
 constexpr UINT WM_APP_PLAYERUPDATED = WM_APP + 17;  // a newer player is in place; lParam: std::wstring* "Name tag"
 constexpr UINT WM_APP_RATELIMIT = WM_APP + 18;  // GitHub says wait; lParam: std::wstring* the message
 constexpr UINT WM_APP_UPDATED = WM_APP + 10;    // a newer launcher is in place; lParam: std::wstring* version
+constexpr UINT WM_APP_HANDOVER = WM_APP + 19;   // the app's installer is downloaded; lParam: std::wstring* its path
 
 struct ServerLine {
     int session;

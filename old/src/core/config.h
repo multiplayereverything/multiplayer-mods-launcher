@@ -273,7 +273,11 @@ struct Discord {
 // repository, the file `asset` in it (checked against GitHub's SHA-256).
 struct Updates {
     InstallSpec source;  // github, asset, api
+    // The app that replaces this window: its installer in the same releases (a file-name pattern) and where it
+    // installs. With both set, this launcher hands over: it opens the app when it is installed, else installs it.
+    std::wstring app, appExe;
     bool enabled() const { return !source.github.empty() && !source.asset.empty(); }
+    bool handsOver() const { return enabled() && !app.empty() && !appExe.empty(); }
 };
 
 struct Config {

@@ -88,6 +88,29 @@ TEST(config_reports_typos_and_bad_references) {
     CHECK(hasIssue(r, L"games[1].actions", ConfigIssue::Severity::Error));  // no actions
 }
 
+TEST(config_updates_hand_over_to_the_app) {
+    auto with = [](const std::string& updates) {
+        std::string c = minimalConfig(R"([{ "id": "a", "actions": [{ "id": "play", "swf": "x.swf" }] }])");
+        return loadConfig("{ \"updates\": " + updates + ", " + c.substr(c.find('{') + 1), L"C:\\x");
+    };
+    LoadResult both = with(R"({ "github": "o/r", "asset": "L.exe", "app": "A-*-setup.exe", "appExe": "${LAUNCHER_DIR}\\A.exe" })");
+    REQUIRE(both.ok());
+    CHECK(both.issues.empty() && both.config.updates.handsOver());
+    CHECK(both.config.updates.app == L"A-*-setup.exe" && both.config.updates.appExe == L"${LAUNCHER_DIR}\\A.exe");
+    LoadResult none = with(R"({ "github": "o/r", "asset": "L.exe" })");
+    CHECK(none.ok() && !none.config.updates.handsOver());
+    // One without the other is a mistake: the window would download an app it can never find, or look for one it
+    // never installs.
+    CHECK(hasIssue(with(R"({ "github": "o/r", "asset": "L.exe", "app": "A.exe" })"), L"updates.appExe", ConfigIssue::Severity::Error));
+    CHECK(hasIssue(with(R"({ "github": "o/r", "asset": "L.exe", "appExe": "A.exe" })"), L"updates.app", ConfigIssue::Severity::Error));
+    // And the shipped launcher.json hands over to where the installer puts the app.
+    std::wstring path = fs::join(fs::parent(fs::parent(fs::parent(fs::parent(fs::selfExePath())))), L"launcher\\launcher.json");
+    if (!fs::isFile(path)) path = L"launcher\\launcher.json";
+    LoadResult shipped = loadConfigFile(path);
+    CHECK(shipped.config.updates.handsOver());
+    CHECK(shipped.config.updates.appExe.find(L"\\Multiplayer Everything\\MultiplayerEverything.exe") != std::wstring::npos);
+}
+
 TEST(config_rejects_bad_json_with_position) {
     LoadResult r = loadConfig("{ \"games\": [ }", L"C:\\x");
     CHECK(!r.ok());

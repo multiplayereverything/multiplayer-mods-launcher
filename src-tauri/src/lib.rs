@@ -1,3 +1,4 @@
+mod app_update;
 mod engine;
 pub mod launcher;
 
@@ -491,6 +492,8 @@ pub fn run() {
         // Where the window was, how big, and whether it was maximized (the C++ window keeps the last).
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .manage(Shared::default())
+        .manage(app_update::Pending::default())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_notification::init())
@@ -503,7 +506,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             library, mods, rooms, launch, stop_session, mod_job, download_game, set_favorite, set_setting, set_game_dir,
             set_game_file, lobby_start, lobby_send, open, install_player, set_game_setting, set_game_player,
-            check_players, update_players, ping, all_rooms, send_report, reports, refresh_site
+            check_players, update_players, ping, all_rooms, send_report, reports, refresh_site,
+            app_update::check_app_update, app_update::install_app_update
         ])
         .run(tauri::generate_context!())
         .expect("error while building tauri application");

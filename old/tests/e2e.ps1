@@ -331,6 +331,52 @@ Check ($r.Code -eq 0 -and $r.Out -match 'Updated to v99.0.0') "a newer release i
 Check ((Get-FileHash "$upd\MultiplayerEverythingLauncher.exe" -Algorithm SHA256).Hash.ToLower() -eq $newSha) 'the new exe is in place'
 Check ((Test-Path "$upd\MultiplayerEverythingLauncher.exe.old") -and (Get-FileHash "$upd\MultiplayerEverythingLauncher.exe.old" -Algorithm SHA256).Hash -eq $before) 'the running exe was set aside as .old'
 
+# ---- handing over to the app that replaces the window ------------------------
+# "updates.app" names the app's installer in the release, "appExe" where it installs. A copy of the test exe under
+# another name plays the installer: it notes that it ran and copies itself to %FL_FAKE_INSTALL% (the "app").
+$hand = Join-Path $work 'hand'
+New-Item -ItemType Directory -Force $hand, "$www\repos\test\handover\releases" | Out-Null
+Copy-Item $fake "$www\dl\MultiplayerEverything-1.0.42-setup.exe"
+$setupSha = (Get-FileHash "$www\dl\MultiplayerEverything-1.0.42-setup.exe" -Algorithm SHA256).Hash.ToLower()
+$setupSize = (Get-Item "$www\dl\MultiplayerEverything-1.0.42-setup.exe").Length
+function HandRelease([string]$digest) {
+  '{ "tag_name": "v0.0.1", "assets": [ ' +
+  '{ "name": "MultiplayerEverythingLauncher.exe", "size": ' + $newSize + ', "digest": "sha256:' + $newSha + '", "browser_download_url": "http://127.0.0.1:' + $httpPort + '/dl/MultiplayerEverythingLauncher.exe" }, ' +
+  '{ "name": "MultiplayerEverything-1.0.42-setup.exe", "size": ' + $setupSize + ', "digest": "sha256:' + $digest + '", "browser_download_url": "http://127.0.0.1:' + $httpPort + '/dl/MultiplayerEverything-1.0.42-setup.exe" } ] }'
+}
+@"
+{
+  "paths": { "games": "`${LAUNCHER_DIR}\\games", "players": "`${LAUNCHER_DIR}\\players", "data": "`${LAUNCHER_DIR}\\data", "flashpoint": [] },
+  "updates": { "github": "test/handover", "asset": "MultiplayerEverythingLauncher.exe", "api": "http://127.0.0.1:$httpPort",
+               "app": "MultiplayerEverything-*-setup.exe", "appExe": "`${LAUNCHER_DIR}\\app\\MultiplayerEverything.exe" },
+  "players": [ { "id": "fake", "name": "Fake Player", "paths": ["x.exe"] } ],
+  "games": [ { "id": "demo", "name": "Demo Game", "actions": [ { "id": "play", "label": "Play", "swf": "demo.swf" } ] } ]
+}
+"@ | Set-Content "$hand\hand.json" -Encoding UTF8
+$r = Run @('--validate', '--config', "`"$hand\hand.json`"")
+Check ($r.Code -eq 0) "the shipped hand-over keys validate ($($r.Out.Trim() -replace '\s+', ' '))"
+$env:FL_FAKE_OUT = "$hand\ran.txt"
+$env:FL_FAKE_INSTALL = "$hand\app\MultiplayerEverything.exe"
+Set-Content "$www\repos\test\handover\releases\latest" (HandRelease ('0' * 64)) -Encoding ASCII
+$p = Start-Process -FilePath $Launcher -ArgumentList @('--config', "`"$hand\hand.json`"") -PassThru
+Start-Sleep -Milliseconds 6000
+Check (-not $p.HasExited -and -not (Test-Path "$hand\ran.txt") -and -not (Test-Path "$hand\app")) 'an installer with the wrong checksum never runs and the window stays'
+Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+Set-Content "$www\repos\test\handover\releases\latest" (HandRelease $setupSha) -Encoding ASCII
+$p = Start-Process -FilePath $Launcher -ArgumentList @('--config', "`"$hand\hand.json`"") -PassThru
+Check (WaitFor { $p.HasExited } 20000) 'the window downloads the app, starts its installer and closes'
+Check (WaitFor { (Test-Path "$hand\ran.txt") -and (Get-Content "$hand\ran.txt" -Raw) -match 'RAN MultiplayerEverything-setup\.exe' } 5000) "the checked installer ran ($((Get-Content "$hand\ran.txt" -Raw -ErrorAction SilentlyContinue) -replace '\s+', ' '))"
+Check (WaitFor { Test-Path "$hand\app\MultiplayerEverything.exe" } 5000) 'the installer put the app in place'
+Check ((Get-FileHash "$hand\data\MultiplayerEverything-setup.exe" -Algorithm SHA256).Hash.ToLower() -eq $setupSha -and -not (Test-Path "$hand\data\MultiplayerEverything-setup.exe.part")) 'the installer was saved whole, with no partial file'
+Remove-Item "$hand\ran.txt"
+Remove-Item Env:FL_FAKE_INSTALL
+$p = Start-Process -FilePath $Launcher -ArgumentList @('--config', "`"$hand\hand.json`"") -PassThru
+Check (WaitFor { $p.HasExited } 5000) 'with the app installed the launcher only opens it'
+Check (WaitFor { (Test-Path "$hand\ran.txt") -and (Get-Content "$hand\ran.txt" -Raw) -match 'RAN MultiplayerEverything\.exe' } 5000) "the installed app was opened ($((Get-Content "$hand\ran.txt" -Raw -ErrorAction SilentlyContinue) -replace '\s+', ' '))"
+Check (-not ((Get-Content "$hand\ran.txt" -Raw) -match 'setup')) 'and the installer did not run again'
+Check (-not (Test-Path "$hand\data\MultiplayerEverything-setup.exe")) 'the downloaded installer is cleaned up'
+$env:FL_FAKE_OUT = "$work\args.txt"
+
 # ---- downloading missing game files from the catalog -----------------------
 New-Item -ItemType Directory -Force "$www\games\demo2" | Out-Null
 Set-Content "$www\games\demo2\dl.swf" 'pretend game file' -NoNewline

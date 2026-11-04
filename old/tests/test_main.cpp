@@ -155,7 +155,33 @@ static int fakeServer(int port) {
     return 0;
 }
 
+// Stand-in for an installer or an installed app in tests\e2e.ps1: a copy of this exe under any other name, started
+// without --fake-* arguments. It appends "RAN <its file name> <arguments>" to %FL_FAKE_OUT%, and when
+// %FL_FAKE_INSTALL% names a file it copies itself there, as an installer puts the app in place.
+static int fakeProgram() {
+    wchar_t self[MAX_PATH] = L"";
+    GetModuleFileNameW(nullptr, self, MAX_PATH);
+    int argc = 0;
+    wchar_t** argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+    std::string line = "RAN " + fl::narrow(fl::fs::fileName(self));
+    for (int i = 1; i < argc; ++i) line += " " + fl::narrow(argv[i]);
+    LocalFree(argv);
+    appendOut(line + "\n");
+    wchar_t dest[MAX_PATH] = L"";
+    if (GetEnvironmentVariableW(L"FL_FAKE_INSTALL", dest, MAX_PATH) && *dest) {
+        fl::fs::ensureDir(fl::fs::parent(dest), nullptr, nullptr);
+        CopyFileW(self, dest, FALSE);
+    }
+    return 0;
+}
+
 int main(int argc, char** argv) {
+    {
+        wchar_t self[MAX_PATH] = L"";
+        GetModuleFileNameW(nullptr, self, MAX_PATH);
+        bool fakeArg = argc > 1 && strncmp(argv[1], "--fake-", 7) == 0;
+        if (!fakeArg && _wcsicmp(fl::fs::fileName(self).c_str(), L"launcher_tests.exe") != 0) return fakeProgram();
+    }
     if (argc > 1 && strcmp(argv[1], "--fake-player") == 0) return fakePlayer();
     if (argc > 2 && strcmp(argv[1], "--fake-server") == 0) return fakeServer(atoi(argv[2]));
     const char* filter = argc > 1 ? argv[1] : nullptr;

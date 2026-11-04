@@ -184,6 +184,11 @@ export const checkPlayers = (): Promise<{ players: PlayerUpdate[] }> =>
 export const updatePlayers = (): Promise<{ players: PlayerUpdate[] }> =>
   live ? invoke('update_players') : Promise.resolve({ players: [] })
 export interface PlayerProgress { id: string; done: number; total: number }
+// The app's own update (src-tauri/src/app_update.rs): a newer signed release, or null. Installing exits the app; the
+// installer opens the new version.
+export interface AppUpdate { version: string; current: string }
+export const checkAppUpdate = (): Promise<AppUpdate | null> => (live ? invoke('check_app_update') : Promise.resolve(null))
+export const installAppUpdate = (): Promise<void> => (live ? invoke('install_app_update') : Promise.resolve())
 export interface AllRooms { server: string; games: Record<string, Rooms> }
 export const loadAllRooms = (): Promise<AllRooms> => (live ? invoke('all_rooms') : Promise.resolve({ server: '', games: {} }))
 export const ping = (server: string): Promise<number> => (live ? invoke('ping', { server }) : Promise.reject(new Error('sample')))
@@ -327,6 +332,7 @@ const on = <T>(event: string, f: (e: T) => void): Promise<UnlistenFn> =>
 export const onLaunchEnded = (f: (e: LaunchEnded) => void) => on('launch-ended', f)
 export const onModProgress = (f: (e: ModProgress) => void) => on('mod-progress', f)
 export const onPlayerProgress = (f: (e: PlayerProgress) => void) => on('player-progress', f)
+export const onAppProgress = (f: (e: { done: number; total: number }) => void) => on('app-progress', f)
 export const onDownloadEnded = (f: (e: ModProgress) => void) => on('download-ended', f)
 export const onHostStatus = (f: (e: HostStatus) => void) => on('host-status', f)
 export const onLobby = (f: (e: { game: string; message: LobbyMessage }) => void) => on('lobby', f)

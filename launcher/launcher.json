@@ -34,7 +34,13 @@
 
   // The launcher updates itself from the newest release of its repository
   // (the file is checked against the SHA-256 GitHub publishes for it).
-  "updates": { "github": "multiplayereverything/multiplayer-mods-launcher", "asset": "MultiplayerEverythingLauncher.exe" },
+  // "app" and "appExe": the app that replaces the C++ window. A C++ launcher started on its own installs it
+  // from the same release (its installer, "app"), then only opens it ("appExe", where the installer puts it).
+  // The app updates itself (src-tauri/tauri.conf.json, plugins.updater).
+  "updates": {
+    "github": "multiplayereverything/multiplayer-mods-launcher", "asset": "MultiplayerEverythingLauncher.exe",
+    "app": "MultiplayerEverything-setup.exe", "appExe": "${folder:LocalAppData}\\Multiplayer Everything\\MultiplayerEverything.exe"
+  },
 
   // Discord shows "Playing <game>" while a game runs. Put the application id
   // from discord.com/developers here; empty turns it off.

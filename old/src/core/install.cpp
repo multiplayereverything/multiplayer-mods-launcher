@@ -505,6 +505,32 @@ UpdateResult updateSelf(const InstallSpec& source, const std::wstring& currentVe
     return r;
 }
 
+UpdateResult downloadApp(const InstallSpec& source, const std::wstring& pattern, const std::wstring& dest,
+                         const std::atomic<bool>* cancel) {
+    UpdateResult r;
+    InstallSpec spec = source;
+    spec.asset = pattern;
+    Asset asset;
+    if (!findAsset(spec, asset, cancel, r.error)) return r;
+    r.version = asset.version;
+    if (asset.sha256.empty()) {
+        r.error = L"The " + asset.version + L" release publishes no SHA-256 for " + asset.name + L"; not installed.";
+        return r;
+    }
+    std::wstring part = dest + L".part";
+    InstallStatus st;
+    st.stage = InstallStatus::Stage::Downloading;
+    st.total = asset.size;
+    if (!downloadVerified(asset.url, part, asset.sha256, asset.size, st, nullptr, cancel, r.error)) return r;
+    if (!MoveFileExW(fs::longPath(part).c_str(), fs::longPath(dest).c_str(), MOVEFILE_REPLACE_EXISTING)) {
+        r.error = lastError(L"Can't put the downloaded installer in place");
+        DeleteFileW(fs::longPath(part).c_str());
+        return r;
+    }
+    r.ok = r.updated = true;
+    return r;
+}
+
 bool httpGetText(const std::wstring& url, std::string& out, std::wstring& error) {
     out.clear();
     return httpGet(url, [&](const char* d, size_t n) { out.append(d, n); return out.size() < 4 * 1024 * 1024; },

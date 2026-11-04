@@ -554,6 +554,26 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         return code;
     }
 
+    // The app that replaced this window (launcher.json "updates": "app", "appExe"): once it is installed, this
+    // launcher only opens it, so an old shortcut or folder still leads to the launcher players have now. The window
+    // itself installs the app on its first start (Launcher::startUpdateCheck). Snapshots and the other test views
+    // keep the window.
+    if (cfg.updates.handsOver() && a.snapshot.empty() && a.select.empty() && !a.demoHost && !a.guide && a.lobby.empty()) {
+        std::wstring app = fs::normalize(base.expand(cfg.updates.appExe));
+        sys::Started p;
+        std::wstring err;
+        if (fs::isFile(app)) {
+            DeleteFileW(fs::longPath(fs::join(dataDir, L"MultiplayerEverything-setup.exe")).c_str());  // done its job
+            if (sys::startProcess(app, {}, fs::parent(app), p, err)) {
+                CloseHandle(p.process);
+                logger().info(L"Opened " + app + L", which replaces this window");
+                logger().close();
+                return 0;
+            }
+            logger().warn(L"Can't open " + app + L": " + err);
+        }
+    }
+
     INITCOMMONCONTROLSEX icc{sizeof icc, ICC_LISTVIEW_CLASSES | ICC_STANDARD_CLASSES};
     InitCommonControlsEx(&icc);
     Gdiplus::GdiplusStartupInput gin;

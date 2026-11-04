@@ -52,8 +52,16 @@ const gameBefore = snapshot(box.gameDir)
 const stopServers = startServers(work, PORTS)
 const fails = join(work, 'fails')
 
+// The app's own updater (src-tauri/src/app_update.rs) reads a local feed signed with a throwaway key, made here; a
+// development build is the only kind that takes FL_UPDATE_ENDPOINT and FL_UPDATE_PUBKEY. The feed is written only by
+// the last scenario, so the other scenarios see no update.
+const updDir = join(work, 'www', 'upd')
+mkdirSync(updDir, { recursive: true })
+const updKey = join(work, 'upd.key')
+spawnSync(`npx tauri signer generate --ci -w "${updKey}"`, { cwd: tauriDir, shell: true, stdio: 'ignore' })
 const env = {
   ...process.env,
+  FL_UPDATE_ENDPOINT: `http://127.0.0.1:${PORTS.http}/upd/latest.json`, FL_UPDATE_PUBKEY: readFileSync(`${updKey}.pub`, 'utf8').trim(),
   FL_LAUNCHER_EXE: launcher, FL_LAUNCHER_CONFIG: box.config, FL_FAKE_OUT: box.args, FL_FAKE_MS: String(FAKE_MS),
   FL_NO_NAME_PROMPT: '1', FL_NO_DISCORD: '1', FL_FAKE_ENV: 'FAKE_TV',
 }
@@ -781,6 +789,53 @@ const scenarios = {
     const log = await wd.exec("return JSON.parse(localStorage.getItem('fl.tvLog') ?? '[]')")
     await check('each switch of TV mode is recorded with its cause', log.some((l) => l.includes('on: F11')) && log.some((l) => l.includes('off: F11')), log.slice(-3).join(' | '))
   },
+}
+
+// The app's update installs and closes the app, so it runs last, on fresh starts of the window.
+scenarios.appupdate = async () => {
+  const sign = (file) => {
+    rmSync(`${file}.sig`, { force: true })
+    spawnSync(`npx tauri signer sign -f "${updKey}" -p "" "${file}"`, { cwd: tauriDir, shell: true, stdio: 'ignore' })
+    return readFileSync(`${file}.sig`, 'utf8').trim()
+  }
+  const setup = join(updDir, 'MultiplayerEverything-setup.exe')
+  writeFileSync(setup, readFileSync(fakePlayer))  // a copy of the test exe: it notes "RAN <name> <arguments>"
+  const feed = (signature) => writeFileSync(join(updDir, 'latest.json'), JSON.stringify({
+    version: '9.9.9', notes: 'Lab release', pub_date: '2026-11-04T00:00:00Z',
+    platforms: { 'windows-x86_64': { signature, url: `http://127.0.0.1:${PORTS.http}/upd/MultiplayerEverything-setup.exe` } },
+  }))
+  const restart = async () => {
+    await wd.stop()
+    await wd.start(app)
+    await wd.find("//nav[contains(@class,'navs')]", 30000)
+  }
+  const prompt = "//div[contains(@class,'isl') and contains(@class,'upd')][.//b[contains(.,'9.9.9 is out')]]"
+  await check('no feed, no update prompt', (await wd.count(prompt)) === 0)
+
+  feed(sign(setup))
+  await restart()
+  await check('a newer signed release is offered at start', !!(await wd.find(prompt, 15000).catch(() => null)))
+  const text = await wd.exec(`return document.evaluate(${JSON.stringify(prompt)}, document, null, 9, null).singleNodeValue?.textContent ?? ''`)
+  await check('the prompt names the version the player has', /You have \d+\.\d+\.\d+/.test(text), text)
+  await wd.click(`${prompt}${button('Later')}`)
+  await check('Later puts it away', !!(await waitFor(async () => (await wd.count(prompt)) === 0, 3000)))
+
+  // A file signed with another key: the app refuses it and stays.
+  const other = join(work, 'other.bin')
+  writeFileSync(other, 'not the installer')
+  feed(sign(other))
+  clearArgs()
+  await restart()
+  await wd.click(`${prompt}${button('Update now')}`, 15000)
+  await check('an installer whose signature doesn\'t match is refused', !!(await waitFor(async () => /couldn't be installed/i.test(await toast()), 15000)), await toast())
+  await check('and never runs', !existsSync(box.args) || !readFileSync(box.args, 'utf8').includes('RAN '))
+
+  feed(sign(setup))
+  await restart()
+  await wd.click(`${prompt}${button('Update now')}`, 15000)
+  const ran = await waitFor(() => existsSync(box.args) && readFileSync(box.args, 'utf8').split(/\r?\n/).find((l) => l.startsWith('RAN ')), 20000)
+  await check('Update now downloads, checks the signature and starts the installer', !!ran, ran || '')
+  await check('the installer runs passive, as an update, and opens the app again', !!ran && / \/P\b/.test(ran) && /\/UPDATE\b/.test(ran) && /\/R\b/.test(ran), ran || '')
 }
 
 // ---- run ---------------------------------------------------------------------------------------------------------

@@ -10,7 +10,7 @@ import { TV_SECTIONS, TvHints, TvHome, TvLibrary, TvRooms, TvStarting, TvTop, ty
 import { TvPlaySheet, TvTextSheet, type SheetPad, type TextRequest } from './TvSheet'
 import {
   checkPlayers, downloadGame, launch, live, loadLibrary, loadMods, installPlayer, loadAllRooms, minimizeWindow, modJob, notify, ping, restoreWindow, updatePlayers, onDownloadEnded, onHostStatus,
-  loadReports, refreshSite, onLaunchEnded, onModProgress, onPlayerProgress, pickFile, pickFolder, setFavorite, setFullscreen, setSetting, setTvMode, noteTv, setGameDir, setGameFile, stopSession, windowControl,
+  loadReports, refreshSite, onLaunchEnded, onModProgress, onPlayerProgress, checkAppUpdate, installAppUpdate, onAppProgress, pickFile, pickFolder, setFavorite, setFullscreen, setSetting, setTvMode, noteTv, setGameDir, setGameFile, stopSession, windowControl,
   type Game, type Library, type ModInfo, type RelayStatus, type Room, type Rooms, type Settings,
 } from './api'
 import { agoText, isCoop, needsPlayMenu, roomAbout, joinByCode, lastPlayed, leadAction, playersShort, statusOf } from './model'
@@ -342,6 +342,30 @@ export default function App() {
         setUpdate(null)
       })
       .finally(() => setUpdating(null))
+  }
+
+  // The app itself on its newest release (src-tauri/src/app_update.rs): once per start, with the same switch as the
+  // player check, and asked first. Installing closes the app and the installer opens the new version, so the button
+  // waits while a game runs, a room is open, or a download or mod job is busy.
+  const appChecked = useRef(false)
+  const [appUpdate, setAppUpdate] = useState<{ version: string; current: string } | null>(null)
+  const [appUpdating, setAppUpdating] = useState<{ done: number; total: number } | null>(null)
+  useEffect(() => {
+    if (!autoUpdate || appChecked.current) return
+    appChecked.current = true
+    checkAppUpdate().then((u) => u && setAppUpdate(u)).catch(() => {})
+  }, [autoUpdate])
+  useEffect(() => {
+    const p = onAppProgress((e) => setAppUpdating({ done: e.done, total: e.total }))
+    return () => void p.then((f) => f())
+  }, [])
+  const runAppUpdate = () => {
+    setAppUpdating({ done: 0, total: 0 })
+    installAppUpdate().catch((e) => {
+      say(String(e), 'error')
+      setAppUpdate(null)
+      setAppUpdating(null)
+    })
   }
 
   // The launcher.json theme: the C++ light palette when it asks for one.
@@ -890,6 +914,37 @@ export default function App() {
           }} />
       )}
       <div className="island" aria-live="polite">
+        {appUpdate && (() => {
+          const busy = playing.size > 0 || jobs.length > 0 || downloading.size > 0 || view === 'lobby'
+          const name = lib.branding?.title || 'Multiplayer Everything'
+          return (
+            <div className="isl upd" role={appUpdating ? 'status' : 'alertdialog'} aria-label={`${name} ${appUpdate.version}`}>
+              {appUpdating ? (
+                <>
+                  <span className="k">
+                    <b>{`Updating ${name}...`}</b>
+                    <small>{appUpdating.total ? `${(appUpdating.done / 1048576).toFixed(1)} of ${(appUpdating.total / 1048576).toFixed(1)} MB. It opens again when it is done.` : 'Starting the download'}</small>
+                  </span>
+                  <span className="pct">{appUpdating.total ? `${Math.floor((appUpdating.done * 100) / appUpdating.total)}%` : ''}</span>
+                  <span className="bar" role="progressbar" aria-valuemin={0} aria-valuemax={100}
+                    aria-valuenow={appUpdating.total ? Math.floor((appUpdating.done * 100) / appUpdating.total) : undefined}>
+                    <i style={{ width: appUpdating.total ? `${(appUpdating.done * 100) / appUpdating.total}%` : '0%' }} />
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span className="k">
+                    <b>{`${name} ${appUpdate.version} is out. Update now?`}</b>
+                    <small>{busy ? 'Finish what is running first: the launcher closes while it updates.'
+                      : `You have ${appUpdate.current}. The launcher closes for a moment and opens again.`}</small>
+                  </span>
+                  <button className="btn sm" onClick={() => setAppUpdate(null)}>Later</button>
+                  <button className="btn sm main" disabled={busy} onClick={runAppUpdate}>Update now</button>
+                </>
+              )}
+            </div>
+          )
+        })()}
         {update && (
           <div className="isl upd" role={updating ? 'status' : 'alertdialog'} aria-label={`${update.name} ${update.version}`}>
             {updating ? (

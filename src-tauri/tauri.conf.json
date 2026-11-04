@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Multiplayer Everything",
-  "version": "0.1.0",
+  "version": "1.0.42",
   "identifier": "com.multiplayereverything.launcher",
   "build": {
     "frontendDist": "../dist",
@@ -28,6 +28,13 @@
     "security": {
       "csp": null,
       "assetProtocol": { "enable": true, "scope": [] }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDA0RTQ5RjZBNTIwMkY3RjQKUldUMDl3SlNhcC9rQkh1Tzl2dVZnR0ZQOUt0dW8rWERWUllJWFl0bVQ3SXptQlV6bUlaUnBTbGcK",
+      "endpoints": ["https://github.com/multiplayereverything/multiplayer-mods-launcher/releases/latest/download/latest.json"],
+      "windows": { "installMode": "passive" }
     }
   },
   "bundle": {

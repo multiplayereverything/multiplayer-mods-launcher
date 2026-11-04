@@ -33,6 +33,14 @@ fn embed_launcher_files() {
         .and_then(|t| cmake_version(&t))
         .unwrap_or_else(|| std::env::var("CARGO_PKG_VERSION").unwrap());
     println!("cargo:rerun-if-changed={}", root.join("old").join("CMakeLists.txt").display());
+    // The updater compares releases with tauri.conf.json's version, the window shows this one: they must agree, or
+    // an app would offer itself its own version again (or never its next one).
+    let conf = std::fs::read_to_string(manifest.join("tauri.conf.json")).unwrap();
+    let app_version = conf.lines().find_map(|l| l.trim().strip_prefix("\"version\": \"")).and_then(|r| r.split('"').next()).unwrap_or("");
+    if app_version != version {
+        panic!("tauri.conf.json's version is {app_version:?} but old/CMakeLists.txt says {version:?}; give both the same");
+    }
+    println!("cargo:rerun-if-changed={}", manifest.join("tauri.conf.json").display());
     out.push_str(&format!("pub const LAUNCHER_VERSION: &str = {version:?};\n"));
     let dest = Path::new(&std::env::var("OUT_DIR").unwrap()).join("embedded_files.rs");
     std::fs::write(dest, out).unwrap();

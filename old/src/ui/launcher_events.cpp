@@ -425,6 +425,11 @@ LRESULT Launcher::handle(UINT m, WPARAM w, LPARAM l) {
             onUpdated(*version);
             return 0;
         }
+        case WM_APP_HANDOVER: {
+            std::unique_ptr<std::wstring> installer(reinterpret_cast<std::wstring*>(l));
+            onHandover(*installer);
+            return 0;
+        }
         case WM_APP_RATELIMIT: {
             std::unique_ptr<std::wstring> text(reinterpret_cast<std::wstring*>(l));
             toast(*text, theme_.c.error);

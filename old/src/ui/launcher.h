@@ -576,6 +576,7 @@ private:
     void startUpdateCheck();
     void onPlayerUpdated(const std::wstring& what);
     void onUpdated(const std::wstring& version);
+    void onHandover(const std::wstring& installer);
     HWND setAutoUpdate_ = nullptr;
     std::string catalogRaw_;  // fetched by catalogThread_, handed over in WM_APP_CATALOG
 };
