@@ -28,6 +28,7 @@
 #include "core/settings.h"
 #include "core/site.h"
 #include "core/webserver.h"
+#include "headless.h"
 #include "theme.h"
 
 namespace fl::ui {
@@ -52,18 +53,8 @@ public:
 
     // Starts an action without the window (command line --launch). Blocks until
     // the game exits when it hosts, so the relay stays up for the session.
-    struct HeadlessOptions {
-        // ${CODE} / ${ADDRESS} (--join, --address); a code also picks the action's joinArgs.
-        std::wstring joinCode, address;
-        int coopSave = 0;  // the host's co-op save: 0 continue, 1 from the solo save, 2 new game
-        bool wait = false;  // stay until the game exits (counts its time), not only while hosting
-        bool tv = false;    // started from TV mode: the player's "tv" options and environment
-        std::vector<std::pair<std::wstring, std::wstring>> flashVars;  // more values for the game (the lobby's room)
-        // While a host action keeps the relay up: a JSON line each time who is connected changes.
-        std::function<void(const std::string&)> report;
-        // Set: the player's process is handed back here at once instead of waited for (the lobby watches it).
-        HANDLE* process = nullptr;
-    };
+    // (headless.h: the options, shared with the Linux build, which has no window.)
+    using HeadlessOptions = ui::HeadlessOptions;
     static int launchHeadless(const Config& cfg, Library& lib, UserData& user, const std::wstring& userPath,
                               const GameSpec& game, const ActionSpec& action, std::wstring& message,
                               const HeadlessOptions& opt = {});

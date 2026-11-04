@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "core/library.h"
+#include "headless.h"
 #include "theme.h"
 
 namespace fl::ui {
@@ -49,12 +50,7 @@ struct ServerLine {
     std::wstring text;
 };
 
-// A fixed port per game keeps HTML5 saves: browsers file storage by address.
-inline int stablePort(const std::string& gameId) {
-    unsigned h = 2166136261u;
-    for (char ch : gameId) h = (h ^ static_cast<unsigned char>(ch)) * 16777619u;
-    return 47000 + static_cast<int>(h % 2000);
-}
+// stablePort, gameValues, addFlashVars, fillPlaceholders and stateReason: headless.h.
 constexpr UINT_PTR kTimer = 1;
 constexpr UINT_PTR kFrameTimer = 2;
 constexpr UINT_PTR kPadTimer = 3;  // reads a connected game controller, 20 times a second
@@ -199,50 +195,6 @@ inline std::wstring windowText(HWND h) {
 // not the mod's own name ("MiSide Together"), which still names its Install button and the line under the title.
 inline const std::wstring& displayName(const GameSpec& g) { return g.mod && !g.mod->game.name.empty() ? g.mod->game.name : g.name; }
 
-using FlashVars = std::vector<std::pair<std::wstring, std::wstring>>;
-
-// The action's own values first (online mode, your name), then this launch's
-// (a room code). Empty values are left out.
-inline FlashVars gameValues(const ActionSpec& a, const std::wstring& playerName, const FlashVars& given) {
-    FlashVars out;
-    for (const auto& [key, value] : a.flashvars) {
-        std::wstring v = replaceAll(value, L"${PLAYER_NAME}", playerName);
-        if (!v.empty()) out.emplace_back(key, v);
-    }
-    // An action that takes its room on the command line (joinArgs) must give the game the same settings on
-    // every PC, so the room code and "host" are not passed as values too.
-    if (a.joinArgs.empty()) out.insert(out.end(), given.begin(), given.end());
-    return out;
-}
-
-// Values for the game go in before the game file, the way the player expects
-// options; players without flashvarArg can't take them.
-inline void addFlashVars(ResolvedAction& r, const FlashVars& vars) {
-    if (vars.empty() || !r.player || r.player->flashvarArg.empty()) return;
-    auto at = std::find(r.args.rbegin(), r.args.rend(), r.swf);
-    auto pos = at == r.args.rend() ? r.args.end() : std::prev(at.base());
-    std::vector<std::wstring> extra;
-    for (const auto& [key, value] : vars)
-        extra.push_back(replaceAll(replaceAll(r.player->flashvarArg, L"${KEY}", key), L"${VALUE}", value));
-    r.args.insert(pos, extra.begin(), extra.end());
-}
-
-// Fills ${PLAYER_NAME}, ${CODE}, ${SERVER} and ${ADDRESS} in the final arguments (the game file and
-// flashvars never contain them). Returns the name of a placeholder that has no value, or empty.
-inline std::wstring fillPlaceholders(ResolvedAction& r, const std::wstring& name, const std::wstring& code,
-                                     const std::wstring& server, const std::wstring& address) {
-    const std::pair<const wchar_t*, const std::wstring*> values[] = {
-        {L"PLAYER_NAME", &name}, {L"CODE", &code}, {L"SERVER", &server}, {L"ADDRESS", &address}};
-    for (auto& arg : r.args)
-        for (const auto& [key, value] : values) {
-            std::wstring token = std::wstring(L"${") + key + L"}";
-            if (arg.find(token) == std::wstring::npos) continue;
-            if (value->empty() && std::wstring(key) != L"PLAYER_NAME") return key;
-            arg = replaceAll(arg, token, *value);
-        }
-    return {};
-}
-
 // A room code: the short word the host's launcher shows (letters and digits only).
 inline bool looksLikeRoomCode(const std::wstring& s) {
     if (s.size() < 4 || s.size() > 8) return false;
@@ -270,13 +222,6 @@ inline bool looksLikeJoinTarget(const std::wstring& s) {
     for (wchar_t c : s)
         if (!iswalnum(c)) return false;
     return true;
-}
-
-inline std::wstring stateReason(const Config& cfg, const ResolvedAction& r) {
-    if (r.state == ActionState::NoRuntime) return cfg.t("status.noRuntime", {{L"RUNTIME", r.action->server.name}});
-    if (r.state == ActionState::NoSwf) return cfg.t("status.noSwf");
-    if (r.state == ActionState::NoPlayer) return cfg.t("status.noPlayer");
-    return cfg.t("status.ready");
 }
 
 }  // namespace detail

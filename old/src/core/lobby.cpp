@@ -119,7 +119,14 @@ SOCKET connectTo(const std::wstring& hostPort, std::wstring& error) {
     FD_SET(s, &w);
     FD_SET(s, &e);
     timeval tv{kConnectTimeoutMs / 1000, (kConnectTimeoutMs % 1000) * 1000};
-    if (select(0, nullptr, &w, &e, &tv) != 1 || !FD_ISSET(s, &w)) {
+    bool connected = select(0, nullptr, &w, &e, &tv) == 1 && FD_ISSET(s, &w);
+#ifndef _WIN32
+    // Linux reports a refused connection as writable too; the socket's error tells them apart.
+    int soError = 0;
+    socklen_t len = sizeof soError;
+    if (connected && (getsockopt(s, SOL_SOCKET, SO_ERROR, &soError, &len) != 0 || soError != 0)) connected = false;
+#endif
+    if (!connected) {
         error = L"Cannot reach " + hostPort;
         closesocket(s);
         return INVALID_SOCKET;
@@ -1079,7 +1086,12 @@ struct Session::Impl {
             add(up.get());
             for (auto& c : links) add(c.get());
             timeval tv{0, 50 * 1000};
-            if (rd.fd_count == 0) {
+#ifdef _WIN32
+            bool none = rd.fd_count == 0;
+#else
+            bool none = flFdSetEmpty(&rd);
+#endif
+            if (none) {
                 Sleep(50);
             } else if (select(0, &rd, &wr, nullptr, &tv) == SOCKET_ERROR) {
                 Sleep(20);

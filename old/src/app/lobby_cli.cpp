@@ -13,7 +13,11 @@
 #include "core/net.h"
 #include "core/rooms.h"
 #include "core/strings.h"
+#ifdef _WIN32
 #include "ui/launcher.h"
+#else
+#include "ui/headless.h"
+#endif
 
 namespace fl {
 

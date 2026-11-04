@@ -21,10 +21,20 @@
 #include "core/settings.h"
 #include "core/site.h"
 #include "core/strings.h"
+#ifdef _WIN32
 #include "ui/launcher.h"
 
 #include <commctrl.h>
 #include <shellapi.h>
+#else
+// Linux: the command-line modes only (the app in src-tauri is the window there); docs/LINUX.md.
+#include <pthread.h>
+#include <signal.h>
+
+#include <thread>
+
+#include "ui/headless.h"
+#endif
 
 using namespace fl;
 
@@ -33,6 +43,36 @@ namespace {
 bool g_console = false;
 HANDLE g_stop = nullptr;
 
+#ifndef _WIN32
+void setupConsole() { g_console = true; }
+
+void write(DWORD which, const std::wstring& s) {
+    std::string u = narrow(s);
+    DWORD n = 0;
+    WriteFile(GetStdHandle(which), u.data(), static_cast<DWORD>(u.size()), &n, nullptr);
+}
+
+void out(const std::wstring& s) { write(STD_OUTPUT_HANDLE, s); }
+
+void fail(const std::wstring& msg) {
+    logger().error(msg);
+    write(STD_ERROR_HANDLE, msg + L"\n");
+}
+
+// Ctrl+C and kill: a thread waits for them (a signal handler may not touch the event).
+void stopOnSignals() {
+    static sigset_t set;
+    sigemptyset(&set);
+    sigaddset(&set, SIGINT);
+    sigaddset(&set, SIGTERM);
+    pthread_sigmask(SIG_BLOCK, &set, nullptr);
+    std::thread([] {
+        int sig = 0;
+        sigwait(&set, &sig);
+        if (g_stop) SetEvent(g_stop);
+    }).detach();
+}
+#else
 void setupConsole() {
     g_console = true;
     HANDLE h = GetStdHandle(STD_OUTPUT_HANDLE);
@@ -64,6 +104,7 @@ void fail(const std::wstring& msg) {
     if (g_console) write(STD_ERROR_HANDLE, msg + L"\n");
     else MessageBoxW(nullptr, msg.c_str(), L"Multiplayer Everything Launcher", MB_OK | MB_ICONERROR);
 }
+#endif
 
 std::wstring fullPath(const std::wstring& p) {
     if (p.empty()) return p;
@@ -72,6 +113,7 @@ std::wstring fullPath(const std::wstring& p) {
     return n ? fs::normalize(buf) : fs::normalize(p);
 }
 
+#ifdef _WIN32
 BOOL WINAPI ctrlHandler(DWORD type) {
     if ((type == CTRL_C_EVENT || type == CTRL_BREAK_EVENT || type == CTRL_CLOSE_EVENT) && g_stop) {
         SetEvent(g_stop);
@@ -79,8 +121,12 @@ BOOL WINAPI ctrlHandler(DWORD type) {
     }
     return FALSE;
 }
+#endif
 
 int runRelay(int port) {
+#ifndef _WIN32
+    stopOnSignals();  // before relay.start: its threads inherit the blocked signals
+#endif
     Relay relay;
     std::wstring err;
     if (!relay.start(port, err)) {
@@ -89,7 +135,9 @@ int runRelay(int port) {
     }
     out(L"Relay listening on port " + std::to_wstring(port) + L". Press Ctrl+C to stop.\n");
     g_stop = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+#ifdef _WIN32
     SetConsoleCtrlHandler(ctrlHandler, TRUE);
+#endif
     size_t lastPeers = static_cast<size_t>(-1);
     while (WaitForSingleObject(g_stop, 500) == WAIT_TIMEOUT) {
         RelaySnapshot s = relay.snapshot();
@@ -228,11 +276,20 @@ int runModCommand(const Args& a, const Config& cfg, Library& lib, UserData& user
     return 0;
 }
 
+#ifdef _WIN32
 int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     int argc = 0;
     wchar_t** argv = CommandLineToArgvW(GetCommandLineW(), &argc);
     Args a = parseArgs(argc, argv);
     LocalFree(argv);
+#else
+int main(int argc, char** argv) {
+    std::vector<std::wstring> wide(argc);
+    for (int i = 0; i < argc; ++i) wide[i] = widen(argv[i]);
+    std::vector<wchar_t*> wargv;
+    for (auto& w : wide) wargv.push_back(w.data());
+    Args a = parseArgs(argc, wargv.data());
+#endif
     bool cliMode = a.help || a.version || a.list || a.validate || !a.launch.empty() || a.relayPort || !a.installPlayer.empty() ||
                    !a.downloadGame.empty() || !a.rooms.empty() || a.update || a.updatePlayers || a.mods || !a.installMod.empty() ||
                    !a.repairMod.empty() || !a.uninstallMod.empty() || !a.lobbySession.empty() || !a.error.empty();
@@ -559,6 +616,12 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         return code;
     }
 
+#ifndef _WIN32
+    (void)base;
+    fail(L"This build has no window: the Multiplayer Everything app runs it. Run it with --help for what it can do.");
+    logger().close();
+    return 2;
+#else
     // The app that replaced this window (launcher.json "updates": "app", "appExe"): once it is installed, this
     // launcher only opens it, so an old shortcut or folder still leads to the launcher players have now. The window
     // itself installs the app on its first start (Launcher::startUpdateCheck). Snapshots and the other test views
@@ -614,4 +677,5 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     Gdiplus::GdiplusShutdown(gdiToken);
     logger().close();
     return code;
+#endif
 }

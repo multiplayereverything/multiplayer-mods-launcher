@@ -10,6 +10,9 @@
 #include "core/process.h"
 #include "core/strings.h"
 #include "core/win.h"
+#ifndef _WIN32
+#include "core/posix/unzip.h"
+#endif
 
 namespace fl::mod {
 
@@ -137,6 +140,7 @@ bool unpackZip(const std::wstring& archive, const std::wstring& destDir, std::ws
         error = L"Cannot create " + destDir;
         return false;
     }
+#ifdef _WIN32
     wchar_t sysDir[MAX_PATH];
     GetSystemDirectoryW(sysDir, MAX_PATH);
     sys::Started tar;
@@ -156,6 +160,13 @@ bool unpackZip(const std::wstring& archive, const std::wstring& destDir, std::ws
         removeTree(destDir);
         return false;
     }
+#else
+    if (!sys::unpackArchive(archive, destDir, error)) {
+        error = L"Unpacking the package failed: " + error;
+        removeTree(destDir);
+        return false;
+    }
+#endif
     // Nothing may be a link, and everything must sit inside destDir.
     std::error_code ec;
     for (auto it = std::filesystem::recursive_directory_iterator(fs::longPath(destDir), ec);

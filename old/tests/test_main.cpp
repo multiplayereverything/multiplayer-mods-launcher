@@ -180,7 +180,10 @@ int main(int argc, char** argv) {
         wchar_t self[MAX_PATH] = L"";
         GetModuleFileNameW(nullptr, self, MAX_PATH);
         bool fakeArg = argc > 1 && strncmp(argv[1], "--fake-", 7) == 0;
-        if (!fakeArg && _wcsicmp(fl::fs::fileName(self).c_str(), L"launcher_tests.exe") != 0) return fakeProgram();
+        // Linux exes have no ".exe".
+        std::wstring name = fl::fs::fileName(self);
+        bool tests = _wcsicmp(name.c_str(), L"launcher_tests.exe") == 0 || name == L"launcher_tests";
+        if (!fakeArg && !tests) return fakeProgram();
     }
     if (argc > 1 && strcmp(argv[1], "--fake-player") == 0) return fakePlayer();
     if (argc > 2 && strcmp(argv[1], "--fake-server") == 0) return fakeServer(atoi(argv[2]));

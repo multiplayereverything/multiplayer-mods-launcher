@@ -2,6 +2,8 @@
 // folders: install, update, repair, modify, uninstall, cancellation, injected
 // failures, locked files and crash recovery. Ported from the installer
 // template's engine tests; the engine is the same code.
+#include <algorithm>
+
 #include "core/config.h"
 #include "core/mod/engine.h"
 #include "core/mod/manager.h"
@@ -456,6 +458,8 @@ TEST(interrupted_transaction_is_recovered) {
 // A mod first set up by its stand-alone installer: its record lists shortcuts and
 // an Apps & Features entry. Updating through the launcher keeps them; uninstalling
 // removes them.
+// Windows only: Apps & Features is the registry; Linux has no such entry (docs/LINUX.md).
+#ifdef _WIN32
 TEST(a_standalone_installers_record_is_adopted) {
     std::string key = "fl-test-" + std::to_string(GetCurrentProcessId());
     Fixture f("adopt");
@@ -490,6 +494,7 @@ TEST(a_standalone_installers_record_is_adopted) {
     if (probe) RegCloseKey(probe);
     CHECK(f.gameUntouched());
 }
+#endif
 
 // inspect() reads the install record in the game folder the mod's own config points at.
 TEST(inspect_reports_game_installed_version_and_problems) {

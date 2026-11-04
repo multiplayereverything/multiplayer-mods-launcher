@@ -8,6 +8,13 @@
 
 namespace fl::fs {
 
+// A system error code: a DWORD, 32 bits on both systems.
+#ifdef _WIN32
+using ErrorCode = unsigned long;
+#else
+using ErrorCode = uint32_t;
+#endif
+
 std::wstring normalize(const std::wstring& path);  // trims quotes/space, collapses .., no trailing '\'
 bool isAbsolute(const std::wstring& path);
 bool isUnder(const std::wstring& child, const std::wstring& parent);  // true when equal, too
@@ -23,12 +30,12 @@ bool isFile(const std::wstring& path);
 std::optional<uint64_t> fileSize(const std::wstring& path);
 
 // Creates `dir` and missing parents; appends each created folder to `created`.
-bool ensureDir(const std::wstring& dir, std::vector<std::wstring>* created, unsigned long* error);
+bool ensureDir(const std::wstring& dir, std::vector<std::wstring>* created, ErrorCode* error);
 // Drive roots, Windows, Program Files, the user profile root, Desktop...
 bool isDangerousRoot(const std::wstring& path);
 std::wstring nearestExisting(const std::wstring& path);
 std::optional<uint64_t> freeSpace(const std::wstring& path);
-bool canWrite(const std::wstring& dir, unsigned long* error);
+bool canWrite(const std::wstring& dir, ErrorCode* error);
 
 std::wstring tempDir();
 std::wstring selfExePath();
@@ -38,7 +45,7 @@ std::wstring knownFolder(const std::wstring& name);
 
 bool readFile(const std::wstring& path, std::vector<uint8_t>& out);
 bool readText(const std::wstring& path, std::string& out);
-bool writeFile(const std::wstring& path, const void* data, size_t size, unsigned long* error);
+bool writeFile(const std::wstring& path, const void* data, size_t size, ErrorCode* error);
 
 class Sha256 {
 public:

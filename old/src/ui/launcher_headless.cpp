@@ -1,18 +1,30 @@
-// Starting an action without the window (command line --launch).
+// Starting an action without the window (command line --launch). The Linux build, which has no window, has this
+// file and headless.h only.
+#ifdef _WIN32
 #include "launcher.h"
+#else
+#include "headless.h"
+#endif
 
 #include <algorithm>
 #include <cwctype>
+#include <memory>
 #include <regex>
 
 #include "core/discord.h"
 #include "core/embedded.h"
 #include "core/fs.h"
+#include "core/game_options.h"
 #include "core/json.h"
 #include "core/log.h"
 #include "core/motion.h"
+#include "core/mod/manager.h"
+#include "core/process.h"
+#include "core/relay.h"
 #include "core/rooms.h"
 #include "core/strings.h"
+#include "core/webserver.h"
+#ifdef _WIN32
 #include "launcher_internal.h"
 // win.h (via theme.h) first: these need the full Windows types.
 #include <commctrl.h>
@@ -20,10 +32,13 @@
 #include <dwmapi.h>
 #include <uxtheme.h>
 #include <windowsx.h>
+#endif
 
 namespace fl::ui {
 
+#ifdef _WIN32
 using namespace Gdiplus;
+#endif
 using namespace detail;
 
 // ---- headless launch -----------------------------------------------------

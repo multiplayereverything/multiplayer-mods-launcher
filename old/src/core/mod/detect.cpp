@@ -69,10 +69,21 @@ static std::vector<std::wstring> steamRoots() {
             if (iequals(r, n)) return;
         roots.push_back(n);
     };
+#ifdef _WIN32
     add(readRegistryPath(L"HKCU\\Software\\Valve\\Steam", L"SteamPath"));
     add(readRegistryPath(L"HKLM\\SOFTWARE\\WOW6432Node\\Valve\\Steam", L"InstallPath"));
     add(readRegistryPath(L"HKLM\\SOFTWARE\\Valve\\Steam", L"InstallPath"));
     add(fs::join(fs::knownFolder(L"ProgramFilesX86"), L"Steam"));
+#else
+    // Linux: the native client (~/.steam/steam links to it), Debian's package and the Flatpak and Snap ones.
+    std::wstring home = fs::knownFolder(L"Profile");
+    for (const wchar_t* rel : {L".steam/steam", L".steam/root", L".local/share/Steam", L".steam/debian-installation",
+                               L".var/app/com.valvesoftware.Steam/.local/share/Steam", L"snap/steam/common/.local/share/Steam"}) {
+        std::error_code ec;
+        std::filesystem::path real = std::filesystem::canonical(flOsPath(fs::join(home, rel)), ec);
+        if (!ec) add(widen(real.string()));
+    }
+#endif
     return roots;
 }
 
@@ -85,7 +96,7 @@ std::vector<std::wstring> steamLibraries(const std::wstring& steamRoot) {
         // Old format: "1" "D:\\SteamLibrary"
         for (int n = 1; n < 32; ++n)
             for (auto& v : parseVdfValues(text, std::to_string(n)))
-                if (v.size() > 2 && v[1] == ':') paths.push_back(v);
+                if ((v.size() > 2 && v[1] == ':') || (!v.empty() && v[0] == '/')) paths.push_back(v);
         for (const auto& p : paths) {
             std::wstring w = fs::normalize(widen(p));
             bool dup = false;
@@ -118,6 +129,10 @@ std::wstring steamGamePath(const std::vector<std::wstring>& libraries, const std
     return {};
 }
 
+#ifndef _WIN32
+// Linux has no registry: a "registry" rule finds nothing and the other rules (Steam, folders) are used.
+std::wstring readRegistryPath(const std::wstring&, const std::wstring&) { return {}; }
+#else
 std::wstring readRegistryPath(const std::wstring& key, const std::wstring& value) {
     HKEY root = nullptr;
     std::wstring sub;
@@ -146,6 +161,7 @@ std::wstring readRegistryPath(const std::wstring& key, const std::wstring& value
     }
     return {};
 }
+#endif
 
 static std::vector<std::wstring> epicLocations(const std::wstring& appName) {
     std::vector<std::wstring> out;

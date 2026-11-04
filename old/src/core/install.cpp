@@ -12,13 +12,19 @@
 #include "process.h"
 #include "strings.h"
 #include "win.h"
+#ifdef _WIN32
 // win.h first: winhttp needs the full Windows types.
 #include <winhttp.h>
+#else
+#include "core/posix/http.h"
+#include "core/posix/unzip.h"
+#endif
 
 namespace fl {
 
 namespace {
 
+#ifdef _WIN32
 class Handle {
 public:
     explicit Handle(HINTERNET h = nullptr) : h_(h) {}
@@ -33,6 +39,7 @@ public:
 private:
     HINTERNET h_;
 };
+#endif
 
 std::wstring lastError(const wchar_t* what) { return std::wstring(what) + L": " + win32ErrorMessage(GetLastError()); }
 
@@ -53,6 +60,7 @@ namespace {
 
 // GET `url`, following redirects (GitHub sends downloads to its CDN). The body
 // goes to `sink`; returns false with `error` set on failure or cancel.
+#ifdef _WIN32
 bool httpGet(const std::wstring& url, const std::function<bool(const char*, size_t)>& sink, uint64_t* contentLength,
              const std::atomic<bool>* cancel, std::wstring& error) {
     URL_COMPONENTS uc{sizeof uc};
@@ -143,6 +151,53 @@ bool httpGet(const std::wstring& url, const std::function<bool(const char*, size
         }
     }
 }
+#else
+// Linux: the same GET through curl (core/posix/http.cpp), with the same errors.
+bool httpGet(const std::wstring& url, const std::function<bool(const char*, size_t)>& sink, uint64_t* contentLength,
+             const std::atomic<bool>* cancel, std::wstring& error) {
+    std::wstring rest = url.substr(url.find(L"://") == std::wstring::npos ? 0 : url.find(L"://") + 3);
+    std::wstring host = rest.substr(0, rest.find_first_of(L"/:?#"));
+    bool refused = false;
+    auto onHeaders = [&](const sys::HttpHead& h) {
+        if (h.status != 200) {
+            refused = true;
+            error = host + L" answered HTTP " + std::to_wstring(h.status);
+            // GitHub allows 60 requests an hour without signing in: say how long until it answers again.
+            if (h.status == 403 || h.status == 429) {
+                auto header = [&](const char* name) {
+                    auto it = h.headers.find(name);
+                    return it == h.headers.end() ? std::wstring() : widen(it->second);
+                };
+                std::wstring remaining = header("x-ratelimit-remaining"), reset = header("x-ratelimit-reset"),
+                             retry = header("retry-after");
+                int64_t now = static_cast<int64_t>(std::time(nullptr));
+                int64_t resetAt = !reset.empty() ? _wcstoi64(reset.c_str(), nullptr, 10)
+                                  : !retry.empty() ? now + _wcstoi64(retry.c_str(), nullptr, 10)
+                                                   : 0;
+                if (resetAt > 0 && (remaining == L"0" || !retry.empty())) error = rateLimitMessage(resetAt - now);
+            }
+            return false;
+        }
+        if (contentLength) {
+            auto it = h.headers.find("content-length");
+            *contentLength = it == h.headers.end() ? 0 : strtoull(it->second.c_str(), nullptr, 10);
+        }
+        return true;
+    };
+    std::wstring problem;
+    bool ok = sys::curlGet(url, "MultiplayerEverything-Launcher/1.0", "application/vnd.github+json, */*", onHeaders,
+                           sink, cancel, problem);
+    if (refused) return false;
+    if (!ok) {
+        error = problem == L"Cancelled" || problem == L"Could not write the download to disk" ||
+                        problem.rfind(L"Bad download address", 0) == 0
+                    ? problem
+                    : L"Downloading from " + host + L": " + problem;
+        return false;
+    }
+    return true;
+}
+#endif
 
 struct Asset {
     std::wstring url, name, version, sha256;
@@ -324,11 +379,12 @@ InstallResult installPlayer(const PlayerSpec& player, const Vars& vars, const In
     }
 
     report(InstallStatus::Stage::Unpacking);
+    std::wstring unpacked = fs::join(work, L"files");
+    fs::ensureDir(unpacked, nullptr, nullptr);
+#ifdef _WIN32
     // tar.exe ships with Windows 10 1803+ and unpacks .zip archives.
     wchar_t sys[MAX_PATH];
     GetSystemDirectoryW(sys, MAX_PATH);
-    std::wstring unpacked = fs::join(work, L"files");
-    fs::ensureDir(unpacked, nullptr, nullptr);
     sys::Started tar;
     if (!sys::startProcess(fs::join(sys, L"tar.exe"), {L"-xf", archive, L"-C", unpacked}, work, tar, error, true)) {
         removeTree(work);
@@ -338,6 +394,11 @@ InstallResult installPlayer(const PlayerSpec& player, const Vars& vars, const In
     DWORD code = 1;
     GetExitCodeProcess(tar.process, &code);
     CloseHandle(tar.process);
+#else
+    std::wstring unpackError;
+    DWORD code = sys::unpackArchive(archive, unpacked, unpackError) ? 0 : 1;
+    if (code) logger().error(L"Unpacking " + archive + L" failed: " + unpackError);
+#endif
     std::wstring root = code == 0 ? folderWith(unpacked, exe) : std::wstring();
     if (root.empty()) {
         removeTree(work);

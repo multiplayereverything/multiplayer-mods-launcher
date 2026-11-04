@@ -4,10 +4,14 @@
 
 #include "strings.h"
 #include "win.h"
+#ifdef _WIN32
 // win.h first: these need the full Windows types.
 #include <natupnp.h>
 #include <netfw.h>
 #include <oleauto.h>
+#else
+#include <cstdlib>
+#endif
 
 namespace fl::net {
 
@@ -25,6 +29,7 @@ int octet(const std::wstring& address, int index) {
     return _wtoi(address.c_str() + at);
 }
 
+#ifdef _WIN32
 // COM on whatever thread calls us; balanced on scope exit.
 struct ComScope {
     HRESULT hr;
@@ -44,6 +49,7 @@ struct Ptr {
     T* operator->() const { return p; }
     explicit operator bool() const { return p != nullptr; }
 };
+#endif
 
 }  // namespace
 
@@ -71,6 +77,32 @@ std::vector<ShareAddress> shareAddresses(const std::vector<sys::NetAddress>& all
     return out;
 }
 
+#ifndef _WIN32
+// Linux: no firewall API to ask (desktop distributions mostly ship with it off), and only the Windows window
+// maps ports; the app (src-tauri) has its own lobby screen.
+Firewall firewallAllows(const std::wstring&, int) { return Firewall::Unknown; }
+
+bool addPortMapping(int, const std::wstring&, const std::wstring&, std::wstring& error) {
+    error = L"UPnP isn't available on this PC";
+    return false;
+}
+
+void removePortMapping(int) {}
+
+// "en_US.UTF-8" -> "US", from the locale the session runs in.
+std::wstring userRegion() {
+    for (const char* var : {"LC_ALL", "LC_MESSAGES", "LANG"}) {
+        const char* v = getenv(var);
+        if (!v || !*v) continue;
+        std::string s = v;
+        size_t u = s.find('_');
+        if (u == std::string::npos || u + 3 > s.size()) continue;
+        std::wstring r = {static_cast<wchar_t>(toupper(s[u + 1])), static_cast<wchar_t>(toupper(s[u + 2]))};
+        if (iswalpha(r[0]) && iswalpha(r[1])) return r;
+    }
+    return L"";
+}
+#else
 Firewall firewallAllows(const std::wstring& exe, int port) {
     ComScope com;
     Ptr<INetFwMgr> mgr;
@@ -132,5 +164,6 @@ std::wstring userRegion() {
     }
     return L"";
 }
+#endif
 
 }  // namespace fl::net

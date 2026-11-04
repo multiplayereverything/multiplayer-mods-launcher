@@ -384,7 +384,9 @@ void removeEmptyTrees(const std::vector<std::wstring>& roots, const std::vector<
 // The Apps & Features entry a stand-alone installer registered for this mod.
 void removeUninstallEntry(const std::wstring& keyName) {
     if (keyName.empty()) return;
+#ifdef _WIN32
     RegDeleteTreeW(HKEY_CURRENT_USER, (L"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\" + keyName).c_str());
+#endif
 }
 
 bool deleteFileForce(const std::wstring& p) {

@@ -1,4 +1,5 @@
 // Config parsing/validation, file and player lookup, command lines, settings.
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <thread>

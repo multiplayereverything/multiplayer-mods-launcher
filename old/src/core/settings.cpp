@@ -127,7 +127,7 @@ bool saveUserData(const UserData& d, const std::wstring& path, std::wstring* err
     root.set("games", std::move(games));
     std::string text = json::serialize(root);
 
-    unsigned long code = 0;
+    fs::ErrorCode code = 0;
     if (!fs::ensureDir(fs::parent(path), nullptr, &code)) {
         if (error) *error = win32ErrorMessage(code);
         return false;
