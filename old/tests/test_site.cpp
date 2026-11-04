@@ -186,7 +186,9 @@ TEST(the_website_cannot_steer_a_file_name_or_a_link_the_launcher_uses) {
     // The cover file always sits directly in the covers folder.
     for (const auto& s : list) {
         std::wstring file = siteCoverFile(L"covers", s);
-        CHECK(file.find(L"..") == std::wstring::npos && file.find(L"/") == std::wstring::npos);
+        std::wstring name = fs::fileName(file);
+        CHECK(file == fs::join(L"covers", name) && name.find(L"..") == std::wstring::npos &&
+              name.find(L"/") == std::wstring::npos && name.find(L"\\") == std::wstring::npos);
     }
 }
 

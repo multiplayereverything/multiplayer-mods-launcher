@@ -128,7 +128,7 @@ TEST(install_writes_files_manifest_and_backup) {
     CHECK(st->files.size() == 5);
     bool backedUp = false;
     for (const auto& r : st->files)
-        if (r.path == f.game + L"\\Data\\original.dat") backedUp = readText(r.backup) == "ORIGINAL";
+        if (fs::normalize(r.path) == fs::normalize(f.game + L"\\Data\\original.dat")) backedUp = readText(r.backup) == "ORIGINAL";
     CHECK(backedUp);
     CHECK(exists(f.stateDir() + L"\\install.log"));
 }
@@ -181,6 +181,8 @@ TEST(injected_failure_rolls_back) {
     CHECK(f.gameUntouched());
 }
 
+// Windows only: Linux has no mandatory file locks, so a running game never blocks the install there.
+#ifdef _WIN32
 TEST(locked_game_file_fails_cleanly) {
     Fixture f("locked");
     HANDLE h = CreateFileW((f.game + L"\\Data\\original.dat").c_str(), GENERIC_READ, 0, nullptr, OPEN_EXISTING, 0, nullptr);
@@ -194,6 +196,7 @@ TEST(locked_game_file_fails_cleanly) {
     // Retry after the game is closed succeeds.
     CHECK(f.run(Operation::Install, f.selection()).result == Outcome::Result::Success);
 }
+#endif
 
 TEST(failed_update_restores_previous_version) {
     Fixture f("update-fail");
@@ -212,7 +215,7 @@ TEST(failed_update_restores_previous_version) {
 
 TEST(missing_payload_is_reported_before_any_change) {
     Fixture f("missing");
-    std::filesystem::remove_all(f.mod + L"\\payload\\override");
+    std::filesystem::remove_all(fs::normalize(f.mod + L"\\payload\\override"));
     f.res = openDirectory(f.mod);
     PlanResult p = f.plan(Operation::Install, f.selection());
     CHECK(!p.ok);
@@ -414,7 +417,7 @@ TEST(change_events_describe_what_happened) {
     CHECK(count(Change::Kind::Installed) == 4);
     CHECK(count(Change::Kind::Replaced) == 1);  // Data\original.dat, original saved
     CHECK(std::any_of(seen.begin(), seen.end(), [&](const Change& c) {
-        return c.kind == Change::Kind::Replaced && c.path == f.game + L"\\Data\\original.dat";
+        return c.kind == Change::Kind::Replaced && fs::normalize(c.path) == fs::normalize(f.game + L"\\Data\\original.dat");
     }));
 
     seen.clear();

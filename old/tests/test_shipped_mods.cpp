@@ -505,7 +505,7 @@ TEST(a_player_the_launcher_installed_is_updated_only_when_a_newer_release_exists
 
     // A copy from before the version was recorded counts as older, so even the same release is installed over it.
     api.version = L"1.0.1";
-    std::filesystem::remove(marker);
+    std::filesystem::remove(fs::normalize(marker));
     PlayerUpdate unmarked = updateInstalledPlayer(p, vars, nullptr);
     CHECK(unmarked.checked && !unmarked.updated && !unmarked.error.empty());  // it tried (the download fails here)
     CHECK(readText(exe) == "old");

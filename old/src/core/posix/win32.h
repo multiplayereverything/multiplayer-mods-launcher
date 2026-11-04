@@ -290,7 +290,11 @@ inline int WSAStartup(WORD, WSADATA* d) {
 }
 inline int WSACleanup() { return 0; }
 inline int WSAGetLastError() { return errno; }
-inline int closesocket(SOCKET s) { return close(s); }
+// Winsock's closesocket also wakes a thread blocked in accept() or recv() on it; close() alone doesn't, shutdown() does.
+inline int closesocket(SOCKET s) {
+    shutdown(s, SHUT_RDWR);
+    return close(s);
+}
 int ioctlsocket(SOCKET s, long cmd, u_long* arg);
 const wchar_t* InetNtopW(int family, const void* addr, wchar_t* buf, size_t size);
 // Winsock's exclusive bind is what Linux does by default; SO_REUSEADDR only lets a port in TIME_WAIT be bound again.
