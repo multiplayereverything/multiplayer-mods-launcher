@@ -44,6 +44,22 @@ bool saveCommunityCache(const std::wstring& path, const CommunityCache& cache) {
     return fs::writeFile(path, data.data(), data.size(), nullptr);
 }
 
+int mergeTeam(Config& cfg, const CommunityCache& cache) {
+    bool local = localBase(cfg.modsInfoBase());
+    int added = 0;
+    for (const auto& raw : cache.raw) {
+        GameSpec g;
+        std::wstring why;
+        if (!readTeamMod(raw, cfg, local, g, why)) {
+            logger().warn(L"Team mod left out: " + why);
+            continue;
+        }
+        cfg.games.push_back(std::move(g));
+        ++added;
+    }
+    return added;
+}
+
 int mergeCommunity(Config& cfg, const CommunityCache& cache) {
     bool local = localBase(cfg.modsInfoBase());
     int added = 0;

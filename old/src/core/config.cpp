@@ -168,6 +168,7 @@ const std::vector<std::pair<std::string, std::wstring>>& defaultTexts() {
         // PC game mods in the window.
         {"mod.update", L"Update to ${VERSION}"},
         {"mod.update.sub", L"You have ${INSTALLED}"},
+        {"mod.needsLauncher", L"Needs Multiplayer Everything ${VERSION} or newer. Update the launcher to get this mod."},
         {"mod.install", L"Install ${GAME_NAME}"},
         {"mod.install.sub", L"Version ${VERSION}, into your ${GAME_NAME} folder"},
         {"mod.install.subUnknown", L"Into your ${GAME_NAME} folder"},
@@ -987,6 +988,90 @@ void addModActions(GameSpec& g) {
 
 }  // namespace
 
+// One games[] entry: launcher.json's, or a team record from mods-info (readTeamMod), which is the same entry.
+GameSpec readGame(const Value& item, const std::wstring& where, std::vector<ConfigIssue>& issues) {
+    GameSpec g;
+    Section s(&item, where, issues);
+    s.str("id", g.id);
+    s.str("name", g.name);
+    s.str("description", g.description);
+    s.str("players", g.playerCount);
+    s.integer("maxPlayers", g.maxPlayers, 0, 16);
+    if (auto on = s.get("online", Type::Object)) {
+        Section os(on, s.child("online"), issues);
+        os.str("id", g.onlineId);
+        os.str("join", g.joinAction);
+        if (auto lv = os.get("lobby", Type::Object)) {
+            Section ls(lv, os.child("lobby"), issues);
+            g.lobby.enabled = true;
+            ls.boolean("enabled", g.lobby.enabled);
+            ls.str("version", g.lobby.version);
+            ls.integer("port", g.lobby.port, 1, 65535);
+        }
+    }
+    if (!g.maxPlayers)
+        for (size_t k = 0; k < g.playerCount.size(); ++k)  // "1-4 players" -> 4
+            if (iswdigit(g.playerCount[k]))
+                g.maxPlayers = std::max(g.maxPlayers, _wtoi(g.playerCount.c_str() + k));
+    s.str("controls", g.controls);
+    s.str("image", g.image);
+    s.str("site", g.siteId);
+    if (auto gv = s.get("guide", Type::Object)) {
+        Section gs(gv, s.child("guide"), issues);
+        gs.strList("needs", g.guide.needs);
+        gs.strList("steps", g.guide.steps);
+        gs.strList("tips", g.guide.tips);
+        if (auto keys = gs.get("keys", Type::Array))
+            for (size_t k = 0; k < keys->size(); ++k) {
+                Section ks(&keys->at(k), gs.child("keys") + L"[" + std::to_wstring(k) + L"]", issues);
+                std::wstring key, does;
+                ks.str("key", key);
+                ks.str("does", does);
+                if (key.empty() || does.empty()) ks.error(L"key", L"give both \"key\" and \"does\"");
+                else g.guide.keys.emplace_back(key, does);
+            }
+        if (auto links = gs.get("links", Type::Array))
+            for (size_t k = 0; k < links->size(); ++k) {
+                Section ls(&links->at(k), gs.child("links") + L"[" + std::to_wstring(k) + L"]", issues);
+                GuideLink link;
+                ls.str("label", link.label);
+                ls.str("url", link.url);
+                if (link.label.empty() || !startsWithI(link.url, L"https://"))
+                    ls.error(L"url", L"give a \"label\" and an https:// \"url\"");
+                else if (g.guide.links.size() >= kGuideMaxLinks)
+                    ls.error(L"url", L"at most four links");
+                else g.guide.links.push_back(std::move(link));
+            }
+    }
+    s.real("imageFocus", g.imageFocus, 0, 1);
+    s.boolean("comingSoon", g.comingSoon);
+    if (auto st = s.get("settings", Type::Array)) g.settings = readSettings(*st, s.child("settings"), issues);
+    s.idList("categories", g.categories);
+    s.color("color", g.color);
+    s.color("colorEnd", g.colorEnd);
+    if (auto actions = s.get("actions", Type::Array)) {
+        for (size_t j = 0; j < actions->size(); ++j)
+            g.actions.push_back(readAction(actions->at(j), where + L"." + indexPath(L"actions", j), issues));
+    }
+    if (auto mv = s.get("mod", Type::Object)) {
+        // The launcher makes the install / launch buttons; the only buttons a mod game may add are links
+        // (the mod's own page), which come after them.
+        std::vector<ActionSpec> links;
+        for (size_t j = 0; j < g.actions.size(); ++j) {
+            if (g.actions[j].isLink()) links.push_back(std::move(g.actions[j]));
+            else
+                issues.push_back({ConfigIssue::Severity::Error, where + L"." + indexPath(L"actions", j),
+                                  L"a mod game gets its buttons from the launcher; only a \"link\" action can be added"});
+        }
+        g.actions.clear();
+        g.mod = std::make_shared<const mod::Spec>(readMod(*mv, g, s.child("mod"), issues));
+        addModActions(g);
+        for (auto& l : links) g.actions.push_back(std::move(l));
+    }
+    if (g.name.empty()) g.name = widen(g.id);
+    return g;
+}
+
 LoadResult loadConfig(std::string_view jsonText, const std::wstring& configDir) {
     LoadResult r;
     Config& c = r.config;
@@ -1157,87 +1242,7 @@ LoadResult loadConfig(std::string_view jsonText, const std::wstring& configDir) 
     }
     if (auto list = top.get("games", Type::Array)) {
         for (size_t i = 0; i < list->size(); ++i) {
-            GameSpec g;
-            std::wstring where = indexPath(L"games", i);
-            Section s(&list->at(i), where, issues);
-            s.str("id", g.id);
-            s.str("name", g.name);
-            s.str("description", g.description);
-            s.str("players", g.playerCount);
-            s.integer("maxPlayers", g.maxPlayers, 0, 16);
-            if (auto on = s.get("online", Type::Object)) {
-                Section os(on, s.child("online"), issues);
-                os.str("id", g.onlineId);
-                os.str("join", g.joinAction);
-                if (auto lv = os.get("lobby", Type::Object)) {
-                    Section ls(lv, os.child("lobby"), issues);
-                    g.lobby.enabled = true;
-                    ls.boolean("enabled", g.lobby.enabled);
-                    ls.str("version", g.lobby.version);
-                    ls.integer("port", g.lobby.port, 1, 65535);
-                }
-            }
-            if (!g.maxPlayers)
-                for (size_t k = 0; k < g.playerCount.size(); ++k)  // "1-4 players" -> 4
-                    if (iswdigit(g.playerCount[k]))
-                        g.maxPlayers = std::max(g.maxPlayers, _wtoi(g.playerCount.c_str() + k));
-            s.str("controls", g.controls);
-            s.str("image", g.image);
-            s.str("site", g.siteId);
-            if (auto gv = s.get("guide", Type::Object)) {
-                Section gs(gv, s.child("guide"), issues);
-                gs.strList("needs", g.guide.needs);
-                gs.strList("steps", g.guide.steps);
-                gs.strList("tips", g.guide.tips);
-                if (auto keys = gs.get("keys", Type::Array))
-                    for (size_t k = 0; k < keys->size(); ++k) {
-                        Section ks(&keys->at(k), gs.child("keys") + L"[" + std::to_wstring(k) + L"]", issues);
-                        std::wstring key, does;
-                        ks.str("key", key);
-                        ks.str("does", does);
-                        if (key.empty() || does.empty()) ks.error(L"key", L"give both \"key\" and \"does\"");
-                        else g.guide.keys.emplace_back(key, does);
-                    }
-                if (auto links = gs.get("links", Type::Array))
-                    for (size_t k = 0; k < links->size(); ++k) {
-                        Section ls(&links->at(k), gs.child("links") + L"[" + std::to_wstring(k) + L"]", issues);
-                        GuideLink link;
-                        ls.str("label", link.label);
-                        ls.str("url", link.url);
-                        if (link.label.empty() || !startsWithI(link.url, L"https://"))
-                            ls.error(L"url", L"give a \"label\" and an https:// \"url\"");
-                        else if (g.guide.links.size() >= kGuideMaxLinks)
-                            ls.error(L"url", L"at most four links");
-                        else g.guide.links.push_back(std::move(link));
-                    }
-            }
-            s.real("imageFocus", g.imageFocus, 0, 1);
-            s.boolean("comingSoon", g.comingSoon);
-            if (auto st = s.get("settings", Type::Array)) g.settings = readSettings(*st, s.child("settings"), issues);
-            s.idList("categories", g.categories);
-            s.color("color", g.color);
-            s.color("colorEnd", g.colorEnd);
-            if (auto actions = s.get("actions", Type::Array)) {
-                for (size_t j = 0; j < actions->size(); ++j)
-                    g.actions.push_back(readAction(actions->at(j), where + L"." + indexPath(L"actions", j), issues));
-            }
-            if (auto mv = s.get("mod", Type::Object)) {
-                // The launcher makes the install / launch buttons; the only buttons a mod game may add are links
-                // (the mod's own page), which come after them.
-                std::vector<ActionSpec> links;
-                for (size_t j = 0; j < g.actions.size(); ++j) {
-                    if (g.actions[j].isLink()) links.push_back(std::move(g.actions[j]));
-                    else
-                        issues.push_back({ConfigIssue::Severity::Error, where + L"." + indexPath(L"actions", j),
-                                          L"a mod game gets its buttons from the launcher; only a \"link\" action can be added"});
-                }
-                g.actions.clear();
-                g.mod = std::make_shared<const mod::Spec>(readMod(*mv, g, s.child("mod"), issues));
-                addModActions(g);
-                for (auto& l : links) g.actions.push_back(std::move(l));
-            }
-            if (g.name.empty()) g.name = widen(g.id);
-            c.games.push_back(std::move(g));
+            c.games.push_back(readGame(list->at(i), indexPath(L"games", i), issues));
         }
     }
     if (auto texts = top.get("text", Type::Object)) {
@@ -1531,10 +1536,58 @@ bool refuse(std::wstring& error, const std::wstring& why) {
     return false;
 }
 
-bool checkCommunityShape(const Value& r, const std::wstring& id, const std::wstring& repo, std::wstring& error) {
+// A release file's address: https://github.com/<repo>/releases/download/<tag>/<file>, or the same path on a loopback
+// server when mods-info itself is one (the tests).
+bool releaseUrlOk(const std::wstring& url, const std::wstring& repo, const std::wstring& tag, const std::wstring& asset, bool localRelease) {
+    std::wstring path = L"/" + repo + L"/releases/download/" + tag + L"/" + asset;
+    if (url == L"https://github.com" + path) return true;
+    if (!localRelease || !startsWithI(url, L"http://127.0.0.1:")) return false;
+    size_t at = url.find(L'/', 17);
+    return at != std::wstring::npos && url.substr(at) == path;
+}
+
+// The same for any tag and file of `repo`'s releases (a team record's pinned package or loader).
+bool releaseUrlOf(const std::wstring& url, const std::wstring& repo, bool localRelease) {
+    std::wstring rest;
+    if (startsWithI(url, L"https://github.com/")) rest = url.substr(18);
+    else if (localRelease && startsWithI(url, L"http://127.0.0.1:")) {
+        size_t at = url.find(L'/', 17);
+        if (at == std::wstring::npos) return false;
+        rest = url.substr(at);
+    } else return false;
+    std::wstring prefix = L"/" + repo + L"/releases/download/";
+    if (!startsWithI(rest, prefix)) return false;
+    std::wstring tail = rest.substr(prefix.size());
+    size_t slash = tail.find(L'/');
+    return slash != std::wstring::npos && tail.find(L'/', slash + 1) == std::wstring::npos && plainSegment(tail.substr(0, slash)) &&
+           plainSegment(tail.substr(slash + 1));
+}
+
+bool checkCommunityShape(const Value& r, const std::wstring& id, const std::wstring& repo, bool localRelease, std::wstring& error) {
     const Value* m = r.find("mod");
     if (!m || !m->isObject()) return refuse(error, L"no \"mod\" object");
-    if (!onlyKeys(*m, {"id", "publisher", "website", "game", "install", "components", "launch"}, L"mod", error)) return false;
+    if (!onlyKeys(*m, {"id", "publisher", "website", "game", "install", "components", "launch", "package"}, L"mod", error)) return false;
+    // A loader the mod's own releases carry (BepInEx, say), pinned by the approval like the mod: its tag, file and
+    // SHA-256. The record never chooses another repository.
+    if (const Value* p = m->find("package")) {
+        if (!p->isObject()) return refuse(error, L"mod.package must be an object");
+        if (!onlyKeys(*p, {"extras"}, L"mod.package", error)) return false;
+        const Value* ex = p->find("extras");
+        if (!ex || !ex->isArray()) return refuse(error, L"mod.package.extras: a list");
+        if (ex->size() == 0 || ex->size() > 3) return refuse(error, L"mod.package.extras: one to three");
+        for (size_t i = 0; i < ex->size(); ++i) {
+            const Value& e = ex->at(i);
+            std::wstring where = L"mod.package.extras[" + std::to_wstring(i) + L"]";
+            if (!e.isObject()) return refuse(error, where + L": must be an object");
+            if (!onlyKeys(e, {"dir", "tag", "asset", "url", "sha256"}, where, error)) return false;
+            if (!insidePackage(strOf(e, "dir"))) return refuse(error, where + L".dir: a folder name inside the package");
+            std::wstring tag = strOf(e, "tag"), asset = strOf(e, "asset");
+            if (!plainSegment(tag) || !plainSegment(asset)) return refuse(error, where + L": tag and asset must be plain names");
+            if (!sha256Hex(strOf(e, "sha256"))) return refuse(error, where + L".sha256 must be 64 lower-case hex digits");
+            if (!releaseUrlOk(strOf(e, "url"), repo, tag, asset, localRelease))
+                return refuse(error, where + L".url must be https://github.com/" + repo + L"/releases/download/" + tag + L"/" + asset);
+        }
+    }
     if (strOf(*m, "id") != id) return refuse(error, L"mod.id must be the record's id");
     std::wstring site = strOf(*m, "website");
     if (!site.empty() && site != L"https://github.com/" + repo) return refuse(error, L"mod.website must be https://github.com/" + repo);
@@ -1567,7 +1620,15 @@ bool checkCommunityShape(const Value& r, const std::wstring& id, const std::wstr
 
     if (const Value* in = m->find("install")) {
         if (!in->isObject()) return refuse(error, L"mod.install must be an object");
-        if (!onlyKeys(*in, {"targetDir", "stateDir", "preserve", "requires", "uninstallCleanup"}, L"mod.install", error)) return false;
+        if (!onlyKeys(*in, {"targetDir", "stateDir", "preserve", "requires", "uninstallCleanup", "uninstallCleanupWith"}, L"mod.install", error))
+            return false;
+        // Delete uninstallCleanup only with this component (the loader): a component the mod ships, by its id.
+        if (const Value* with = in->find("uninstallCleanupWith")) {
+            bool known = false;
+            if (const Value* cs = m->find("components"); cs && cs->isArray() && with->isString() && !with->str().empty())
+                for (size_t i = 0; i < cs->size(); ++i) known = known || strOf(cs->at(i), "id") == widen(with->str());
+            if (!known) return refuse(error, L"mod.install.uninstallCleanupWith: the id of one of mod.components");
+        }
         std::wstring target = strOf(*in, "targetDir");
         if (!target.empty() && (!startsWithI(target, L"${GAME_DIR}") || target.find(L"..") != std::wstring::npos))
             return refuse(error, L"mod.install.targetDir must be inside ${GAME_DIR}");
@@ -1587,7 +1648,13 @@ bool checkCommunityShape(const Value& r, const std::wstring& id, const std::wstr
         const Value& c = cs->at(i);
         std::wstring where = L"mod.components[" + std::to_wstring(i) + L"]";
         if (!c.isObject()) return refuse(error, where + L": must be an object");
-        if (!onlyKeys(c, {"id", "name", "source", "target", "targetName", "required"}, where, error)) return false;
+        if (!onlyKeys(c, {"id", "name", "source", "target", "targetName", "required", "skipIfPresent"}, where, error)) return false;
+        // Left out when the game already has one of these (a loader another mod installed): paths in the game folder.
+        if (const Value* sk = c.find("skipIfPresent")) {
+            bool ok = sk->isArray() && sk->size() > 0 && sk->size() <= 10;
+            for (size_t k = 0; ok && k < sk->size(); ++k) ok = sk->at(k).isString() && insidePackage(widen(sk->at(k).str()));
+            if (!ok) return refuse(error, where + L".skipIfPresent: one to ten paths inside the game folder, such as BepInEx/core");
+        }
         if (!insidePackage(strOf(c, "source"))) return refuse(error, where + L".source: a path inside the package");
         std::wstring target = strOf(c, "target");
         if (!target.empty() && !insideGame(target)) return refuse(error, where + L".target must be inside ${GAME_DIR}");
@@ -1595,14 +1662,55 @@ bool checkCommunityShape(const Value& r, const std::wstring& id, const std::wstr
 
     const Value* l = m->find("launch");
     if (!l || !l->isObject()) return refuse(error, L"mod.launch is missing");
-    if (!onlyKeys(*l, {"uri", "hint"}, L"mod.launch", error)) return false;
-    std::wstring uri = strOf(*l, "uri");
+    if (!onlyKeys(*l, {"uri", "executable", "hint"}, L"mod.launch", error)) return false;
+    // Through Steam, or a program in the game's folder (the mod's own launcher, say): one of the two.
+    std::wstring uri = strOf(*l, "uri"), exe = strOf(*l, "executable");
+    if (uri.empty() == exe.empty())
+        return refuse(error, L"mod.launch: either uri (steam://rungameid/<app id>) or executable (${GAME_DIR}\\<program>.exe)");
+    if (!exe.empty()) {
+        bool ok = startsWithI(exe, L"${GAME_DIR}\\") && exe.find(L"..") == std::wstring::npos &&
+                  exe.find_first_of(L"$:/", 12) == std::wstring::npos && exe.size() > 16 && iequals(exe.substr(exe.size() - 4), L".exe");
+        return ok ? true : refuse(error, L"mod.launch.executable must be ${GAME_DIR}\\<program>.exe, inside the game folder");
+    }
     std::wstring tail = startsWithI(uri, L"steam://rungameid/") ? uri.substr(18) : L"";
     if (!(tail == L"${STEAM_APP_ID}" || (!tail.empty() && allDigits(tail))))
         return refuse(error, L"mod.launch.uri must be steam://rungameid/<app id>");
     return true;
 }
 
+}  // namespace
+
+namespace {
+// "minLauncher": the oldest launcher that understands the record. An older one leaves the record out (the app shows a
+// card asking for an update); the rest isn't read, as it may use keys this launcher doesn't know.
+bool tooNew(const Value& r, std::wstring& error) {
+    const Value* v = r.find("minLauncher");
+    if (!v) return false;
+    std::wstring min = v->isString() ? widen(v->str()) : L"";
+    bool shaped = !min.empty() && min.size() <= 20 &&
+                  std::all_of(min.begin(), min.end(), [](wchar_t ch) { return (ch >= L'0' && ch <= L'9') || ch == L'.'; });
+    if (!shaped) {
+        error = L"minLauncher: a version such as \"1.0.42\"";
+        return true;
+    }
+    if (compareVersions(min, LAUNCHER_VERSION) <= 0) return false;
+    error = L"needs launcher " + min + L" or newer";
+    return true;
+}
+
+// Every check a launcher.json mod gets; a loopback release (only accepted when mods-info is loopback too: the tests)
+// isn't https.
+bool checkedLikeLauncherJson(const GameSpec& g, const Config& cfg, std::vector<ConfigIssue>& issues, bool testRelease, std::wstring& error) {
+    Config one = cfg;
+    one.games = {g};
+    validateConfig(one, issues);
+    auto loopbackUrl = [&](const std::wstring& w) {
+        return testRelease && w.find(L".package") != std::wstring::npos && w.size() >= 4 && w.compare(w.size() - 4, 4, L".url") == 0;
+    };
+    for (const auto& i : issues)
+        if (i.severity == ConfigIssue::Severity::Error && !loopbackUrl(i.where)) return refuse(error, i.where + L": " + i.message);
+    return true;
+}
 }  // namespace
 
 bool readCommunityMod(std::string_view text, const Config& cfg, bool localRelease, GameSpec& out, std::wstring& error) {
@@ -1614,36 +1722,33 @@ bool readCommunityMod(std::string_view text, const Config& cfg, bool localReleas
     std::wstring kind = r.find("kind") ? strOf(r, "kind") : L"pc";
     if (kind == L"link") return refuse(error, L"");
     if (kind != L"pc") return refuse(error, L"kind \"" + kind + L"\" isn't known to this launcher");
-    if (!onlyKeys(r, {"id", "repo", "kind", "tag", "version", "asset", "url", "sha256", "manifest_sha256", "author", "authorUrl",
-                      "approved_at", "approved_by", "mod", "description", "players", "maxPlayers", "color", "colorEnd", "guide"},
-                  L"record", error))
-        return false;
     std::wstring id = strOf(r, "id"), repo = strOf(r, "repo"), tag = strOf(r, "tag"), asset = strOf(r, "asset");
     std::wstring version = strOf(r, "version"), url = strOf(r, "url"), sha = strOf(r, "sha256");
     if (id.empty() || id.size() > 48 ||
         !std::all_of(id.begin(), id.end(), [](wchar_t ch) { return (ch >= L'a' && ch <= L'z') || (ch >= L'0' && ch <= L'9') || ch == L'-'; }))
         return refuse(error, L"id: lowercase letters, digits and '-', up to 48");
     if (!repoName(repo)) return refuse(error, L"repo must be \"owner/name\"");
+    if (tooNew(r, error)) return false;
+    if (!onlyKeys(r, {"id", "repo", "kind", "tag", "version", "asset", "url", "sha256", "manifest_sha256", "author", "authorUrl",
+                      "approved_at", "approved_by", "minLauncher", "mod", "description", "players", "maxPlayers", "color", "colorEnd", "guide"},
+                  L"record", error))
+        return false;
     if (!plainSegment(tag) || !plainSegment(asset)) return refuse(error, L"tag and asset must be plain names");
     if (!plainSegment(version)) return refuse(error, L"version is missing");
     if (!sha256Hex(sha)) return refuse(error, L"sha256 must be 64 lower-case hex digits");
     // The download is the pinned release asset on github.com, under the record's own repository. A local test server
     // stands in for github.com only when mods-info itself is one (tests/e2e.ps1).
-    std::wstring path = L"/" + repo + L"/releases/download/" + tag + L"/" + asset;
-    bool urlOk = url == L"https://github.com" + path;
-    if (!urlOk && localRelease && startsWithI(url, L"http://127.0.0.1:")) {
-        size_t at = url.find(L'/', 17);
-        urlOk = at != std::wstring::npos && url.substr(at) == path;
-    }
-    if (!urlOk) return refuse(error, L"url must be https://github.com" + path);
+    if (!releaseUrlOk(url, repo, tag, asset, localRelease))
+        return refuse(error, L"url must be https://github.com/" + repo + L"/releases/download/" + tag + L"/" + asset);
     std::string sid = narrow(id);
     for (const auto& g : cfg.games)
         if (g.id == sid || g.siteId == sid || (g.mod && g.mod->mod.id == id)) return refuse(error, L"launcher.json already has \"" + id + L"\"");
-    if (!checkCommunityShape(r, id, repo, error)) return false;
+    if (!checkCommunityShape(r, id, repo, localRelease, error)) return false;
 
-    // The recipe as launcher.json would hold it, with the package the approval pinned.
+    // The recipe as launcher.json would hold it, with the package the approval pinned (and its pinned loader).
     Value m = *r.find("mod");
     Value pkg = Value::object();
+    if (const Value* p = m.find("package"); p && p->find("extras")) pkg.set("extras", *p->find("extras"));
     pkg.set("version", narrow(version));
     pkg.set("url", narrow(url));
     pkg.set("sha256", narrow(sha));
@@ -1660,16 +1765,68 @@ bool readCommunityMod(std::string_view text, const Config& cfg, bool localReleas
     g.mod = std::make_shared<const mod::Spec>(readMod(m, g, L"community." + id + L".mod", issues));
     addModActions(g);
     // Then every check a launcher.json mod gets.
-    Config one = cfg;
-    one.games = {g};
-    validateConfig(one, issues);
-    // A loopback release (only accepted above when mods-info is loopback too: the tests) isn't https.
-    bool testRelease = localRelease && startsWithI(url, L"http://127.0.0.1:");
-    const std::wstring pkgUrl = L".package.url";
-    auto isPkgUrl = [&](const std::wstring& w) { return w.size() >= pkgUrl.size() && w.compare(w.size() - pkgUrl.size(), pkgUrl.size(), pkgUrl) == 0; };
-    for (const auto& i : issues)
-        if (i.severity == ConfigIssue::Severity::Error && !(testRelease && isPkgUrl(i.where)))
-            return refuse(error, i.where + L": " + i.message);
+    if (!checkedLikeLauncherJson(g, cfg, issues, localRelease && startsWithI(url, L"http://127.0.0.1:"), error)) return false;
+    out = std::move(g);
+    return true;
+}
+
+namespace {
+// The only owner a team record's repository, and every repository it downloads from, may have.
+constexpr const wchar_t* kTeamOwner = L"multiplayereverything";
+
+bool teamRepo(const std::wstring& repo) { return repoName(repo) && iequals(repo.substr(0, repo.find(L'/')), kTeamOwner); }
+}  // namespace
+
+bool readTeamMod(std::string_view text, const Config& cfg, bool localRelease, GameSpec& out, std::wstring& error) {
+    std::string perr;
+    Value r = json::parse(text, &perr);
+    if (!r.isObject()) return refuse(error, L"not a JSON object" + (perr.empty() ? std::wstring() : L" (" + widen(perr) + L")"));
+    std::wstring id = strOf(r, "id"), repo = strOf(r, "repo");
+    if (id.empty() || id.size() > 48 ||
+        !std::all_of(id.begin(), id.end(), [](wchar_t ch) { return (ch >= L'a' && ch <= L'z') || (ch >= L'0' && ch <= L'9') || ch == L'-'; }))
+        return refuse(error, L"id: lowercase letters, digits and '-', up to 48");
+    if (!teamRepo(repo)) return refuse(error, L"repo must be \"" + std::wstring(kTeamOwner) + L"/<name>\": team records are the team's own repositories");
+    if (tooNew(r, error)) return false;
+    // The record's own keys; the rest is a launcher.json games[] entry: the card and the mod, no buttons of its own.
+    if (!onlyKeys(r, {"id", "repo", "minLauncher", "approved_at", "approved_by", "name", "description", "players", "maxPlayers", "color",
+                      "colorEnd", "guide", "categories", "site", "online", "image", "imageFocus", "mod"},
+                  L"team record", error))
+        return false;
+    std::string sid = narrow(id);
+    for (const auto& g : cfg.games)
+        if (g.id == sid || (g.mod && g.mod->mod.id == id)) return refuse(error, L"launcher.json already has \"" + id + L"\"");
+    if (const Value* cats = r.find("categories"); cats && cats->isArray())
+        for (size_t i = 0; i < cats->size(); ++i)
+            if (cats->at(i).isString() && cats->at(i).str() == "community")
+                return refuse(error, L"categories: \"community\" is for developers' records");
+    const Value* m = r.find("mod");
+    if (!m || !m->isObject()) return refuse(error, L"no \"mod\" object");
+    if (m->find("id") && strOf(*m, "id") != id) return refuse(error, L"mod.id must be the record's id");
+    // Downloads only from the team's own repositories: the record's for the mod, the team's for a loader.
+    const Value* p = m->find("package");
+    if (!p || !p->isObject()) return refuse(error, L"mod.package is missing");
+    std::wstring gh = strOf(*p, "github");
+    if (!gh.empty() && !iequals(gh, repo)) return refuse(error, L"mod.package.github must be " + repo);
+    if (p->find("url") && !releaseUrlOf(strOf(*p, "url"), repo, localRelease))
+        return refuse(error, L"mod.package.url must be a release file of " + repo);
+    if (const Value* ex = p->find("extras"); ex && ex->isArray())
+        for (size_t i = 0; i < ex->size(); ++i) {
+            std::wstring from = strOf(ex->at(i), "github");
+            if (from.empty()) from = repo;
+            std::wstring where = L"mod.package.extras[" + std::to_wstring(i) + L"]";
+            if (!teamRepo(from)) return refuse(error, where + L".github must be a " + std::wstring(kTeamOwner) + L" repository");
+            if (ex->at(i).find("url") && !releaseUrlOf(strOf(ex->at(i), "url"), from, localRelease))
+                return refuse(error, where + L".url must be a release file of " + from);
+        }
+    Value entry = Value::object();
+    for (size_t i = 0; i < r.size(); ++i) {
+        const std::string& k = r.keyAt(i);
+        if (k == "id" || (k != "repo" && k != "minLauncher" && k != "approved_at" && k != "approved_by")) entry.set(k, r.at(i));
+    }
+    std::vector<ConfigIssue> issues;
+    GameSpec g = readGame(entry, L"team." + id, issues);
+    if (g.siteId.empty()) g.siteId = sid;
+    if (!checkedLikeLauncherJson(g, cfg, issues, localRelease, error)) return false;
     out = std::move(g);
     return true;
 }

@@ -28,5 +28,8 @@ bool saveCommunityCache(const std::wstring& path, const CommunityCache& cache);
 // Adds every record that passes readCommunityMod to the games; the others are logged and left out. Returns how
 // many were added.
 int mergeCommunity(Config& cfg, const CommunityCache& cache);
+// The same for the team's own mods (mods-info team/, the app's team.json), through readTeamMod. Before
+// mergeCommunity: a developer's record never takes one of the team's ids.
+int mergeTeam(Config& cfg, const CommunityCache& cache);
 
 }  // namespace fl

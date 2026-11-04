@@ -68,6 +68,7 @@ pub const DEFAULT_TEXTS: &[(&str, &str)] = &[
     ("uninstall.notInstalled", "${MOD_NAME} isn't installed here, or its install record is missing."),
     ("mod.update", "Update to ${VERSION}"),
     ("mod.update.sub", "You have ${INSTALLED}"),
+    ("mod.needsLauncher", "Needs Multiplayer Everything ${VERSION} or newer. Update the launcher to get this mod."),
     ("mod.install", "Install ${GAME_NAME}"),
     ("mod.install.sub", "Version ${VERSION}, into your ${GAME_NAME} folder"),
     ("mod.install.subUnknown", "Into your ${GAME_NAME} folder"),

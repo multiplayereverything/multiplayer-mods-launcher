@@ -5,6 +5,7 @@
 
 #include "core/community.h"
 #include "core/config.h"
+#include "core/json.h"
 #include "core/discord.h"
 #include "core/embedded.h"
 #include "core/install.h"
@@ -799,6 +800,147 @@ TEST(community_record_written_by_the_team_installs_where_it_did) {
     std::string flash = R"({ "id": "lab-flash", "kind": "flash", "repo": "someone/lab-flash" })";
     CHECK(!readCommunityMod(flash, cfg, false, g, why));
     CHECK(why.find(L"isn't known") != std::wstring::npos);
+}
+
+TEST(community_record_may_bring_its_loader_skip_it_and_start_a_program) {
+    // What the developer SDK gained: a loader from the mod's own releases (pinned), a component left out when the game
+    // has a loader already, the loader's leftovers removed with it, and a program in the game folder to start.
+    Config cfg = shippedConfig();
+    GameSpec g;
+    std::wstring why;
+    std::string sha(64, 'b');
+    std::string r = communityRecord(R"("package": { "extras": [{ "dir": "loader", "tag": "bepinex-5", "asset": "BepInEx.zip", "sha256": ")" + sha +
+                                    R"(", "url": "https://github.com/someone/lab-coop/releases/download/bepinex-5/BepInEx.zip" }] },)");
+    swapIn(r, R"("components": [)", R"("components": [{ "id": "loader", "name": "BepInEx", "source": "loader/BepInEx/core",
+        "target": "${GAME_DIR}\\BepInEx\\core", "skipIfPresent": ["BepInEx/core"], "required": true },)");
+    swapIn(r, R"("targetDir")", R"("uninstallCleanupWith": "loader", "uninstallCleanup": ["BepInEx/cache/**"], "targetDir")");
+    swapIn(r, R"("uri": "steam://rungameid/123456")", R"("executable": "${GAME_DIR}\\LabCoopLauncher.exe")");
+    if (!readCommunityMod(r, cfg, false, g, why)) fprintf(stderr, "%ls\n%s\n", why.c_str(), r.c_str());
+    REQUIRE(g.mod != nullptr);
+    REQUIRE(g.mod->package.extras.size() == 1);
+    CHECK(g.mod->package.extras[0].dir == L"loader" && g.mod->package.extras[0].sha256 == widen(sha));
+    CHECK(g.mod->package.sha256 == L"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");  // the mod's own pin
+    CHECK(g.mod->components[0].skipIfPresent == std::vector<std::wstring>{L"BepInEx/core"});
+    CHECK(g.mod->install.uninstallCleanupWith == "loader");
+    CHECK(g.mod->launch.executable == L"${GAME_DIR}\\LabCoopLauncher.exe" && g.mod->launch.uri.empty());
+
+    auto refused = [&](const std::string& from, const std::string& to, const wchar_t* want) {
+        std::string x = r;
+        swapIn(x, from, to);
+        bool ok = !readCommunityMod(x, cfg, false, g, why) && why.find(want) != std::wstring::npos;
+        if (!ok) fprintf(stderr, "wanted %ls, got %ls\n", want, why.c_str());
+        return ok;
+    };
+    CHECK(refused("someone/lab-coop/releases/download/bepinex-5", "other/repo/releases/download/bepinex-5", L"extras[0].url must be"));
+    CHECK(refused(R"("sha256": ")" + sha, R"("sha256": "ABC)", L"extras[0].sha256 must be"));
+    CHECK(refused(R"("dir": "loader")", R"("dir": "..\\up")", L"extras[0].dir"));
+    CHECK(refused(R"("extras")", R"("github": "x/y", "extras")", L"mod.package.github: not allowed"));
+    CHECK(refused(R"("executable": "${GAME_DIR}\\LabCoopLauncher.exe")", R"("executable": "cmd.exe")", L"launch.executable must be"));
+    CHECK(refused(R"(LabCoopLauncher.exe")", R"(..\\x.exe")", L"launch.executable must be"));
+    CHECK(refused(R"(LabCoopLauncher.exe")", R"(run.bat")", L"launch.executable must be"));
+    CHECK(refused(R"("executable": "${GAME_DIR})", R"("uri": "steam://rungameid/1", "executable": "${GAME_DIR})", L"either uri"));
+    CHECK(refused(R"(["BepInEx/core"])", R"(["..\\Windows"])", L"skipIfPresent"));
+    CHECK(refused(R"("uninstallCleanupWith": "loader")", R"("uninstallCleanupWith": "nope")", L"uninstallCleanupWith"));
+}
+
+TEST(community_record_for_a_newer_launcher_is_left_out) {
+    // The engine leaves it out with a reason (the app shows a card asking for an update), and reads nothing else of it.
+    Config cfg = shippedConfig();
+    GameSpec g;
+    std::wstring why;
+    std::string r = communityRecord(R"("somethingNew": true,)");
+    swapIn(r, R"("author")", R"("minLauncher": "999.0", "author")");
+    CHECK(!readCommunityMod(r, cfg, false, g, why));
+    CHECK(why.find(L"needs launcher 999.0 or newer") != std::wstring::npos);
+    std::string ok = communityRecord();
+    swapIn(ok, R"("author")", R"("minLauncher": "1.0", "author")");
+    CHECK(readCommunityMod(ok, cfg, false, g, why));
+    swapIn(ok, R"("minLauncher": "1.0")", R"("minLauncher": "soon")");
+    CHECK(!readCommunityMod(ok, cfg, false, g, why) && why.find(L"minLauncher: a version") != std::wstring::npos);
+}
+
+namespace {
+// launcher.json's games[] entry `id` as a team record (team/<id>.json), and the shipped config without that game.
+std::string teamRecord(const std::string& id, Config& without) {
+    std::wstring path = fs::join(fs::parent(fs::parent(fs::parent(fs::parent(fs::selfExePath())))), L"launcher\\launcher.json");
+    if (!fs::isFile(path)) path = L"launcher\\launcher.json";
+    std::vector<uint8_t> bytes;
+    fs::readFile(path, bytes);
+    json::Value root = json::parse(std::string(bytes.begin(), bytes.end()), nullptr);
+    const json::Value* games = root.find("games");
+    json::Value entry;
+    for (size_t i = 0; i < games->size(); ++i)
+        if (games->at(i).find("id") && games->at(i).find("id")->str() == id) entry = games->at(i);
+    json::Value rec = json::Value::object();
+    rec.set("id", id);
+    rec.set("repo", entry.find("mod")->find("package")->find("github")->str());
+    rec.set("approved_by", std::string("Multiplayer Everything Team"));
+    for (size_t i = 0; i < entry.size(); ++i)
+        if (entry.keyAt(i) != "id") rec.set(entry.keyAt(i), entry.at(i));
+    without = shippedConfig();
+    std::erase_if(without.games, [&](const GameSpec& g) { return g.id == id; });
+    return json::serialize(rec, false);
+}
+}  // namespace
+
+TEST(team_record_is_the_same_game_as_its_launcher_json_entry) {
+    // Our own mods move from launcher.json to mods-info team/ unchanged: the same card, rooms and every building block.
+    for (const char* id : {"spooky-together", "gta-coop"}) {
+        Config cfg;
+        std::string r = teamRecord(id, cfg);
+        GameSpec g;
+        std::wstring why;
+        if (!readTeamMod(r, cfg, false, g, why)) fprintf(stderr, "%s: %ls\n", id, why.c_str());
+        REQUIRE(g.mod != nullptr);
+        Config shipped = shippedConfig();
+        const GameSpec* s = shipped.findGame(id);
+        REQUIRE(s != nullptr);
+        CHECK(g.name == s->name && g.description == s->description && g.categories == s->categories && g.siteId == s->siteId);
+        CHECK(g.onlineId == s->onlineId && g.guide.steps == s->guide.steps && g.guide.tips == s->guide.tips && g.playerCount == s->playerCount);
+        CHECK(g.actions.size() == s->actions.size());
+        const mod::Spec &a = *g.mod, &b = *s->mod;
+        CHECK(a.package.github == b.package.github && a.package.asset == b.package.asset && a.package.extras.size() == b.package.extras.size());
+        CHECK(a.components.size() == b.components.size() && a.install.stateDir == b.install.stateDir && a.install.targetDir == b.install.targetDir);
+        CHECK(a.install.uninstallCleanupWith == b.install.uninstallCleanupWith && a.install.uninstallCleanup == b.install.uninstallCleanup);
+        CHECK(a.launch.uri == b.launch.uri && a.launch.executable == b.launch.executable && a.game.detection.size() == b.game.detection.size());
+        for (size_t i = 0; i < a.components.size() && i < b.components.size(); ++i)
+            CHECK(a.components[i].source == b.components[i].source && a.components[i].skipIfPresent == b.components[i].skipIfPresent &&
+                  a.components[i].sourceGame == b.components[i].sourceGame && a.components[i].target == b.components[i].target);
+    }
+}
+
+TEST(team_record_comes_only_from_the_teams_repositories) {
+    Config cfg;
+    std::string base = teamRecord("spooky-together", cfg);
+    GameSpec g;
+    std::wstring why;
+    auto refused = [&](const std::string& from, const std::string& to, const wchar_t* want) {
+        std::string x = base;
+        swapIn(x, from, to);
+        bool ok = !readTeamMod(x, cfg, false, g, why) && why.find(want) != std::wstring::npos;
+        if (!ok) fprintf(stderr, "wanted %ls, got %ls\n", want, why.c_str());
+        return ok;
+    };
+    CHECK(refused(R"("repo":"multiplayereverything/spooky-together")", R"("repo":"someone/spooky-together")", L"team's own repositories"));
+    CHECK(refused(R"("github":"multiplayereverything/spooky-together","asset")", R"("github":"multiplayereverything/other","asset")",
+                  L"mod.package.github must be"));
+    CHECK(refused(R"("dir":"loader","github":"multiplayereverything/spooky-together")", R"("dir":"loader","github":"someone/loader")",
+                  L"extras[0].github must be a multiplayereverything repository"));
+    CHECK(refused(R"("categories":["pc")", R"("categories":["community")", L"is for developers' records"));
+    CHECK(refused(R"("approved_by")", R"("actions":[],"approved_by")", L"team record.actions: not allowed"));
+    CHECK(refused(R"("id":"spooky-together")", R"("id":"gta-coop")", L"launcher.json already has"));
+    CHECK(refused(R"("approved_by")", R"("minLauncher":"next","approved_by")", L"minLauncher: a version"));
+    CHECK(refused(R"("approved_by")", R"("minLauncher":"999.0","approved_by")", L"needs launcher 999.0"));
+    REQUIRE(readTeamMod(base, cfg, false, g, why));
+    // Team records merge first, so a developer's record can't take a team id.
+    CommunityCache team, dev;
+    team.raw = {base};
+    std::string devRec = communityRecord();
+    swapIn(devRec, R"("id": "lab-coop")", R"("id": "spooky-together")");
+    swapIn(devRec, R"("id": "lab-coop")", R"("id": "spooky-together")");
+    dev.raw = {devRec};
+    CHECK(mergeTeam(cfg, team) == 1);
+    CHECK(mergeCommunity(cfg, dev) == 0);
 }
 
 TEST(community_mods_come_from_the_apps_saved_copy) {

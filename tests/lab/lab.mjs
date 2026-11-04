@@ -145,10 +145,10 @@ const scenarios = {
   async library() {
     const counts = await waitFor(async () => {
       const c = await wd.exec("return Object.fromEntries([...document.querySelectorAll('.navs .nav')].map(b => [b.querySelector('.lbl')?.textContent, b.querySelector('.n')?.textContent ?? '']))")
-      return c['All games'] === '11' && c
+      return c['All games'] === '13' && c
     })
     await check('the sidebar counts every game', !!counts, JSON.stringify(counts))
-    await check('the sidebar counts each category', counts && counts['Flash mods'] === '5' && counts['PC mods'] === '1' && counts['Online multiplayer'] === '3' && counts['Community mods'] === '3' && counts['Coming soon'] === '1', JSON.stringify(counts))
+    await check('the sidebar counts each category', counts && counts['Flash mods'] === '5' && counts['PC mods'] === '2' && counts['Online multiplayer'] === '3' && counts['Community mods'] === '3' && counts['Coming soon'] === '2', JSON.stringify(counts))
     await wd.click(nav('Flash mods'))
     await check('a category shows its games', (await waitFor(async () => (await wd.count("//button[contains(@class,'card-c')]")) === 5)) === true)
     await wd.click(nav('All games'))
@@ -159,7 +159,7 @@ const scenarios = {
     await wd.click(button('A to Z'))
     const names = await waitFor(async () => {
       const n = await wd.exec("return [...document.querySelectorAll('.card-c .name')].map(e => e.textContent)")
-      return n.length === 11 && n
+      return n.length === 13 && n
     })
     await check('A to Z sorts by name', !!names && names.join('|') === [...names].sort((a, b) => a.localeCompare(b)).join('|'), names?.join(', '))
     await wd.click(button('Compact'))
@@ -547,6 +547,45 @@ const scenarios = {
     await check('Ctrl+F5 drops a mod taken down from mods-info', (await waitFor(async () => (await wd.count(card('Lab Late'))) === 0, 20000)) === true)
   },
 
+  // team/lab-team.json: one of our own mods from mods-info, as launcher.json would hold it. It follows its newest
+  // release, brings BepInEx from the repository's loader release, and takes it away again on Uninstall.
+  async teammods() {
+    const before = snapshot(box.labTeam)
+    await wd.click(nav('PC mods'))
+    const arrived = await waitFor(async () => (await wd.count(card('Lab Team'))) === 1, 20000)
+    await check('a team record from mods-info is one of the PC mods', arrived === true)
+    if (!arrived) return
+    await wd.click(nav('Community mods'))
+    await check('and not a community mod', (await waitFor(async () => (await wd.count(card('Lab Game'))) === 1, 5000)) === true && (await wd.count(card('Lab Team'))) === 0)
+    const saved = existsSync(join(work, 'data', 'team.json')) ? readFileSync(join(work, 'data', 'team.json'), 'utf8') : ''
+    await check('the team records are kept in the data folder for the mod commands', saved.includes('lab-team'))
+    await openGame('Lab Team')
+    const page = await wd.exec("return document.querySelector('.gp')?.innerText ?? ''")
+    await check('its card is the record\'s own text, with no "made by" credit', page.includes('One of our own mods, from mods-info.') && page.includes('2-4 players') && !page.includes('not by Multiplayer Everything'), page.slice(0, 300))
+    const ready = await waitFor(async () => wd.exec("return [...document.querySelectorAll('.dpanel .pbtn')].some(b => b.textContent.includes('Install') && !b.disabled)"), 30000)
+    const modsNow = ready === true ? '' : await wd.exec("return window.__TAURI_INTERNALS__.invoke('mods').then(m => JSON.stringify(m.filter(x => x.id === 'lab-team')))").catch((e) => String(e))
+    await check('it finds its game and its newest release, and offers Install', ready === true, `${await pill()} ${modsNow}`)
+    if (!ready) return
+    await wd.click(panel('Install Lab Team'))
+    const dll = join(box.labTeam, 'BepInEx', 'plugins', 'LabTeam', 'LabTeam.dll')
+    await check('Install puts the newest release in the game folder', (await waitFor(() => existsSync(dll) && readFileSync(dll, 'utf8') === 'lab team 2.0.0', 30000)) === true)
+    await check('and BepInEx from the loader release, which the game didn\'t have', existsSync(join(box.labTeam, 'BepInEx', 'core', 'BepInEx.dll')) && existsSync(join(box.labTeam, 'winhttp.dll')))
+    await check('the team mod shows as installed at its newest version', (await waitFor(async () => (await pill()).includes('Installed'), 15000)) === true, await pill())
+    await waitFor(async () => (await wd.count(panel('Uninstall'))) === 1, 30000)
+    await wd.click(panel('Uninstall'))
+    await wd.click(inDialog('Uninstall'))
+    await waitFor(async () => wd.exec("return [...document.querySelectorAll('.dpanel .pbtn')].some(b => b.textContent.includes('Install'))"), 30000)
+    await check('Uninstall takes the loader away with the mod: the folder is as it was', snapshot(box.labTeam) === before)
+    await key('Escape')
+
+    // team/lab-next.json needs a launcher that doesn't exist yet.
+    await openGame('Lab Next')
+    const next = await wd.exec("return document.querySelector('.gp')?.innerText ?? ''")
+    await check('a record for a newer launcher asks for an update', next.includes('Needs Multiplayer Everything 999.0 or newer'), next.slice(0, 300))
+    await check('and has nothing to install', (await wd.exec("return [...document.querySelectorAll('.dpanel .pbtn')].filter(b => /Install|Launch/.test(b.textContent)).length")) === 0)
+    await key('Escape')
+  },
+
   async keys() {
     await wd.click(nav('All games'))
     await wd.find("//button[contains(@class,'card-c')]")
@@ -689,9 +728,9 @@ const scenarios = {
 
     await key('PageDown')
     await check('RB goes to Games', !!(await waitFor(async () => (await wd.count("//div[contains(@class,'tv-lib')]")) > 0)))
-    await check('Games shows every game', (await waitFor(async () => (await wd.count("//div[contains(@class,'tv-grid')]//button[contains(@class,'tv-tile')]")) === 11)) === true)
+    await check('Games shows every game', (await waitFor(async () => (await wd.count("//div[contains(@class,'tv-grid')]//button[contains(@class,'tv-tile')]")) === 13)) === true)
     await wd.click("//button[contains(@class,'tv-chip')][starts-with(normalize-space(.),'PC mods')]")
-    await check('a filter narrows the games', (await waitFor(async () => (await wd.count("//div[contains(@class,'tv-grid')]//button[contains(@class,'tv-tile')]")) === 1)) === true)
+    await check('a filter narrows the games', (await waitFor(async () => (await wd.count("//div[contains(@class,'tv-grid')]//button[contains(@class,'tv-tile')]")) === 2)) === true)
     await key('Escape')
     await check('B goes back Home', !!(await waitFor(async () => (await wd.count("//div[contains(@class,'tv-home')]")) > 0)))
     await wd.click("//section[contains(@class,'tv-hero')]//button[contains(normalize-space(.),'Game page')]")

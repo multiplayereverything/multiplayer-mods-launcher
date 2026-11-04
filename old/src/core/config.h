@@ -329,5 +329,8 @@ std::wstring formatIssues(const std::vector<ConfigIssue>& issues);
 // and then like any launcher.json mod; a record that fails is refused whole. An id launcher.json already has is
 // refused too. `localRelease`: the release may come from a local test server (only when mods-info is one).
 bool readCommunityMod(std::string_view json, const Config& cfg, bool localRelease, GameSpec& out, std::wstring& error);
+// One of the team's own mods (team/<id>.json): a launcher.json games[] entry with the record's keys, from a
+// multiplayereverything repository, downloading only from the team's repositories; then checked like launcher.json.
+bool readTeamMod(std::string_view json, const Config& cfg, bool localRelease, GameSpec& out, std::wstring& error);
 
 }  // namespace fl

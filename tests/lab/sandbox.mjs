@@ -130,6 +130,55 @@ export function makeSandbox(work, fakePlayer) {
       launch: { uri: 'steam://rungameid/${STEAM_APP_ID}' },
     },
   }))
+  // One of the team's own mods (team/<id>.json): a launcher.json games[] entry from a multiplayereverything repository.
+  // It follows the repository's newest release (the stand-in for GitHub's API below) and brings BepInEx from the
+  // repository's loader release, left out when the game has it already, and removed with the mod.
+  const labTeam = join(work, 'LabTeam')
+  write(join(labTeam, 'LabTeam.exe'), 'lab team binary')
+  const teamPkg = join(work, 'teampkg')
+  write(join(teamPkg, 'LabTeam', 'LabTeam.dll'), 'lab team 2.0.0')
+  const teamZip = join(work, 'www', 'dl', 'LabTeam-2.0.0.zip')
+  mkdirSync(join(teamZip, '..'), { recursive: true })
+  execFileSync('powershell', ['-NoProfile', '-Command', `Compress-Archive -Path '${teamPkg}\\*' -DestinationPath '${teamZip}'`])
+  const loaderPkg = join(work, 'loaderpkg')
+  write(join(loaderPkg, 'BepInEx', 'core', 'BepInEx.dll'), 'bepinex 5')
+  write(join(loaderPkg, 'winhttp.dll'), 'doorstop')
+  const loaderZip = join(work, 'www', 'dl', 'BepInEx_lab.zip')
+  execFileSync('powershell', ['-NoProfile', '-Command', `Compress-Archive -Path '${loaderPkg}\\*' -DestinationPath '${loaderZip}'`])
+  const teamApi = join(work, 'www', 'repos', 'multiplayereverything', 'lab-team', 'releases')
+  const asset = (file, name) => ({ name, size: readFileSync(file).length, browser_download_url: `http://127.0.0.1:${PORTS.http}/dl/${name}`, digest: `sha256:${sha256(file)}` })
+  // GitHub answers both /releases (the list) and /releases/tags/<tag>; a folder and a file can't share a name, so the
+  // list is releases.json, which the lab's server gives for /releases (servers.mjs).
+  write(join(teamApi, 'tags', 'bepinex-5'), JSON.stringify({ tag_name: 'bepinex-5', draft: false, prerelease: false, assets: [asset(loaderZip, 'BepInEx_lab.zip')] }))
+  write(join(work, 'www', 'repos', 'multiplayereverything', 'lab-team', 'releases.json'), JSON.stringify([
+    { tag_name: 'v2.0.0', draft: false, prerelease: false, assets: [asset(teamZip, 'LabTeam-2.0.0.zip')] },
+    { tag_name: 'bepinex-5', draft: false, prerelease: false, assets: [asset(loaderZip, 'BepInEx_lab.zip')] },
+  ]))
+  write(join(work, 'www', 'team', 'index.json'), JSON.stringify({ mods: ['lab-team', 'lab-next'] }))
+  write(join(work, 'www', 'team', 'lab-team.json'), JSON.stringify({
+    id: 'lab-team', repo: 'multiplayereverything/lab-team', minLauncher: '1.0.42', approved_at: '2026-11-04', approved_by: 'lab',
+    name: 'Lab Team', players: '2-4 players (co-op)', maxPlayers: 4, categories: ['pc', 'coop'], color: '#D6264F', colorEnd: '#2A0A16',
+    description: 'One of our own mods, from mods-info.', guide: { steps: ['Press Install.'], tips: ['Only the host starts a run.'] },
+    mod: {
+      id: 'lab-team',
+      game: { name: 'Lab Team', executable: 'LabTeam.exe', validationFiles: ['${GAME_EXE}'], processNames: ['LabTeam-not-running.exe'],
+        detection: [{ type: 'path', path: labTeam }] },
+      install: { targetDir: '${GAME_DIR}\\BepInEx\\plugins\\LabTeam', uninstallCleanupWith: 'loader', uninstallCleanup: ['BepInEx/cache/**'] },
+      components: [
+        { id: 'loader', name: 'BepInEx mod loader', source: 'loader/BepInEx/core', target: '${GAME_DIR}\\BepInEx\\core', skipIfPresent: ['BepInEx/core'], required: true },
+        { id: 'loader-winhttp', name: 'BepInEx mod loader', source: 'loader/winhttp.dll', target: '${GAME_DIR}', skipIfPresent: ['BepInEx/core'], required: true },
+        { id: 'mod', name: 'Lab Team', source: 'LabTeam', required: true },
+      ],
+      launch: { uri: 'steam://rungameid/123457' },
+      package: { github: 'multiplayereverything/lab-team', asset: 'LabTeam-*.zip',
+        extras: [{ dir: 'loader', github: 'multiplayereverything/lab-team', tag: 'bepinex-5', asset: 'BepInEx_lab.zip' }] },
+    },
+  }))
+  // A record for a launcher that doesn't exist yet: this one shows a card asking for an update and reads no further.
+  write(join(work, 'www', 'team', 'lab-next.json'), JSON.stringify({
+    id: 'lab-next', repo: 'multiplayereverything/lab-next', minLauncher: '999.0', name: 'Lab Next', categories: ['pc'],
+    mod: { id: 'lab-next', somethingNew: { x: 1 } },
+  }))
   write(join(work, 'www', 'api', 'projects'), JSON.stringify({ games: [
     { id: 'lab-coop', kind: 'pc', name: 'Lab Game', maintainer: 'someone', repo: 'someone/lab-coop', players: '1-4 players', description: 'Four players in one lab.' },
     { id: 'listed-only', kind: 'pc', name: 'Listed Only', maintainer: 'another', repo: 'another/listed-only', description: 'On the website, not in mods-info.' },
@@ -141,6 +190,8 @@ export function makeSandbox(work, fakePlayer) {
     paths: { games: '${LAUNCHER_DIR}\\games', players: '${LAUNCHER_DIR}\\players', data: '${LAUNCHER_DIR}\\data', flashpoint: [] },
     downloads: { catalog: `http://127.0.0.1:${PORTS.http}/catalog.json`, modsInfo: `http://127.0.0.1:${PORTS.http}/`, site: `http://127.0.0.1:${PORTS.http}/games.json` },
     rooms: { server: `127.0.0.1:${PORTS.rooms}`, refreshSeconds: 10 },
+    // The mod engine asks this stand-in for GitHub's API about mods that follow their newest release (team records).
+    updates: { github: 'multiplayereverything/lab-launcher', asset: 'MultiplayerEverythingLauncher.exe', api: `http://127.0.0.1:${PORTS.http}` },
     players: [
       { id: 'fake', name: 'Fake Player', paths: [fakePlayer], args: ['--fake-player'], flashvarArg: '-P${KEY}=${VALUE}', coopSaveArg: '--coop-save',
         tv: { args: ['--fullscreen'], env: { FAKE_TV: '1' } } },
@@ -223,5 +274,5 @@ export function makeSandbox(work, fakePlayer) {
   write(join(work, 'www', 'games.json'), JSON.stringify(siteGames))
   // A name and no minimizing, so nothing waits on a prompt and the window stays where WebDriver can see it.
   write(join(work, 'data', 'settings.json'), JSON.stringify({ playerName: 'Tester', online: true, minimize: 0 }))
-  return { config: join(work, 'launcher.json'), gameDir, labGame, labSolo, args: join(work, 'args.txt'), settings: join(work, 'data', 'settings.json') }
+  return { config: join(work, 'launcher.json'), gameDir, labGame, labSolo, labTeam, args: join(work, 'args.txt'), settings: join(work, 'data', 'settings.json') }
 }

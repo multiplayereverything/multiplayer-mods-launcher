@@ -8,7 +8,9 @@ import { join, normalize } from 'node:path'
 export function startServers(work, ports) {
   const www = join(work, 'www')
   const http = createServer((req, res) => {
-    const file = normalize(join(www, decodeURIComponent(req.url.split('?')[0])))
+    let file = normalize(join(www, decodeURIComponent(req.url.split('?')[0])))
+    // A path that is also a folder (GitHub's /releases next to /releases/tags/<tag>) is answered from <path>.json.
+    if (existsSync(file) && statSync(file).isDirectory() && existsSync(`${file}.json`)) file = `${file}.json`
     if (!file.startsWith(www) || !existsSync(file) || !statSync(file).isFile()) {
       res.writeHead(404).end()
       return

@@ -679,6 +679,26 @@ fn the_records_in_a_mods_info_checkout_pass() {
     assert!(!ids.is_empty());
 }
 
+/// The team records in a mods-info checkout (FL_TEST_COMMUNITY_DIR): each one, read where launcher.json no longer has
+/// its game, is exactly the game launcher.json makes today, so moving our mods to mods-info changes nothing for players.
+#[test]
+fn the_team_records_in_a_mods_info_checkout_are_the_games_launcher_json_has() {
+    let Ok(dir) = std::env::var("FL_TEST_COMMUNITY_DIR") else { return };
+    let Ok(index) = std::fs::read(format!("{dir}\\team\\index.json")) else { return };
+    let ids = super::community::parse_index(&index).unwrap();
+    let shipped = shipped_config();
+    for id in &ids {
+        let text = std::fs::read_to_string(format!("{dir}\\team\\{id}.json")).unwrap();
+        let mut cfg = shipped.clone();
+        let before = cfg.games.iter().position(|g| &g.id == id).map(|i| cfg.games.remove(i));
+        let g = super::community::read_team_record(&text, &cfg, false).unwrap_or_else(|e| panic!("{id}: {e}"));
+        if let Some(b) = before {
+            assert_eq!(format!("{g:?}"), format!("{b:?}"), "{id}");
+        }
+    }
+    assert!(!ids.is_empty());
+}
+
 #[test]
 fn a_community_record_that_could_do_more_than_it_shows_is_refused_whole() {
     let mut cases: Vec<(serde_json::Value, &str)> = Vec::new();
@@ -688,8 +708,26 @@ fn a_community_record_that_could_do_more_than_it_shows_is_refused_whole() {
         cases.push((r, want));
     };
     add(&|r| r["extra"] = "x".into(), "record.extra: not allowed");
-    add(&|r| r["mod"]["package"] = serde_json::json!({ "github": "x/y" }), "mod.package: not allowed");
-    add(&|r| r["mod"]["launch"]["executable"] = "cmd.exe".into(), "mod.launch.executable: not allowed");
+    // A developer's record never picks its own download: only a loader from its own releases, pinned.
+    add(&|r| r["mod"]["package"] = serde_json::json!({ "github": "x/y" }), "mod.package.github: not allowed");
+    add(&|r| r["mod"]["package"] = serde_json::json!({ "extras": [{ "dir": "loader", "tag": "b1", "asset": "L.zip", "sha256": "a".repeat(64),
+        "url": "https://github.com/other/repo/releases/download/b1/L.zip" }] }), "extras[0].url must be https://github.com/someone/lab-coop/");
+    add(&|r| r["mod"]["package"] = serde_json::json!({ "extras": [{ "dir": "loader", "tag": "b1", "asset": "L.zip",
+        "url": "https://github.com/someone/lab-coop/releases/download/b1/L.zip" }] }), "extras[0].sha256 must be");
+    add(&|r| r["mod"]["package"] = serde_json::json!({ "extras": [{ "dir": "../up", "tag": "b1", "asset": "L.zip", "sha256": "a".repeat(64),
+        "url": "https://github.com/someone/lab-coop/releases/download/b1/L.zip" }] }), "extras[0].dir: a folder name");
+    add(&|r| r["mod"]["package"] = serde_json::json!({ "extras": [{ "dir": "l", "github": "x/y", "tag": "b1", "asset": "L.zip", "sha256": "a".repeat(64),
+        "url": "https://github.com/someone/lab-coop/releases/download/b1/L.zip" }] }), "extras[0].github: not allowed");
+    // A program to start: in the game's folder, and instead of Steam, not as well.
+    add(&|r| r["mod"]["launch"]["executable"] = "${GAME_DIR}\\Lab.exe".into(), "either uri");
+    add(&|r| r["mod"]["launch"] = serde_json::json!({ "executable": "cmd.exe" }), "launch.executable must be ${GAME_DIR}");
+    add(&|r| r["mod"]["launch"] = serde_json::json!({ "executable": "${GAME_DIR}\\..\\x.exe" }), "launch.executable must be ${GAME_DIR}");
+    add(&|r| r["mod"]["launch"] = serde_json::json!({ "executable": "${GAME_DIR}\\run.bat" }), "launch.executable must be ${GAME_DIR}");
+    add(&|r| r["mod"]["launch"] = serde_json::json!({ "executable": "${GAME_DIR}\\${env:COMSPEC}.exe" }), "launch.executable must be ${GAME_DIR}");
+    add(&|r| r["mod"]["components"][0]["skipIfPresent"] = serde_json::json!(["..\\Windows"]), "skipIfPresent: one to ten paths");
+    add(&|r| r["mod"]["components"][0]["skipIfPresent"] = serde_json::json!([]), "skipIfPresent: one to ten paths");
+    add(&|r| r["mod"]["install"]["uninstallCleanupWith"] = "nope".into(), "uninstallCleanupWith: the id of one");
+    add(&|r| r["minLauncher"] = "soon".into(), "minLauncher: a version");
     add(&|r| r["mod"]["launch"]["uri"] = "https://example.com".into(), "steam://rungameid");
     add(&|r| r["mod"]["install"]["allowedRoots"] = serde_json::json!(["C:/"]), "allowedRoots: not allowed");
     add(&|r| r["mod"]["install"]["targetDir"] = "C:/Windows".into(), "targetDir must be inside");
@@ -727,6 +765,148 @@ fn a_community_record_that_could_do_more_than_it_shows_is_refused_whole() {
     }
     assert!(super::community::read_record("[1]", &shipped_config(), false).is_err());
     assert!(super::community::read_record("not json", &shipped_config(), false).is_err());
+}
+
+/// What the developer SDK gained: a loader from the mod's own releases (pinned like the mod), a component left out when
+/// the game has a loader already, the loader's leftovers removed with it, and a program in the game folder to start.
+#[test]
+fn a_community_record_may_bring_its_loader_skip_it_and_start_a_program() {
+    let mut r = record();
+    let sha = "b".repeat(64);
+    r["mod"]["package"] = serde_json::json!({ "extras": [{ "dir": "loader", "tag": "bepinex-5.4.23.5", "asset": "BepInEx_win_x64_5.4.23.5.zip",
+        "sha256": sha, "url": "https://github.com/someone/lab-coop/releases/download/bepinex-5.4.23.5/BepInEx_win_x64_5.4.23.5.zip" }] });
+    let mut loader = r["mod"]["components"][0].clone();
+    loader["id"] = "loader".into();
+    loader["source"] = "loader/BepInEx/core".into();
+    loader["target"] = "${GAME_DIR}\\BepInEx\\core".into();
+    loader["skipIfPresent"] = serde_json::json!(["BepInEx/core"]);
+    r["mod"]["components"].as_array_mut().unwrap().insert(0, loader);
+    r["mod"]["install"]["uninstallCleanupWith"] = "loader".into();
+    r["mod"]["install"]["uninstallCleanup"] = serde_json::json!(["BepInEx/cache/**"]);
+    r["mod"]["launch"] = serde_json::json!({ "executable": "${GAME_DIR}\\LabCoopLauncher.exe", "hint": "Pick Host or Join." });
+    let g = read_rec(&r).unwrap_or_else(|e| panic!("{e}"));
+    let m = g.mod_spec.as_ref().unwrap();
+    let e = &m.package.extras[0];
+    assert_eq!((e.dir.as_str(), e.sha256.as_str()), ("loader", sha.as_str()));
+    assert!(e.url.ends_with("/someone/lab-coop/releases/download/bepinex-5.4.23.5/BepInEx_win_x64_5.4.23.5.zip"));
+    // The mod's own package is still the one the approval pinned.
+    assert_eq!(m.package.sha256, record()["sha256"].as_str().unwrap());
+    assert_eq!(m.components[0].skip_if_present, vec!["BepInEx/core".to_string()]);
+    assert_eq!(m.install.uninstall_cleanup_with, "loader");
+    assert_eq!(m.launch.executable, "${GAME_DIR}\\LabCoopLauncher.exe");
+    assert!(m.launch.uri.is_empty());
+}
+
+/// "minLauncher": a launcher too old for a record says so on a card with nothing to press, and reads nothing else of
+/// it (a newer record may use keys it doesn't know); one new enough reads it as usual.
+#[test]
+fn a_record_for_a_newer_launcher_asks_for_an_update() {
+    let mut r = record();
+    r["minLauncher"] = "999.0".into();
+    r["mod"]["somethingNew"] = serde_json::json!({ "x": 1 });
+    let g = read_rec(&r).unwrap_or_else(|e| panic!("{e}"));
+    assert!(g.coming_soon && g.actions.is_empty() && g.mod_spec.is_none());
+    assert_eq!(g.name, r["mod"]["game"]["name"].as_str().unwrap());
+    assert!(g.description.contains("999.0 or newer"), "{}", g.description);
+    assert_eq!(g.categories, vec!["community".to_string()]);
+    let mut ok = record();
+    ok["minLauncher"] = "1.0".into();
+    assert!(read_rec(&ok).unwrap_or_else(|e| panic!("{e}")).mod_spec.is_some());
+}
+
+// ---- team records (team/<id>.json): our own mods, as launcher.json holds them today ------------------------------
+
+/// launcher.json's games[] entry `id`, as JSON, and the shipped config without that game (where a record of it
+/// would be read once the entry has moved to mods-info).
+fn shipped_entry(id: &str) -> (serde_json::Value, super::config::Config) {
+    let path = format!("{}\\..\\launcher\\launcher.json", env!("CARGO_MANIFEST_DIR"));
+    let root = super::json::parse(&std::fs::read(paths::normalize(&path)).unwrap()).unwrap();
+    let entry = root.find("games").unwrap().items().iter().find(|g| g.text("id") == id).unwrap().clone();
+    let mut cfg = shipped_config();
+    cfg.games.retain(|g| g.id != id);
+    (serde_json::from_str(&super::json::serialize(&entry, false)).unwrap(), cfg)
+}
+
+fn team_record(id: &str) -> (serde_json::Value, super::config::Config) {
+    let (mut r, cfg) = shipped_entry(id);
+    let repo = r["mod"]["package"]["github"].as_str().unwrap().to_string();
+    r["repo"] = repo.into();
+    r["approved_at"] = "2026-11-04".into();
+    r["approved_by"] = "Multiplayer Everything Team".into();
+    (r, cfg)
+}
+
+fn read_team(r: &serde_json::Value, cfg: &super::config::Config) -> Result<super::config::GameSpec, String> {
+    super::community::read_team_record(&r.to_string(), cfg, false)
+}
+
+/// A team record is the launcher.json entry with the record's keys added: it makes the very same game (card, guide,
+/// categories, the online rooms, every building block of the mod), so moving a mod to mods-info changes nothing.
+#[test]
+fn a_team_record_is_the_same_game_as_its_launcher_json_entry() {
+    for id in ["spooky-together", "gta-coop"] {
+        let (r, cfg) = team_record(id);
+        let from_record = read_team(&r, &cfg).unwrap_or_else(|e| panic!("{id}: {e}"));
+        let shipped = shipped_config();
+        let from_json = shipped.games.iter().find(|g| g.id == id).unwrap();
+        assert_eq!(format!("{from_record:?}"), format!("{from_json:?}"), "{id}");
+    }
+}
+
+#[test]
+fn a_team_record_comes_only_from_the_teams_repositories() {
+    let (base, cfg) = team_record("spooky-together");
+    let mut cases: Vec<(serde_json::Value, &str)> = Vec::new();
+    let mut add = |f: &dyn Fn(&mut serde_json::Value), want: &'static str| {
+        let mut r = base.clone();
+        f(&mut r);
+        cases.push((r, want));
+    };
+    add(&|r| r["repo"] = "someone/spooky-together".into(), "team records are the team's own repositories");
+    add(&|r| r["mod"]["package"]["github"] = "multiplayereverything/other".into(), "mod.package.github must be multiplayereverything/spooky-together");
+    add(&|r| r["mod"]["package"]["extras"][0]["github"] = "someone/loader".into(), "extras[0].github must be a multiplayereverything repository");
+    add(&|r| r["mod"]["package"]["url"] = "https://evil.example/x.zip".into(), "mod.package.url must be a release file");
+    add(&|r| r["mod"]["package"]["url"] = "https://github.com/multiplayereverything/other/releases/download/v1/x.zip".into(), "mod.package.url must be a release file");
+    add(&|r| r["categories"] = serde_json::json!(["community"]), "\"community\" is for developers' records");
+    add(&|r| r["actions"] = serde_json::json!([]), "team record.actions: not allowed");
+    add(&|r| r["kind"] = "link".into(), "team record.kind: not allowed");
+    add(&|r| r["mod"]["id"] = "other".into(), "mod.id must be the record's id");
+    add(&|r| r["mod"] = serde_json::Value::Null, "no \"mod\" object");
+    add(&|r| { r["mod"].as_object_mut().unwrap().remove("package"); }, "mod.package is missing");
+    add(&|r| r["id"] = "gta-coop".into(), "launcher.json already has");
+    add(&|r| r["minLauncher"] = "next".into(), "minLauncher: a version");
+    // Then every check a launcher.json game gets.
+    add(&|r| r["categories"] = serde_json::json!(["nope"]), "categories");
+    for (r, want) in cases {
+        let e = read_team(&r, &cfg).map(|g| g.id).unwrap_err();
+        assert!(e.contains(want), "wanted {want:?}, got {e:?}");
+    }
+}
+
+#[test]
+fn a_team_record_for_a_newer_launcher_keeps_its_place_and_asks_for_an_update() {
+    let (mut r, cfg) = team_record("spooky-together");
+    r["minLauncher"] = "999.0".into();
+    r["mod"]["somethingNew"] = serde_json::json!(true);
+    let g = read_team(&r, &cfg).unwrap_or_else(|e| panic!("{e}"));
+    assert!(g.coming_soon && g.mod_spec.is_none() && g.actions.is_empty());
+    assert_eq!(g.name, "Spooky Together");
+    assert_eq!(g.categories, vec!["pc", "online", "coop"]);
+}
+
+/// The window lists team records before community ones, so a developer's record can't take a team id.
+#[test]
+fn team_records_merge_first_and_win_their_ids() {
+    let (r, mut cfg) = team_record("spooky-together");
+    let team = super::community::Cache { fetched_at: 0, raw: vec![r.to_string()] };
+    assert!(super::community::merge_team(&mut cfg, &team).is_empty());
+    let mut dev = record();
+    dev["id"] = "spooky-together".into();
+    dev["mod"]["id"] = "spooky-together".into();
+    let left = super::community::merge(&mut cfg, &super::community::Cache { fetched_at: 0, raw: vec![dev.to_string()] });
+    assert_eq!(left.len(), 1, "{left:?}");
+    assert_eq!(cfg.games.iter().filter(|g| g.id == "spooky-together").count(), 1);
+    assert!(cfg.games.iter().find(|g| g.id == "spooky-together").unwrap().categories.contains(&"pc".to_string()));
 }
 
 #[test]

@@ -1,4 +1,14 @@
-//! Community mods the owner approved for the launcher (docs/COMMUNITY_MODS.md). A developer describes their mod in a
+//! Mods mods-info lists for the launcher (docs/COMMUNITY_MODS.md), in two folders:
+//!
+//! - community/: developers' mods the owner approved. A developer describes their mod in a manifest in their own
+//!   GitHub release; at approval the website pins the release and writes the record. Strict: the keys below only.
+//! - team/: Multiplayer Everything's own mods, written by the website's team-only path, from repositories owned by
+//!   multiplayereverything only. A team record is a launcher.json games[] entry with the record's keys added, so it may
+//!   use every building block launcher.json has, and it follows its repository's newest release.
+//!
+//! Either may say "minLauncher": an older launcher shows the game as needing an update instead of reading the rest.
+//!
+//! Community mods, more closely: A developer describes their mod in a
 //! manifest in their own GitHub release; at approval the website pins the release and, when the owner offers it,
 //! writes it to mods-info: community/index.json lists the ids, community/<id>.json holds each one's pinned release and
 //! install recipe. Records the team writes by hand may also carry the card's text, or be a card that only links to
@@ -10,7 +20,9 @@
 //! fails is left out whole. The copy kept in the data folder (community.json) is what the C++ mod commands read too.
 
 use super::config::{ConfigIssue, Issues, Severity, add_mod_actions, read_card_of, read_mod, validate_config};
-use super::config::{Config, GameSpec};
+use super::config::{Config, GameSpec, read_game};
+use super::embedded::LAUNCHER_VERSION;
+use super::text::compare_versions;
 use super::http;
 use super::json::{self, Value};
 use super::paths;
@@ -85,6 +97,11 @@ pub fn refresh_cache(base: &str, cache_path: &str) -> Result<bool, String> {
 
 /// The same with the saved copy's age limit given; 0 always asks mods-info (Ctrl+F5).
 pub fn refresh_cache_within(base: &str, cache_path: &str, max_age: i64) -> Result<bool, String> {
+    refresh_folder_within(base, "community", cache_path, max_age)
+}
+
+/// One of mods-info's record folders ("community" or "team") into its copy on disk (community.json, team.json).
+pub fn refresh_folder_within(base: &str, folder: &str, cache_path: &str, max_age: i64) -> Result<bool, String> {
     let saved = load_cache(cache_path);
     let now = now_unix();
     if saved.as_ref().is_some_and(|c| now >= c.fetched_at && now - c.fetched_at < max_age) {
@@ -93,15 +110,15 @@ pub fn refresh_cache_within(base: &str, cache_path: &str, max_age: i64) -> Resul
     if !(base.starts_with("https://") || local(base)) {
         return Err("No https address for mods-info".into());
     }
-    let ids = match http::get_text(&format!("{base}community/index.json")) {
-        Ok(text) => parse_index(&text).ok_or("mods-info's community/index.json isn't a list of mods")?,
+    let ids = match http::get_text(&format!("{base}{folder}/index.json")) {
+        Ok(text) => parse_index(&text).ok_or(format!("mods-info's {folder}/index.json isn't a list of mods"))?,
         Err(e) if e.contains("HTTP 404") => Vec::new(),
         Err(e) => return Err(e),
     };
     let mut fresh = Cache { fetched_at: now, raw: Vec::new() };
     for id in ids {
         // One record that can't be read is left out; the others still come.
-        if let Ok(text) = http::get_text(&format!("{base}community/{id}.json")) {
+        if let Ok(text) = http::get_text(&format!("{base}{folder}/{id}.json")) {
             fresh.raw.push(String::from_utf8_lossy(&text).to_string());
         }
     }
@@ -154,9 +171,63 @@ fn digits(s: &str) -> bool {
     s.bytes().all(|b| b.is_ascii_digit())
 }
 
-fn check_shape(r: &Value, id: &str, repo: &str) -> Result<(), String> {
+/// A release file's address: `https://github.com/<repo>/releases/download/<tag>/<file>`, or the same path on a loopback
+/// server when mods-info itself is one (the tests).
+fn release_url_ok(url: &str, repo: &str, tag: &str, asset: &str, local_release: bool) -> bool {
+    let path = format!("/{repo}/releases/download/{tag}/{asset}");
+    url == format!("https://github.com{path}")
+        || (local_release && url.starts_with("http://127.0.0.1:") && url[17..].find('/').is_some_and(|at| url[17 + at..] == path))
+}
+
+/// The same for any tag and file of `repo`'s releases (a team record's pinned package or loader).
+fn release_url_of(url: &str, repo: &str, local_release: bool) -> bool {
+    let rest = url.strip_prefix("https://github.com").or_else(|| {
+        (local_release && url.starts_with("http://127.0.0.1:")).then(|| url[17..].find('/').map(|at| &url[17 + at..])).flatten()
+    });
+    let Some(rest) = rest else { return false };
+    let prefix = format!("/{repo}/releases/download/");
+    if !starts_with_i(rest, &prefix) {
+        return false;
+    }
+    let tail: Vec<&str> = rest[prefix.len()..].split('/').collect();
+    tail.len() == 2 && tail.iter().all(|s| plain_segment(s))
+}
+
+fn check_shape(r: &Value, id: &str, repo: &str, local_release: bool) -> Result<(), String> {
     let m = r.find("mod").filter(|m| m.is_object()).ok_or("no \"mod\" object")?;
-    only_keys(m, &["id", "publisher", "website", "game", "install", "components", "launch"], "mod")?;
+    only_keys(m, &["id", "publisher", "website", "game", "install", "components", "launch", "package"], "mod")?;
+    // A loader the mod's own releases carry (BepInEx, say), pinned by the approval like the mod: its tag, file and
+    // SHA-256. The record never chooses another repository.
+    if let Some(p) = m.find("package") {
+        if !p.is_object() {
+            return Err("mod.package must be an object".into());
+        }
+        only_keys(p, &["extras"], "mod.package")?;
+        let ex = p.find("extras").filter(|e| e.is_array()).ok_or("mod.package.extras: a list")?;
+        if ex.items().is_empty() || ex.items().len() > 3 {
+            return Err("mod.package.extras: one to three".into());
+        }
+        for (i, e) in ex.items().iter().enumerate() {
+            let place = format!("mod.package.extras[{i}]");
+            if !e.is_object() {
+                return Err(format!("{place}: must be an object"));
+            }
+            only_keys(e, &["dir", "tag", "asset", "url", "sha256"], &place)?;
+            if !inside_package(text(e, "dir")) {
+                return Err(format!("{place}.dir: a folder name inside the package"));
+            }
+            let (tag, asset) = (text(e, "tag"), text(e, "asset"));
+            if !plain_segment(tag) || !plain_segment(asset) {
+                return Err(format!("{place}: tag and asset must be plain names"));
+            }
+            if !sha256_hex(text(e, "sha256")) {
+                return Err(format!("{place}.sha256 must be 64 lower-case hex digits"));
+            }
+            if !release_url_ok(text(e, "url"), repo, tag, asset, local_release) {
+                return Err(format!("{place}.url must be https://github.com/{repo}/releases/download/{tag}/{asset}"));
+            }
+        }
+    }
     if text(m, "id") != id {
         return Err("mod.id must be the record's id".into());
     }
@@ -198,7 +269,14 @@ fn check_shape(r: &Value, id: &str, repo: &str) -> Result<(), String> {
         if !inst.is_object() {
             return Err("mod.install must be an object".into());
         }
-        only_keys(inst, &["targetDir", "stateDir", "preserve", "requires", "uninstallCleanup"], "mod.install")?;
+        only_keys(inst, &["targetDir", "stateDir", "preserve", "requires", "uninstallCleanup", "uninstallCleanupWith"], "mod.install")?;
+        // Delete uninstallCleanup only with this component (the loader): a component the mod ships, by its id.
+        if let Some(with) = inst.find("uninstallCleanupWith") {
+            let ids: Vec<&str> = m.find("components").map(|c| c.items().iter().map(|c| text(c, "id")).collect()).unwrap_or_default();
+            if with.as_str().is_none_or(|w| w.is_empty() || !ids.contains(&w)) {
+                return Err("mod.install.uninstallCleanupWith: the id of one of mod.components".into());
+            }
+        }
         let target = text(inst, "targetDir");
         if !target.is_empty() && (!starts_with_i(target, "${GAME_DIR}") || target.contains("..")) {
             return Err("mod.install.targetDir must be inside ${GAME_DIR}".into());
@@ -222,7 +300,13 @@ fn check_shape(r: &Value, id: &str, repo: &str) -> Result<(), String> {
         if !c.is_object() {
             return Err(format!("{place}: must be an object"));
         }
-        only_keys(c, &["id", "name", "source", "target", "targetName", "required"], &place)?;
+        only_keys(c, &["id", "name", "source", "target", "targetName", "required", "skipIfPresent"], &place)?;
+        // Left out when the game already has one of these (a loader another mod installed): paths in the game folder.
+        if let Some(sk) = c.find("skipIfPresent") {
+            if !sk.is_array() || sk.items().is_empty() || sk.items().len() > 10 || sk.items().iter().any(|p| p.as_str().is_none_or(|p| !inside_package(p))) {
+                return Err(format!("{place}.skipIfPresent: one to ten paths inside the game folder, such as BepInEx/core"));
+            }
+        }
         if !inside_package(text(c, "source")) {
             return Err(format!("{place}.source: a path inside the package"));
         }
@@ -232,8 +316,17 @@ fn check_shape(r: &Value, id: &str, repo: &str) -> Result<(), String> {
         }
     }
     let l = m.find("launch").filter(|l| l.is_object()).ok_or("mod.launch is missing")?;
-    only_keys(l, &["uri", "hint"], "mod.launch")?;
-    let uri = text(l, "uri");
+    only_keys(l, &["uri", "executable", "hint"], "mod.launch")?;
+    // Through Steam, or a program in the game's folder (the mod's own launcher, say): one of the two.
+    let (uri, exe) = (text(l, "uri"), text(l, "executable"));
+    if !uri.is_empty() == !exe.is_empty() {
+        return Err("mod.launch: either uri (steam://rungameid/<app id>) or executable (${GAME_DIR}\\<program>.exe)".into());
+    }
+    if !exe.is_empty() {
+        let ok = starts_with_i(exe, "${GAME_DIR}\\") && !exe.contains("..") && !exe[12..].contains(['$', ':', '/'])
+            && exe.to_ascii_lowercase().ends_with(".exe");
+        return if ok { Ok(()) } else { Err("mod.launch.executable must be ${GAME_DIR}\\<program>.exe, inside the game folder".into()) };
+    }
     let tail = if starts_with_i(uri, "steam://rungameid/") { &uri[18..] } else { "" };
     if !(tail == "${STEAM_APP_ID}" || (!tail.is_empty() && digits(tail))) {
         return Err("mod.launch.uri must be steam://rungameid/<app id>".into());
@@ -257,6 +350,9 @@ pub fn read_record(text_: &str, cfg: &Config, local_release: bool) -> Result<Gam
     }
     if !repo_name(repo) {
         return Err("repo must be \"owner/name\"".into());
+    }
+    if let Some(min) = needs_newer(&r)? {
+        return Ok(update_card(&r, cfg, id, &min, vec!["community".into()]));
     }
     match kind {
         "pc" => only_keys(&r, &[RECORD_KEYS, CARD_KEYS, &["tag", "version", "asset", "url", "sha256", "manifest_sha256", "mod"]].concat(), "record")?,
@@ -285,15 +381,10 @@ pub fn read_record(text_: &str, cfg: &Config, local_release: bool) -> Result<Gam
         return Err("sha256 must be 64 lower-case hex digits".into());
     }
     // The download is the pinned release asset on github.com, under the record's own repository.
-    let path = format!("/{repo}/releases/download/{tag}/{asset}");
-    let mut url_ok = url == format!("https://github.com{path}");
-    if !url_ok && local_release && url.starts_with("http://127.0.0.1:") {
-        url_ok = url[17..].find('/').is_some_and(|at| url[17 + at..] == path);
+    if !release_url_ok(url, repo, tag, asset, local_release) {
+        return Err(format!("url must be https://github.com/{repo}/releases/download/{tag}/{asset}"));
     }
-    if !url_ok {
-        return Err(format!("url must be https://github.com{path}"));
-    }
-    check_shape(&r, id, repo)?;
+    check_shape(&r, id, repo, local_release)?;
 
     let m = r.find("mod").unwrap();
     g.name = text(m.find("game").unwrap(), "name").to_string(); // a community card is named after the game
@@ -323,7 +414,7 @@ pub fn read_record(text_: &str, cfg: &Config, local_release: bool) -> Result<Gam
 
 /// Keys every record may have, and the card's own text (what launcher.json's games[] give a card besides its name).
 /// Card text is for records the team writes by hand; the website's form never writes it (docs/COMMUNITY_MODS.md).
-const RECORD_KEYS: &[&str] = &["id", "repo", "kind", "author", "authorUrl", "approved_at", "approved_by"];
+const RECORD_KEYS: &[&str] = &["id", "repo", "kind", "author", "authorUrl", "approved_at", "approved_by", "minLauncher"];
 const CARD_KEYS: &[&str] = &["description", "players", "maxPlayers", "color", "colorEnd", "guide"];
 
 /// The card text a record may carry: plain text and https links only, short enough to fit on the card.
@@ -405,12 +496,132 @@ fn read_link(r: &Value, cfg: &Config, mut g: GameSpec, issues: Issues) -> Result
     checked(g, cfg, issues, false)
 }
 
+/// "minLauncher": the oldest launcher that understands the record, when this one is older.
+fn needs_newer(r: &Value) -> Result<Option<String>, String> {
+    let Some(v) = r.find("minLauncher") else { return Ok(None) };
+    let min = v.as_str().filter(|s| !s.is_empty() && s.len() <= 20 && s.bytes().all(|b| b.is_ascii_digit() || b == b'.'));
+    let min = min.ok_or("minLauncher: a version such as \"1.0.42\"")?;
+    Ok((compare_versions(min, LAUNCHER_VERSION) > 0).then(|| min.to_string()))
+}
+
+/// A record this launcher is too old for: a card that says so, named from what any record has, with nothing to press.
+/// The rest of the record isn't read (it may use keys this launcher doesn't know).
+fn update_card(r: &Value, cfg: &Config, id: &str, min: &str, categories: Vec<String>) -> GameSpec {
+    let game_name = r.find("mod").and_then(|m| m.find("game")).map(|g| text(g, "name")).unwrap_or("");
+    let link_name = r.find("link").map(|l| text(l, "game")).unwrap_or("");
+    let name = [text(r, "name"), game_name, link_name, id].into_iter().find(|s| !s.is_empty()).unwrap_or(id);
+    GameSpec {
+        id: id.to_string(),
+        site_id: id.to_string(),
+        name: name.to_string(),
+        description: cfg.t("mod.needsLauncher", &[("VERSION", min)]),
+        coming_soon: true,
+        categories,
+        ..Default::default()
+    }
+}
+
+// ---- team records --------------------------------------------------------------------------------------------------
+
+/// The only owner a team record's repository, and every repository it downloads from, may have.
+const TEAM_OWNER: &str = "multiplayereverything";
+/// The record's own keys; the rest is a launcher.json games[] entry: the card and the mod, no buttons of its own.
+const TEAM_RECORD_KEYS: &[&str] = &["id", "repo", "minLauncher", "approved_at", "approved_by"];
+const TEAM_GAME_KEYS: &[&str] =
+    &["name", "description", "players", "maxPlayers", "color", "colorEnd", "guide", "categories", "site", "online", "image", "imageFocus", "mod"];
+
+fn team_repo(repo: &str) -> bool {
+    repo_name(repo) && repo.split('/').next().is_some_and(|o| o.eq_ignore_ascii_case(TEAM_OWNER))
+}
+
+/// One team/<id>.json as a game of the launcher, or why it is left out.
+pub fn read_team_record(text_: &str, cfg: &Config, local_release: bool) -> Result<GameSpec, String> {
+    let r = json::parse(text_.as_bytes()).map_err(|e| format!("not a JSON object ({e})"))?;
+    if !r.is_object() {
+        return Err("not a JSON object".into());
+    }
+    let (id, repo) = (text(&r, "id"), text(&r, "repo"));
+    if !id_ok(id) {
+        return Err("id: lowercase letters, digits and '-', up to 48".into());
+    }
+    if !team_repo(repo) {
+        return Err(format!("repo must be \"{TEAM_OWNER}/<name>\": team records are the team's own repositories"));
+    }
+    let categories: Vec<String> = r.find("categories").map(|c| c.items().iter().filter_map(|v| v.as_str().map(str::to_string)).collect()).unwrap_or_default();
+    if let Some(min) = needs_newer(&r)? {
+        let known = categories.into_iter().filter(|c| c != "community" && cfg.categories.iter().any(|k| &k.id == c)).collect();
+        return Ok(update_card(&r, cfg, id, &min, known));
+    }
+    only_keys(&r, &[TEAM_RECORD_KEYS, TEAM_GAME_KEYS].concat(), "team record")?;
+    if cfg.games.iter().any(|g| g.id == id || g.mod_spec.as_ref().is_some_and(|m| m.info.id == id)) {
+        return Err(format!("launcher.json already has \"{id}\""));
+    }
+    if categories.iter().any(|c| c == "community") {
+        return Err("categories: \"community\" is for developers' records".into());
+    }
+    let m = r.find("mod").filter(|m| m.is_object()).ok_or("no \"mod\" object")?;
+    if m.find("id").is_some_and(|v| v.as_str() != Some(id)) {
+        return Err("mod.id must be the record's id".into());
+    }
+    // Downloads only from the team's own repositories: the record's for the mod, the team's for a loader.
+    let p = m.find("package").filter(|p| p.is_object()).ok_or("mod.package is missing")?;
+    let gh = text(p, "github");
+    if !gh.is_empty() && !gh.eq_ignore_ascii_case(repo) {
+        return Err(format!("mod.package.github must be {repo}"));
+    }
+    if p.find("url").is_some() && !release_url_of(text(p, "url"), repo, local_release) {
+        return Err(format!("mod.package.url must be a release file of {repo}"));
+    }
+    if let Some(ex) = p.find("extras") {
+        for (i, e) in ex.items().iter().enumerate() {
+            let from = match text(e, "github") {
+                "" => repo,
+                g => g,
+            };
+            if !team_repo(from) {
+                return Err(format!("mod.package.extras[{i}].github must be a {TEAM_OWNER} repository"));
+            }
+            if e.find("url").is_some() && !release_url_of(text(e, "url"), from, local_release) {
+                return Err(format!("mod.package.extras[{i}].url must be a release file of {from}"));
+            }
+        }
+    }
+    let mut entry = Value::object();
+    for (k, v) in r.entries() {
+        if k == "id" || !TEAM_RECORD_KEYS.contains(&k.as_str()) {
+            entry.set(k, v.clone());
+        }
+    }
+    let issues: Issues = Default::default();
+    let mut g = read_game(&entry, &format!("team.{id}"), &issues);
+    if g.site_id.is_empty() {
+        g.site_id = id.to_string();
+    }
+    checked(g, cfg, issues, local_release)
+}
+
+/// Adds every team record that passes to the games; the reasons the others were left out. Before the community
+/// records: a developer's record never takes one of the team's ids.
+pub fn merge_team(cfg: &mut Config, cache: &Cache) -> Vec<String> {
+    let local_release = local(&mods_info_base(cfg));
+    let mut left_out = Vec::new();
+    for raw in &cache.raw {
+        match read_team_record(raw, cfg, local_release) {
+            Ok(g) => cfg.games.push(g),
+            Err(e) => left_out.push(e),
+        }
+    }
+    left_out
+}
+
 /// Every check a launcher.json game gets, on top of the record's own.
 fn checked(g: GameSpec, cfg: &Config, issues: Issues, test_release: bool) -> Result<GameSpec, String> {
     let mut all: Vec<ConfigIssue> = issues.into_inner();
     let one = Config { games: vec![g.clone()], ..cfg.clone() };
     validate_config(&one, &mut all);
-    if let Some(e) = all.iter().find(|i| i.severity == Severity::Error && !(test_release && i.place.ends_with(".package.url"))) {
+    // A loopback release (accepted only when mods-info is loopback too: the tests) isn't https.
+    let loopback_url = |p: &str| test_release && p.contains(".package") && p.ends_with(".url");
+    if let Some(e) = all.iter().find(|i| i.severity == Severity::Error && !loopback_url(&i.place)) {
         return Err(format!("{}: {}", e.place, e.message));
     }
     Ok(g)

@@ -1108,6 +1108,65 @@ fn is_https_or_local(u: &str) -> bool {
     starts_with_i(u, "https://") || starts_with_i(u, "http://127.0.0.1")
 }
 
+/// One games[] entry: launcher.json's, or a team record from mods-info (community.rs), which is the same entry.
+pub(crate) fn read_game(item: &Value, place: &str, issues: &Issues) -> GameSpec {
+    let mut g = GameSpec::default();
+    let s = Section::new(Some(item), place.to_string(), issues);
+    s.str("id", &mut g.id);
+    s.str("name", &mut g.name);
+    read_card(&s, &mut g, issues);
+    if let Some(on) = s.get("online", Type::Object) {
+        let os = Section::new(Some(on), s.child("online"), issues);
+        os.str("id", &mut g.online_id);
+        os.str("join", &mut g.join_action);
+        if let Some(lv) = os.get("lobby", Type::Object) {
+            let ls = Section::new(Some(lv), os.child("lobby"), issues);
+            g.lobby.enabled = true;
+            ls.boolean("enabled", &mut g.lobby.enabled);
+            ls.str("version", &mut g.lobby.version);
+            ls.integer("port", &mut g.lobby.port, 1, 65535);
+        }
+    }
+    s.str("controls", &mut g.controls);
+    s.str("image", &mut g.image);
+    s.str("site", &mut g.site_id);
+    s.real("imageFocus", &mut g.image_focus, 0.0, 1.0);
+    s.boolean("comingSoon", &mut g.coming_soon);
+    if let Some(st) = s.get("settings", Type::Array) {
+        g.settings = read_settings(st, &s.child("settings"), issues);
+    }
+    s.id_list("categories", &mut g.categories);
+    if let Some(actions) = s.get("actions", Type::Array) {
+        for (j, item) in actions.items().iter().enumerate() {
+            g.actions.push(read_action(item, &format!("{place}.{}", index_path("actions", j)), issues));
+        }
+    }
+    if let Some(mv) = s.get("mod", Type::Object) {
+        // The launcher makes the install / launch buttons; the only buttons a mod game may add are
+        // links (the mod's own page), which come after them.
+        let mut links = Vec::new();
+        for (j, a) in std::mem::take(&mut g.actions).into_iter().enumerate() {
+            if a.is_link() {
+                links.push(a);
+            } else {
+                issues.borrow_mut().push(ConfigIssue {
+                    severity: Severity::Error,
+                    place: format!("{place}.{}", index_path("actions", j)),
+                    message: "a mod game gets its buttons from the launcher; only a \"link\" action can be added".into(),
+                });
+            }
+        }
+        g.mod_spec = Some(read_mod(mv, &g, &s.child("mod"), issues));
+        add_mod_actions(&mut g);
+        g.actions.extend(links);
+    }
+    if g.name.is_empty() {
+        g.name = g.id.clone();
+    }
+    drop(s);
+    g
+}
+
 pub fn load_config(text: &[u8], config_dir: &str) -> LoadResult {
     let issues: Issues = RefCell::new(Vec::new());
     let mut c = Config { config_dir: config_dir.to_string(), ..Default::default() };
@@ -1316,62 +1375,7 @@ pub fn load_config(text: &[u8], config_dir: &str) -> LoadResult {
         }
         if let Some(list) = top.get("games", Type::Array) {
             for (i, item) in list.items().iter().enumerate() {
-                let mut g = GameSpec::default();
-                let place = index_path("games", i);
-                let s = Section::new(Some(item), place.clone(), &issues);
-                s.str("id", &mut g.id);
-                s.str("name", &mut g.name);
-                read_card(&s, &mut g, &issues);
-                if let Some(on) = s.get("online", Type::Object) {
-                    let os = Section::new(Some(on), s.child("online"), &issues);
-                    os.str("id", &mut g.online_id);
-                    os.str("join", &mut g.join_action);
-                    if let Some(lv) = os.get("lobby", Type::Object) {
-                        let ls = Section::new(Some(lv), os.child("lobby"), &issues);
-                        g.lobby.enabled = true;
-                        ls.boolean("enabled", &mut g.lobby.enabled);
-                        ls.str("version", &mut g.lobby.version);
-                        ls.integer("port", &mut g.lobby.port, 1, 65535);
-                    }
-                }
-                s.str("controls", &mut g.controls);
-                s.str("image", &mut g.image);
-                s.str("site", &mut g.site_id);
-                s.real("imageFocus", &mut g.image_focus, 0.0, 1.0);
-                s.boolean("comingSoon", &mut g.coming_soon);
-                if let Some(st) = s.get("settings", Type::Array) {
-                    g.settings = read_settings(st, &s.child("settings"), &issues);
-                }
-                s.id_list("categories", &mut g.categories);
-                if let Some(actions) = s.get("actions", Type::Array) {
-                    for (j, item) in actions.items().iter().enumerate() {
-                        g.actions.push(read_action(item, &format!("{place}.{}", index_path("actions", j)), &issues));
-                    }
-                }
-                if let Some(mv) = s.get("mod", Type::Object) {
-                    // The launcher makes the install / launch buttons; the only buttons a mod game may add are
-                    // links (the mod's own page), which come after them.
-                    let mut links = Vec::new();
-                    for (j, a) in std::mem::take(&mut g.actions).into_iter().enumerate() {
-                        if a.is_link() {
-                            links.push(a);
-                        } else {
-                            issues.borrow_mut().push(ConfigIssue {
-                                severity: Severity::Error,
-                                place: format!("{place}.{}", index_path("actions", j)),
-                                message: "a mod game gets its buttons from the launcher; only a \"link\" action can be added".into(),
-                            });
-                        }
-                    }
-                    g.mod_spec = Some(read_mod(mv, &g, &s.child("mod"), &issues));
-                    add_mod_actions(&mut g);
-                    g.actions.extend(links);
-                }
-                if g.name.is_empty() {
-                    g.name = g.id.clone();
-                }
-                drop(s);
-                c.games.push(g);
+                c.games.push(read_game(item, &index_path("games", i), &issues));
             }
         }
         if let Some(texts) = top.get("text", Type::Object) {

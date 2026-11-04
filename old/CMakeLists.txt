@@ -101,7 +101,8 @@ add_executable(launcher WIN32
   "${APP_RC}"
 )
 set_target_properties(launcher PROPERTIES OUTPUT_NAME "${LAUNCHER_NAME}")
-target_compile_definitions(launcher PRIVATE LAUNCHER_VERSION=L"${PROJECT_VERSION}")
+# Core reads it too: a mods-info record may need a newer launcher ("minLauncher", config.cpp).
+target_compile_definitions(launcher_core PUBLIC LAUNCHER_VERSION=L"${PROJECT_VERSION}")
 target_link_libraries(launcher PRIVATE launcher_core gdiplus comctl32 comdlg32 uxtheme dwmapi gdi32 windowscodecs)
 
 # ---- tests ----------------------------------------------------------------

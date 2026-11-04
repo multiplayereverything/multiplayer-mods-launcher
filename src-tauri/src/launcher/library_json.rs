@@ -56,11 +56,15 @@ fn data_dir_of(cfg: &Config) -> String {
     paths::normalize(&base.expand(&cfg.paths.data))
 }
 
-/// Adds the community mods from the copy of mods-info's community/ kept in the data folder (src/launcher/community.rs),
-/// as the C++ mod commands do from the same file. FL_NO_COMMUNITY leaves them out.
+/// Adds the mods from the copies of mods-info's team/ and community/ kept in the data folder (team.json,
+/// community.json; src/launcher/community.rs), as the C++ mod commands do from the same files. The team's first, so a
+/// developer's record never takes one of their ids. FL_NO_COMMUNITY leaves both out.
 pub fn add_community(cfg: &mut Config) {
     if std::env::var_os("FL_NO_COMMUNITY").is_some() {
         return;
+    }
+    if let Some(cache) = community::load_cache(&paths::join(&data_dir_of(cfg), "team.json")) {
+        community::merge_team(cfg, &cache);
     }
     if let Some(cache) = community::load_cache(&paths::join(&data_dir_of(cfg), "community.json")) {
         community::merge(cfg, &cache);
@@ -132,7 +136,14 @@ pub fn refresh_online_lists(force: bool) -> Result<bool, String> {
     let community = if std::env::var_os("FL_NO_COMMUNITY").is_some() {
         Ok(false)
     } else {
-        community::refresh_cache_within(&community::mods_info_base(&cfg), &paths::join(&data_dir_of(&cfg), "community.json"), max_age)
+        let base = community::mods_info_base(&cfg);
+        let team = community::refresh_folder_within(&base, "team", &paths::join(&data_dir_of(&cfg), "team.json"), max_age);
+        let dev = community::refresh_cache_within(&base, &paths::join(&data_dir_of(&cfg), "community.json"), max_age);
+        match (team, dev) {
+            (Ok(a), Ok(b)) => Ok(a || b),
+            (Ok(true), _) | (_, Ok(true)) => Ok(true),
+            (Err(e), _) | (_, Err(e)) => Err(e),
+        }
     };
     let site = refresh_site(&cfg, max_age);
     match (community, site) {
