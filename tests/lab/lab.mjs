@@ -577,6 +577,12 @@ const scenarios = {
     await check('Install puts the newest release in the game folder', (await waitFor(() => existsSync(dll) && readFileSync(dll, 'utf8') === 'lab team 2.0.0', 30000)) === true)
     await check('and BepInEx from the loader release, which the game didn\'t have', existsSync(join(box.labTeam, 'BepInEx', 'core', 'BepInEx.dll')) && existsSync(join(box.labTeam, 'winhttp.dll')))
     await check('the team mod shows as installed at its newest version', (await waitFor(async () => (await pill()).includes('Installed'), 15000)) === true, await pill())
+    await wd.click(panel('Launch game'))
+    // The engine's own log: the record's program, its arguments and the game folder it runs in.
+    const logged = () => readFileSync(join(work, 'data', 'launcher.log'), 'utf8')
+    const started = await waitFor(() => /Starting: "[^"]*\\LabTeam\\LabTeam\.exe" --from-team-record {2}\(in [^)]*\\LabTeam\)/.test(logged()), 15000)
+    await check('its Launch starts what the record says', started === true, logged().split(/\r?\n/).slice(-4).join(' // '))
+    await waitFor(async () => !(await wd.exec("return document.querySelector('.island')?.textContent ?? ''")).includes('Playing'), FAKE_MS + 8000)
     await waitFor(async () => (await wd.count(panel('Uninstall'))) === 1, 30000)
     await wd.click(panel('Uninstall'))
     await wd.click(inDialog('Uninstall'))

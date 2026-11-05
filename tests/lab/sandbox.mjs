@@ -3,7 +3,7 @@
 // is read or written, so a lab run never touches the real launcher's settings or a real game.
 import { createHash, randomBytes } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { copyFileSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join, relative } from 'node:path'
 
 export const PORTS = { http: 48811, rooms: 48812, relay: 48813, lobby: 48814 }
@@ -148,7 +148,9 @@ export function makeSandbox(work, fakePlayer) {
   // It follows the repository's newest release (the stand-in for GitHub's API below) and brings BepInEx from the
   // repository's loader release, left out when the game has it already, and removed with the mod.
   const labTeam = join(work, 'LabTeam')
-  write(join(labTeam, 'LabTeam.exe'), 'lab team binary')
+  // A copy of the fake player under another name notes that it ran, so the lab can check what a record's Launch starts.
+  mkdirSync(labTeam, { recursive: true })
+  copyFileSync(fakePlayer, join(labTeam, 'LabTeam.exe'))
   const teamPkg = join(work, 'teampkg')
   write(join(teamPkg, 'LabTeam', 'LabTeam.dll'), 'lab team 2.0.0')
   const teamZip = join(work, 'www', 'dl', 'LabTeam-2.0.0.zip')
@@ -195,7 +197,8 @@ export function makeSandbox(work, fakePlayer) {
         { id: 'loader-winhttp', name: 'BepInEx mod loader', source: 'loader/winhttp.dll', target: '${GAME_DIR}', skipIfPresent: ['BepInEx/core'], required: true },
         { id: 'mod', name: 'Lab Team', source: 'LabTeam', required: true },
       ],
-      launch: { uri: 'steam://rungameid/123457' },
+      // A program in the game folder, as gta-coop's record has, not a Steam address the lab couldn't check.
+      launch: { executable: '${GAME_DIR}\\LabTeam.exe', arguments: '--from-team-record' },
       package: { github: 'multiplayereverything/lab-team', asset: 'LabTeam-*.zip',
         extras: [{ dir: 'loader', github: 'multiplayereverything/lab-team', tag: 'bepinex-5', asset: 'BepInEx_lab.zip' }] },
     },
