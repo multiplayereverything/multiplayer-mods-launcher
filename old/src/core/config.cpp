@@ -1181,6 +1181,7 @@ LoadResult loadConfig(std::string_view jsonText, const std::wstring& configDir) 
         Section s(top.get("downloads", Type::Object), L"downloads", issues);
         s.str("catalog", c.downloads.catalog);
         s.str("modsInfo", c.downloads.modsInfo);
+        s.str("modsInfoZip", c.downloads.modsInfoZip);
         s.str("site", c.downloads.site);
         if (!c.downloads.site.empty() && !startsWithI(c.downloads.site, L"https://") &&
             !startsWithI(c.downloads.site, L"http://127.0.0.1"))
@@ -1191,6 +1192,9 @@ LoadResult loadConfig(std::string_view jsonText, const std::wstring& configDir) 
         const std::wstring& mi = c.downloads.modsInfo;
         if (!mi.empty() && !startsWithI(mi, L"https://") && !startsWithI(mi, L"http://127.0.0.1"))
             s.error(L"modsInfo", L"must be an https:// address");
+        const std::wstring& miz = c.downloads.modsInfoZip;
+        if (!miz.empty() && !startsWithI(miz, L"https://") && !startsWithI(miz, L"http://127.0.0.1"))
+            s.error(L"modsInfoZip", L"must be an https:// address");
     }
     if (auto list = top.get("players", Type::Array)) {
         for (size_t i = 0; i < list->size(); ++i) {

@@ -232,13 +232,61 @@ map). `tests/fixtures/team-short` is the script's output and `tests/fixtures/tea
 same buttons with the same command lines, card and host options as its long one. 1.0.42 shows these games as update
 cards (`"minLauncher": "1.0.43"`). The C++ engine leaves them out, so its own Flash tests read `team-long`.
 
+## releases.json
+
+Our own PC mods follow their newest GitHub release, and GitHub allows 60 unsigned requests an hour per address, shared by
+everyone behind it. So a job in mods-info (`tools/build_releases.py`, `.github/workflows/releases.yml`, every 10 minutes) asks
+GitHub once for everyone and keeps the answers in `releases.json`, which comes with the zip:
+
+```json
+{
+  "format": 1,
+  "checkedAt": "2026-11-05T10:34:15Z",
+  "mods": {
+    "spooky-together": {
+      "repo": "multiplayereverything/spooky-together", "tag": "v0.2.11", "version": "0.2.11",
+      "asset": "SpookyTogether-0.2.11.zip",
+      "url": "https://github.com/multiplayereverything/spooky-together/releases/download/v0.2.11/SpookyTogether-0.2.11.zip",
+      "sha256": "<64 hex, or empty>",
+      "extras": [{ "dir": "loader", "repo": "...", "tag": "bepinex-5.4.23.5", "asset": "...", "url": "...", "sha256": "..." }]
+    }
+  }
+}
+```
+
+The C++ mod engine (`resolveSource`, `old/src/core/mod/manager.cpp`) reads the saved copy before asking GitHub.
+
+- **Nothing in it is believed that the mod's own record doesn't allow.** Only records from a `multiplayereverything` repository
+  with `package.github` and no pinned `url` use it. `repo` must be the record's, `url` exactly that repository's release file for
+  `tag` and `asset`, `asset` must match the record's pattern, `version` must be the tag without a leading `v`, and `extras` must
+  match the record's one for one, by `dir`. So whoever could change this file could only name another release of a repository the
+  record already names. A community mod has no `package.github` and never comes here: it stays pinned in its record.
+- Any of that wrong, an unknown `format`, or a `checkedAt` over 3 days old or an hour ahead: the engine asks GitHub, as it did
+  before. No entry for a mod (a new one) too.
+- F5 in the C++ window asks GitHub, and an answer GitHub gave under 10 minutes ago wins over the file, so a release doesn't
+  flip back while the file catches up. After that the file wins, so a release taken back on purpose stays back.
+- A hash that doesn't match at download is refused. It never falls back to GitHub, which would accept a swapped file's new digest.
+  An empty `sha256` is allowed: the download asks GitHub for the file's digest, and refuses if there is none.
+- The job keeps the first hash it saw for each file in `releases-seen.json` (no launcher reads it) and opens an issue if one
+  changes. That catches a file swapped later in a mod's repository. It doesn't stop someone who can push to mods-info, nor apply
+  when the engine has fallen back to GitHub.
+- From a release to a player: the job's schedule (10 minutes, and GitHub can delay it), then the zip's 15 minutes after the player
+  comes back to the window. Running the job by hand cuts the first part.
+
 ## In the launcher
 
-- The app (`src-tauri/src/launcher/community.rs`) asks mods-info at start and then hourly, using the copy it saved
-  (`records.json` in the data folder) for an hour; Ctrl+F5 asks at once. A mods-info without the folder (404) means
-  no mods. Any other failure keeps the last good copy.
-- The C++ mod commands (`old/src/core/community.cpp`, until PORTING.md part 6) read the same saved copy and check
+- The app (`src-tauri/src/launcher/mods_zip.rs`) downloads mods-info as one zip (`downloads.modsInfoZip`) at start, when
+  the window gets the focus, and hourly, at most every 15 minutes; Ctrl+F5 asks at once. From it, it saves `records.json`
+  and `mods/releases.json` in the data folder. The zip is read in memory by exact names, never unpacked to disk, and
+  anything wrong with it (cut short, two top-level folders, a name twice, a damaged entry, over 5 MB, or over 1 MB for
+  one file) refuses all of it and keeps the last good copies. A mods-info without `records/` means no mods.
+- After a failure it waits 15 minutes, doubling up to an hour, or as long as the host's Retry-After says. The per-file
+  route (`records/index.json`, then each record, and `releases.json`) is the fallback, at most hourly, so a zip that fails
+  never turns into a burst of requests. Without `modsInfoZip`, the per-file route is all there is, hourly.
+- The C++ mod commands (`old/src/core/community.cpp`, until PORTING.md part 6) read the same saved copies and check
   each record again, so Install, Repair, Uninstall and Launch know the same mods as the window.
+- At start the window waits for the lists, up to 8 seconds, before it asks for the mods' state, so a first run doesn't spend
+  the player's GitHub requests on what the zip is about to say.
 - The card's description, players and picture come from the record, else from the website's `/api/projects` or
   `games.json` entry with the same id. A project the website lists
   that has no approved record shows as a card in its list that says it can't be installed yet.

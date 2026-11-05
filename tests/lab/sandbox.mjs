@@ -222,6 +222,30 @@ export function makeSandbox(work, fakePlayer) {
   }
   write(join(work, 'www', 'records', 'index.json'), JSON.stringify({ mods: recordIds }))
   for (const folder of ['team', 'community']) rmSync(join(work, 'www', folder), { recursive: true, force: true })
+
+  // mods-info as GitHub zips it: the records and releases.json, as the job in mods-info writes it. The team mod's GitHub
+  // stand-in goes, so it can only be found and installed through this file; the engine's own lookup is tested in C++.
+  const onDownload = (tag, name, file) => {
+    const p = join(work, 'www', 'multiplayereverything', 'lab-team', 'releases', 'download', tag, name)
+    mkdirSync(join(p, '..'), { recursive: true })
+    copyFileSync(file, p)
+    return { repo: 'multiplayereverything/lab-team', tag, asset: name, url: `http://127.0.0.1:${PORTS.http}/multiplayereverything/lab-team/releases/download/${tag}/${name}`, sha256: sha256(file) }
+  }
+  const miTop = join(work, 'mods-info-zip', 'mods-info-main')
+  // Called again by a scenario that changes a record, as a publish changes what GitHub zips.
+  const zipModsInfo = () => {
+    rmSync(join(miTop, 'records'), { recursive: true, force: true })
+    for (const name of readdirSync(join(work, 'www', 'records'))) write(join(miTop, 'records', name), readFileSync(join(work, 'www', 'records', name), 'utf8'))
+    const zip = join(work, 'www', 'mods-info', 'main.zip')
+    rmSync(zip, { force: true })
+    mkdirSync(join(zip, '..'), { recursive: true })
+    execFileSync(join(process.env.SystemRoot, 'System32', 'tar.exe'), ['-a', '-c', '-f', zip, '-C', join(work, 'mods-info-zip'), 'mods-info-main'])
+  }
+  write(join(miTop, 'releases.json'), JSON.stringify({ format: 1, checkedAt: new Date().toISOString().replace(/\.\d+Z$/, 'Z'), mods: {
+    'lab-team': { ...onDownload('v2.0.0', 'LabTeam-2.0.0.zip', teamZip), version: '2.0.0', extras: [{ dir: 'loader', ...onDownload('bepinex-5', 'BepInEx_lab.zip', loaderZip) }] },
+  } }))
+  zipModsInfo()
+  rmSync(join(work, 'www', 'repos', 'multiplayereverything', 'lab-team'), { recursive: true, force: true })
   write(join(work, 'www', 'api', 'projects'), JSON.stringify({ games: [
     { id: 'lab-coop', kind: 'pc', name: 'Lab Game', maintainer: 'someone', repo: 'someone/lab-coop', players: '1-4 players', description: 'Four players in one lab.' },
     { id: 'listed-only', kind: 'pc', name: 'Listed Only', maintainer: 'another', repo: 'another/listed-only', description: 'On the website, not in mods-info.' },
@@ -231,7 +255,7 @@ export function makeSandbox(work, fakePlayer) {
   const config = {
     branding: { title: 'Multiplayer Everything', subtitle: 'Test lab' },
     paths: { games: '${LAUNCHER_DIR}\\games', players: '${LAUNCHER_DIR}\\players', data: '${LAUNCHER_DIR}\\data', flashpoint: [] },
-    downloads: { catalog: `http://127.0.0.1:${PORTS.http}/catalog.json`, modsInfo: `http://127.0.0.1:${PORTS.http}/`, site: `http://127.0.0.1:${PORTS.http}/games.json` },
+    downloads: { catalog: `http://127.0.0.1:${PORTS.http}/catalog.json`, modsInfo: `http://127.0.0.1:${PORTS.http}/`, modsInfoZip: `http://127.0.0.1:${PORTS.http}/mods-info/main.zip`, site: `http://127.0.0.1:${PORTS.http}/games.json` },
     rooms: { server: `127.0.0.1:${PORTS.rooms}`, refreshSeconds: 10 },
     // The mod engine asks this stand-in for GitHub's API about mods that follow their newest release (team records).
     updates: { github: 'multiplayereverything/lab-launcher', asset: 'MultiplayerEverythingLauncher.exe', api: `http://127.0.0.1:${PORTS.http}` },
@@ -317,5 +341,5 @@ export function makeSandbox(work, fakePlayer) {
   write(join(work, 'www', 'games.json'), JSON.stringify(siteGames))
   // A name and no minimizing, so nothing waits on a prompt and the window stays where WebDriver can see it.
   write(join(work, 'data', 'settings.json'), JSON.stringify({ playerName: 'Tester', online: true, minimize: 0 }))
-  return { config: join(work, 'launcher.json'), gameDir, labGame, labSolo, labTeam, args: join(work, 'args.txt'), settings: join(work, 'data', 'settings.json') }
+  return { zipModsInfo, config: join(work, 'launcher.json'), gameDir, labGame, labSolo, labTeam, args: join(work, 'args.txt'), settings: join(work, 'data', 'settings.json') }
 }

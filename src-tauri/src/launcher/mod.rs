@@ -17,6 +17,7 @@ pub mod launch;
 pub mod library;
 pub mod library_json;
 pub mod log;
+pub mod mods_zip;
 pub mod paths;
 pub mod process;
 pub mod relay;

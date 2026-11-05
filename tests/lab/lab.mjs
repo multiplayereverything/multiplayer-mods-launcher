@@ -540,6 +540,7 @@ const scenarios = {
     late.mod.game.name = 'Lab Late'
     writeFileSync(join(www, 'lab-late.json'), JSON.stringify(late))
     writeFileSync(join(www, 'index.json'), JSON.stringify({ mods: [...JSON.parse(indexBefore).mods, 'lab-late'] }))
+    box.zipModsInfo()
     await wd.click(nav('All games'))
     await key('F5')
     await new Promise((r) => setTimeout(r, 1500))
@@ -550,6 +551,7 @@ const scenarios = {
     await check('Ctrl+F5 says what it found', (await waitFor(async () => (await toast()).includes('New games or changes came'), 10000)) === true, await toast())
     writeFileSync(join(www, 'index.json'), indexBefore)
     rmSync(join(www, 'lab-late.json'))
+    box.zipModsInfo()
     await ctrlF5()
     await check('Ctrl+F5 drops a mod taken down from mods-info', (await waitFor(async () => (await wd.count(card('Lab Late'))) === 0, 20000)) === true)
   },
@@ -572,6 +574,8 @@ const scenarios = {
     const modsNow = ready === true ? '' : await wd.exec("return window.__TAURI_INTERNALS__.invoke('mods').then(m => JSON.stringify(m.filter(x => x.id === 'lab-team')))").catch((e) => String(e))
     await check('it finds its game and its newest release, and offers Install', ready === true, `${await pill()} ${modsNow}`)
     if (!ready) return
+    const sources = () => readFileSync(join(work, 'data', 'mods', 'sources.json'), 'utf8')
+    await check('its newest release comes from mods-info\'s zip, with no question to GitHub', existsSync(join(work, 'data', 'mods', 'releases.json')) && /"from":\s*"file"/.test(sources()), sources().slice(0, 300))
     await wd.click(panel('Install Lab Team'))
     const dll = join(box.labTeam, 'BepInEx', 'plugins', 'LabTeam', 'LabTeam.dll')
     await check('Install puts the newest release in the game folder', (await waitFor(() => existsSync(dll) && readFileSync(dll, 'utf8') === 'lab team 2.0.0', 30000)) === true)

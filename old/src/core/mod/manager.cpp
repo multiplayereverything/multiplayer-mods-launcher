@@ -1,5 +1,8 @@
 #include "core/mod/manager.h"
 
+#include <cstdio>
+#include <ctime>
+
 #include "core/fs.h"
 #include "core/log.h"
 #include "core/mod/package.h"
@@ -196,10 +199,144 @@ std::string sourceSignature(const Spec& spec) {
 
 constexpr int64_t kSourceCacheSeconds = 600;  // a new release shows within ten minutes of its publishing
 
-json::Value sourceToJson(const Source& s, const std::string& sig, int64_t at) {
+constexpr int64_t kReleasesMaxAge = 3 * 24 * 3600;  // the job that writes releases.json runs at least daily
+constexpr int64_t kReleasesClockSkew = 3600;
+const wchar_t* const kOurOwner = L"multiplayereverything/";
+
+bool plainSegment(const std::wstring& s) {
+    if (s.empty() || s.size() > 120 || s == L"." || s == L"..") return false;
+    for (wchar_t c : s)
+        if (!(c < 128 && (iswalnum(c) || c == L'-' || c == L'_' || c == L'.' || c == L'+'))) return false;
+    return true;
+}
+
+bool isOurs(const std::wstring& repo) { return startsWithI(repo, kOurOwner); }
+
+// Exactly <repo>'s release file <tag>/<asset> on github.com, the repository's spelling aside. A stand-in server on this
+// PC counts only when mods-info itself is one, as for the records (the tests).
+bool isReleaseUrl(const std::wstring& url, const std::wstring& repo, const std::wstring& tag, const std::wstring& asset, bool local) {
+    if (!plainSegment(tag) || !plainSegment(asset)) return false;
+    std::wstring rest;
+    const std::wstring github = L"https://github.com/";
+    const std::wstring loop = L"http://127.0.0.1:";
+    if (startsWithI(url, github)) {
+        rest = url.substr(github.size() - 1);
+    } else if (local && startsWithI(url, loop)) {
+        size_t slash = url.find(L'/', loop.size());
+        if (slash == std::wstring::npos) return false;
+        rest = url.substr(slash);
+    } else {
+        return false;
+    }
+    std::wstring prefix = L"/" + repo + L"/releases/download/";
+    return startsWithI(rest, prefix) && rest.substr(prefix.size()) == tag + L"/" + asset;
+}
+
+bool isHashOrEmpty(const std::wstring& s) {
+    if (s.empty()) return true;
+    if (s.size() != 64) return false;
+    for (wchar_t c : s)
+        if (!((c >= L'0' && c <= L'9') || (c >= L'a' && c <= L'f'))) return false;
+    return true;
+}
+
+int64_t parseUtc(const std::string& s) {
+    int y = 0, mo = 0, d = 0, h = 0, mi = 0, sec = 0;
+    if (sscanf_s(s.c_str(), "%d-%d-%dT%d:%d:%dZ", &y, &mo, &d, &h, &mi, &sec) != 6) return 0;
+    std::tm t{};
+    t.tm_year = y - 1900;
+    t.tm_mon = mo - 1;
+    t.tm_mday = d;
+    t.tm_hour = h;
+    t.tm_min = mi;
+    t.tm_sec = sec;
+    int64_t at = _mkgmtime64(&t);
+    return at > 0 ? at : 0;
+}
+
+// What the saved releases.json (mods-info's, mods_zip.rs) says about this mod, or false to ask GitHub. Nothing in the file
+// is believed that the mod's own record doesn't allow: the file can only name a release of the repository the record
+// names, so whoever could change it can't point a player at any other file. Only our own repositories are in it; a
+// community mod has no package.github and never comes here.
+bool sourceFromReleases(const Spec& spec, const std::wstring& cacheDir, bool local, int64_t now, Source& out) {
+    const auto& pkg = spec.package;
+    if (pkg.github.empty() || !pkg.url.empty() || !isOurs(pkg.github)) return false;
+    std::string text, perr;
+    if (!fs::readText(fs::join(cacheDir, L"releases.json"), text)) return false;
+    json::Value root = json::parse(text, &perr);
+    auto say = [&](const wchar_t* why) {
+        logger().warn(L"releases.json: " + spec.mod.id + L": " + why + L"; asking GitHub");
+        return false;
+    };
+    if (!perr.empty() || !root.isObject()) return say(L"not a JSON object");
+    const json::Value* format = root.find("format");
+    if (!format || !format->isNumber() || format->number() != 1) return say(L"a format this launcher doesn't know");
+    const json::Value* checked = root.find("checkedAt");
+    int64_t at = checked && checked->isString() ? parseUtc(checked->str()) : 0;
+    if (at <= 0 || now - at > kReleasesMaxAge || at - now > kReleasesClockSkew) return say(L"out of date");
+    const json::Value* mods = root.find("mods");
+    const json::Value* e = mods && mods->isObject() ? mods->find(narrow(spec.mod.id)) : nullptr;
+    if (!e) return false;  // a new mod, or one the job left out: nothing wrong
+    if (!e->isObject()) return say(L"not an object");
+    auto field = [](const json::Value& o, const char* k) {
+        const json::Value* v = o.find(k);
+        return v && v->isString() ? widen(v->str()) : std::wstring();
+    };
+    std::wstring tag = field(*e, "tag"), version = field(*e, "version"), asset = field(*e, "asset"), url = field(*e, "url"),
+                 sha = field(*e, "sha256");
+    if (!iequals(field(*e, "repo"), pkg.github)) return say(L"another repository");
+    if (!isReleaseUrl(url, pkg.github, tag, asset, local)) return say(L"not a release file of the mod's repository");
+    std::wstring bare = !tag.empty() && (tag[0] == L'v' || tag[0] == L'V') ? tag.substr(1) : tag;
+    if (version.empty() || version != bare) return say(L"the version isn't the tag's");
+    if (!globMatch(toLower(pkg.asset.empty() ? L"*.zip" : pkg.asset), toLower(asset))) return say(L"not the mod's file");
+    if (!isHashOrEmpty(sha)) return say(L"not a SHA-256");
+
+    Source s;
+    s.version = version;
+    s.url = url;
+    s.sha256 = sha;
+    const json::Value* extras = e->find("extras");
+    size_t count = extras && extras->isArray() ? extras->size() : 0;
+    if (count != pkg.extras.size()) return say(L"not the record's loader downloads");
+    for (const auto& want : pkg.extras) {
+        const json::Value* x = nullptr;
+        for (size_t i = 0; i < count; ++i)
+            if (iequals(field(extras->at(i), "dir"), want.dir)) x = &extras->at(i);
+        if (!x) return say(L"not the record's loader downloads");
+        ExtraDownload d;
+        d.dir = want.dir;
+        d.sha256 = toLower(want.sha256);
+        if (!want.url.empty()) {  // the record pins it: its address and hash, whatever the file says
+            d.url = want.url;
+        } else {
+            std::wstring repo = want.github.empty() ? pkg.github : want.github;
+            std::wstring xTag = field(*x, "tag"), xAsset = field(*x, "asset"), xSha = field(*x, "sha256");
+            if (!isOurs(repo) || !iequals(field(*x, "repo"), repo) || xTag != want.tag ||
+                !globMatch(toLower(want.asset), toLower(xAsset)) || !isReleaseUrl(field(*x, "url"), repo, xTag, xAsset, local) ||
+                !isHashOrEmpty(xSha))
+                return say(L"a loader download the record doesn't name");
+            d.url = field(*x, "url");
+            if (d.sha256.empty()) d.sha256 = xSha;
+        }
+        s.extras.push_back(std::move(d));
+    }
+    out = std::move(s);
+    return true;
+}
+
+bool sameSource(const Source& a, const Source& b) {
+    if (a.version != b.version || a.url != b.url || a.sha256 != b.sha256 || a.extras.size() != b.extras.size()) return false;
+    for (size_t i = 0; i < a.extras.size(); ++i)
+        if (a.extras[i].dir != b.extras[i].dir || a.extras[i].url != b.extras[i].url || a.extras[i].sha256 != b.extras[i].sha256)
+            return false;
+    return true;
+}
+
+json::Value sourceToJson(const Source& s, const std::string& sig, int64_t at, bool fromFile) {
     json::Value o = json::Value::object();
     o.set("sig", sig);
     o.set("at", at);
+    o.set("from", std::string(fromFile ? "file" : "github"));
     o.set("version", narrow(s.version));
     o.set("url", narrow(s.url));
     o.set("sha256", narrow(s.sha256));
@@ -252,18 +389,38 @@ bool resolveSource(const Spec& spec, const std::wstring& modsInfoBase, Source& o
     std::string key = narrow(spec.mod.id), sig = sourceSignature(spec);
     Source cached;
     int64_t at = 0;
-    bool have = false;
-    if (const json::Value* e = all.find(key)) have = sourceFromJson(*e, sig, cached, at);
+    bool have = false, cachedFromFile = false;
+    if (const json::Value* e = all.find(key)) {
+        have = sourceFromJson(*e, sig, cached, at);
+        const json::Value* from = e->find("from");
+        cachedFromFile = from && from->isString() && from->str() == "file";
+    }
     int64_t now = unixNow();
-    if (have && !forceFresh && now - at >= 0 && now - at < kSourceCacheSeconds) {
+    bool fresh = have && now - at >= 0 && now - at < kSourceCacheSeconds;
+    auto save = [&](const Source& s, bool fromFile) {
+        all.set(key, sourceToJson(s, sig, now, fromFile));
+        std::string data = json::serialize(all, true);
+        fs::ensureDir(cacheDir, nullptr, nullptr);
+        fs::writeFile(file, data.data(), data.size(), nullptr);
+    };
+    // The saved file costs no GitHub request, so it isn't held to the ten minutes. Two things come before it: F5 asks GitHub
+    // itself, and an answer GitHub gave minutes ago is newer than the file, which would otherwise take a release back.
+    if (!forceFresh && !(fresh && !cachedFromFile)) {
+        Source fromFile;
+        if (sourceFromReleases(spec, cacheDir, startsWithI(modsInfoBase, L"http://127.0.0.1"), now, fromFile)) {
+            // Saved only when it changes: this runs every time the window gets the focus. Kept as the last answer for when
+            // the file can't be used any more.
+            if (!have || !cachedFromFile || !sameSource(cached, fromFile)) save(fromFile, true);
+            out = std::move(fromFile);
+            return true;
+        }
+    }
+    if (fresh && !forceFresh) {
         out = cached;
         return true;
     }
     if (resolveSourceUncached(spec, modsInfoBase, out, error, githubApi, have ? &cached : nullptr)) {
-        all.set(key, sourceToJson(out, sig, now));
-        std::string data = json::serialize(all, true);
-        fs::ensureDir(cacheDir, nullptr, nullptr);
-        fs::writeFile(file, data.data(), data.size(), nullptr);
+        save(out, false);
         return true;
     }
     if (have) {  // GitHub says no (rate limit, offline): the last answer is still a good one

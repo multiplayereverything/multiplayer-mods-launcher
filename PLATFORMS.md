@@ -32,6 +32,7 @@ Newest first. One line per update: version, what changed, and whether each platf
 
 | Date | Version | Change | Windows | Linux |
 |---|---|---|---|---|
+| 2026-11-05 | unreleased | mods-info as one zip (`downloads.modsInfoZip`, a new crate, `zip`), and `releases.json` instead of GitHub's API for our mods; refreshed on window focus. Reads WinHTTP on Windows | yes | port with the Linux build |
 | 2026-11-05 | unreleased | The launcher reads only mods-info `records/`: no fallback to the deleted `team/` and `community/` | yes | port with the Linux build |
 | 2026-11-05 | 1.0.45 | One list of mods: mods-info `records/`, no Community mods category, A to Z, Made by | yes | port with the Linux build |
 | 2026-11-05 | 1.0.45 | Controller: the Host and Join dialogs work, on-screen keyboard in the desktop window | yes | port with the Linux build |

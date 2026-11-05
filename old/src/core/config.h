@@ -75,6 +75,8 @@ struct Downloads {
     // Folder of mods-info (mods/<id>.json: newest version and download of each PC mod).
     // Empty: the folder of rooms.servers.
     std::wstring modsInfo;
+    // mods-info as one zip, which the app reads (src-tauri/src/launcher/mods_zip.rs); this exe only checks the address.
+    std::wstring modsInfoZip;
     // The website's games.json: stage, quality grade, version and what stays in sync, shown next to each game.
     // Empty: the launcher never asks the website.
     std::wstring site = L"https://www.multiplayereverything.com/games.json";

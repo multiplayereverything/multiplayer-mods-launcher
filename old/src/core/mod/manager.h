@@ -59,7 +59,8 @@ struct Source {
 // `githubApi` empty = api.github.com. A mod that comes from GitHub is asked about at most once every ten minutes
 // per `cacheDir` (and not at all while GitHub's rate limit is used up: the last answer is used), because GitHub
 // answers 60 questions an hour per address without a login. `forceFresh` skips the ten minutes (the F5 rescan).
-// A loader pinned by tag is remembered for good: it costs no question after the first.
+// A loader pinned by tag is remembered for good: it costs no question after the first. For our own mods, the saved
+// `cacheDir`\releases.json (mods-info's, checked against the record) answers instead of GitHub when it can.
 bool resolveSource(const Spec& spec, const std::wstring& modsInfoBase, Source& out, std::wstring& error,
                    const std::wstring& githubApi = L"", const std::wstring& cacheDir = L"", bool forceFresh = false);
 

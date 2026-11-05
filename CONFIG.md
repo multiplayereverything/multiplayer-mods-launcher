@@ -98,6 +98,7 @@ player's `flashvarArg`.
 |---|---|---|
 | `site` | `https://www.multiplayereverything.com/games.json` | The website's list of games: each one's stage, quality grade, version, how it connects and what stays in sync, shown on the cards and in the details panel. Empty: the launcher never asks the website. Must be `https://`. |
 | `modsInfo` | folder of `rooms.servers` | Folder of mods-info: `mods/<id>.json` gives each PC mod's newest version and download. Must be `https://`. |
+| `modsInfoZip` | none | mods-info as one zip: the records and `releases.json` from one commit, one request (docs/COMMUNITY_MODS.md). Asked at most every 15 minutes; if it can't be had, the files in `modsInfo` are the fallback, at most hourly. Without it, only those files. |
 | `catalog` | none | Address of a game catalog (`catalog.json` in the flash-games repository). Games with missing files then offer *Download game files*. Must be `https://`. |
 
 The catalog lists files as `{ "name", "game", "path", "size", "sha256" }`: `game` is

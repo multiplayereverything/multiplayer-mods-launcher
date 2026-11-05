@@ -241,6 +241,30 @@ pub fn get_to(url: &str, sink: &mut dyn FnMut(&[u8], u64) -> bool, cancel: Optio
     }
 }
 
+/// The body of `url`, refused when it is over `limit` bytes; a failure comes with how many seconds the host asked to be
+/// left alone (Retry-After, or until a used-up rate limit resets), 0 when it didn't say.
+pub fn get_capped(url: &str, limit: usize) -> Result<Vec<u8>, (String, i64)> {
+    let (r, status) = open(url, "GET", "Accept: */*\r\n", &[]).map_err(|e| (e, 0))?;
+    if status != 200 {
+        let header = |name: &str| {
+            let mut v = [0u16; 32];
+            let mut vsize = std::mem::size_of_val(&v) as u32;
+            let wname = wide(name);
+            let ok = unsafe { WinHttpQueryHeaders(r.req.0, WINHTTP_QUERY_CUSTOM, wname.as_ptr(), v.as_mut_ptr().cast(), &mut vsize, std::ptr::null_mut()) };
+            if ok != 0 { until_nul(&v) } else { String::new() }
+        };
+        let (retry, reset) = (header("Retry-After"), header("X-RateLimit-Reset"));
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0);
+        let wait = if !retry.is_empty() { wcstoi64(&retry) } else if !reset.is_empty() && header("X-RateLimit-Remaining") == "0" { wcstoi64(&reset) - now } else { 0 };
+        return Err((format!("{} answered HTTP {status}", r.host), wait.clamp(0, 24 * 3600)));
+    }
+    let body = read_all(&r.req, limit + 1).map_err(|e| (e, 0))?;
+    if body.len() > limit {
+        return Err((format!("{} sent more than {limit} bytes", r.host), 0));
+    }
+    Ok(body)
+}
+
 /// `_wcstoui64`: leading white space, digits; a minus sign negates modulo 2^64 as the C runtime does.
 fn wcstoui64(s: &str) -> u64 {
     let t = s.trim_start();

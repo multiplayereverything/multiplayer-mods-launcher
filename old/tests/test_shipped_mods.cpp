@@ -2,6 +2,9 @@
 // release zips (file names only), into fake game folders: files land where the
 // mod needs them, and an uninstall leaves the game folder exactly as it was.
 #include <atomic>
+#include <cstdio>
+#include <ctime>
+#include <cwchar>
 #include <filesystem>
 #include <thread>
 
@@ -430,6 +433,152 @@ TEST(a_new_release_shows_within_ten_minutes_and_a_pinned_loader_is_asked_once) {
     writeText(cache / L"sources.json", aged);
     REQUIRE(resolveSource(spec, L"", s, err, api.address(), cache.path()));
     CHECK(s.version == L"1.0.2" && api.listHits == 3 && api.tagHits == 1);
+}
+
+TEST(the_saved_releases_file_answers_for_our_mods_and_is_only_believed_where_the_record_allows) {
+    LoadResult r = loadConfig(R"({ "paths": {"games": "${LAUNCHER_DIR}\\games", "players": "${LAUNCHER_DIR}\\players",
+                       "data": "${LAUNCHER_DIR}\\data", "flashpoint": []}, "players": [ {"id": "r", "paths": ["r.exe"]} ],
+        "games": [ { "id": "g", "name": "G", "mod": { "id": "g-mod", "game": {"name": "G", "executable": "G.exe",
+        "detection": [{"type": "path", "path": "C:\\x"}]}, "components": [{"id": "m", "source": "a"}],
+        "package": {"github": "multiplayereverything/r", "asset": "Mod-*.zip",
+                    "extras": [{"dir": "loader", "github": "multiplayereverything/r", "tag": "loader-1", "asset": "Loader.zip"}]} } } ] })",
+                              L"C:\\x");
+    REQUIRE(r.ok());
+    Spec spec = *r.config.games[0].mod;
+    const std::string sha(64, 'a');
+    // Today, as the job writes it.
+    wchar_t stamp[32] = L"";
+    {
+        std::time_t t = std::time(nullptr);
+        std::tm g{};
+        gmtime_s(&g, &t);
+        std::wcsftime(stamp, 32, L"%Y-%m-%dT%H:%M:%SZ", &g);
+    }
+    const std::string today = fl::narrow(stamp);
+    struct File {
+        std::string checkedAt, format = "1", repo = "multiplayereverything/r", tag = "v3.0.0", version = "3.0.0", asset = "Mod-3.0.0.zip",
+                    url, sha, extraTag = "loader-1", extraAsset = "Loader.zip", extraUrl, extraDir = "loader";
+    };
+    auto text = [&](File f) {
+        if (f.url.empty()) f.url = "https://github.com/" + f.repo + "/releases/download/" + f.tag + "/" + f.asset;
+        if (f.extraUrl.empty()) f.extraUrl = "https://github.com/multiplayereverything/r/releases/download/" + f.extraTag + "/" + f.extraAsset;
+        return R"({"format":)" + f.format + R"(,"checkedAt":")" + f.checkedAt + R"(","mods":{"g-mod":{"repo":")" + f.repo + R"(","tag":")" + f.tag +
+               R"(","version":")" + f.version + R"(","asset":")" + f.asset + R"(","url":")" + f.url + R"(","sha256":")" + f.sha +
+               R"(","extras":[{"dir":")" + f.extraDir + R"(","repo":"multiplayereverything/r","tag":")" + f.extraTag + R"(","asset":")" + f.extraAsset +
+               R"(","url":")" + f.extraUrl + R"(","sha256":"")" + "}]}}}";
+    };
+    auto good = [&] {
+        File f;
+        f.checkedAt = today;
+        f.sha = sha;
+        return f;
+    };
+
+    {  // A good file: the newest release with no question to GitHub at all, not even for the loader, first run included.
+        TempDir cache("releases-good");
+        FakeGithub api;
+        writeText(cache / L"releases.json", text(good()));
+        std::wstring err;
+        Source s;
+        REQUIRE(resolveSource(spec, L"", s, err, api.address(), cache.path()));
+        CHECK(s.version == L"3.0.0" && s.sha256 == fl::widen(sha) && !s.stale);
+        CHECK(s.url == L"https://github.com/multiplayereverything/r/releases/download/v3.0.0/Mod-3.0.0.zip");
+        REQUIRE(s.extras.size() == 1);
+        CHECK(s.extras[0].url.find(L"Loader.zip") != std::wstring::npos);
+        CHECK(api.listHits == 0 && api.tagHits == 0);
+        // No ten minutes for the file: a newer one shows at once.
+        File next = good();
+        next.tag = "v3.1.0";
+        next.version = "3.1.0";
+        next.asset = "Mod-3.1.0.zip";
+        writeText(cache / L"releases.json", text(next));
+        REQUIRE(resolveSource(spec, L"", s, err, api.address(), cache.path()));
+        CHECK(s.version == L"3.1.0" && api.listHits == 0);
+    }
+    {  // F5 asks GitHub, and that answer outranks a file that hasn't caught up, for its ten minutes.
+        TempDir cache("releases-f5");
+        FakeGithub api;
+        api.version = L"9.0.0";
+        writeText(cache / L"releases.json", text(good()));
+        std::wstring err;
+        Source s;
+        REQUIRE(resolveSource(spec, L"", s, err, api.address(), cache.path(), true));
+        CHECK(s.version == L"9.0.0" && api.listHits == 1);
+        REQUIRE(resolveSource(spec, L"", s, err, api.address(), cache.path()));
+        CHECK(s.version == L"9.0.0" && api.listHits == 1);
+        // After the ten minutes the file wins again, so a release taken back on purpose stays back.
+        std::string perr;
+        json::Value all = json::parse(readText(cache / L"sources.json"), &perr);
+        json::Value entry = *all.find("g-mod");
+        entry.set("at", 1000);
+        all.set("g-mod", entry);
+        writeText(cache / L"sources.json", json::serialize(all, true));
+        REQUIRE(resolveSource(spec, L"", s, err, api.address(), cache.path()));
+        CHECK(s.version == L"3.0.0" && api.listHits == 1);
+    }
+    // Everything the record doesn't allow, and a file that can't be trusted: GitHub is asked, and what it says is used.
+    auto asksGithub = [&](const char* what, const std::string& content) {
+        TempDir cache("releases-bad");
+        FakeGithub api;
+        writeText(cache / L"releases.json", content);
+        std::wstring err;
+        Source s;
+        REQUIRE(resolveSource(spec, L"", s, err, api.address(), cache.path()));
+        if (!(s.version == L"1.0.0" && api.listHits == 1)) {
+            printf("  file believed: %s\n", what);
+            CHECK(false);
+        }
+    };
+    auto changed = [&](auto f) {
+        File x = good();
+        f(x);
+        return text(x);
+    };
+    asksGithub("not JSON", "<html>");
+    asksGithub("another format", changed([](File& x) { x.format = "2"; }));
+    asksGithub("no date", changed([](File& x) { x.checkedAt = ""; }));
+    asksGithub("four days old", changed([](File& x) { x.checkedAt = "2020-01-01T00:00:00Z"; }));
+    asksGithub("from the future", changed([](File& x) { x.checkedAt = "2099-01-01T00:00:00Z"; }));
+    asksGithub("another repository", changed([](File& x) { x.repo = "multiplayereverything/other"; }));
+    asksGithub("another host", changed([](File& x) { x.url = "https://evil.example/multiplayereverything/r/releases/download/v3.0.0/Mod-3.0.0.zip"; }));
+    asksGithub("another repository's file", changed([](File& x) { x.url = "https://github.com/someone/r/releases/download/v3.0.0/Mod-3.0.0.zip"; }));
+    asksGithub("a stand-in server", changed([](File& x) { x.url = "http://127.0.0.1:9/multiplayereverything/r/releases/download/v3.0.0/Mod-3.0.0.zip"; }));
+    asksGithub("another tag in the address", changed([](File& x) { x.url = "https://github.com/multiplayereverything/r/releases/download/v2.0.0/Mod-3.0.0.zip"; }));
+    asksGithub("a climbing tag", changed([](File& x) { x.tag = ".."; }));
+    asksGithub("a version that isn't the tag's", changed([](File& x) { x.version = "9.9.9"; }));
+    asksGithub("a file the record's pattern doesn't name", changed([](File& x) { x.asset = "Other-3.0.0.zip"; }));
+    asksGithub("not a hash", changed([](File& x) { x.sha = "abc"; }));
+    asksGithub("another loader folder", changed([](File& x) { x.extraDir = "other"; }));
+    asksGithub("another loader tag", changed([](File& x) { x.extraTag = "loader-2"; }));
+    asksGithub("another loader file", changed([](File& x) { x.extraAsset = "Other.zip"; }));
+    asksGithub("a loader from elsewhere", changed([](File& x) { x.extraUrl = "https://github.com/someone/r/releases/download/loader-1/Loader.zip"; }));
+    asksGithub("no entry for the mod", R"({"format":1,"checkedAt":")" + today + R"(","mods":{}})");
+
+    {  // An empty hash is believed: the download asks GitHub for the file's digest, and refuses if it has none.
+        TempDir cache("releases-nohash");
+        FakeGithub api;
+        File f = good();
+        f.sha = "";
+        writeText(cache / L"releases.json", text(f));
+        std::wstring err;
+        Source s;
+        REQUIRE(resolveSource(spec, L"", s, err, api.address(), cache.path()));
+        CHECK(s.version == L"3.0.0" && s.sha256.empty() && api.listHits == 0);
+    }
+    {  // Not ours: the file is never read, even if it names the mod.
+        Spec theirs = spec;
+        theirs.package.github = L"someone/r";
+        theirs.package.extras.clear();
+        TempDir cache("releases-theirs");
+        FakeGithub api;
+        File f = good();
+        f.repo = "someone/r";
+        writeText(cache / L"releases.json", text(f));
+        std::wstring err;
+        Source s;
+        REQUIRE(resolveSource(theirs, L"", s, err, api.address(), cache.path()));
+        CHECK(s.version == L"1.0.0" && api.listHits == 1);
+    }
 }
 
 TEST(mod_config_github_extras_and_requires_are_validated) {

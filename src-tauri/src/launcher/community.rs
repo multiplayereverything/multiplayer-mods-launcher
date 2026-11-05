@@ -83,7 +83,7 @@ pub fn save_cache(path: &str, cache: &Cache) -> bool {
     paths::write_file(&part, format!("{text}\n").as_bytes()) && paths::move_file(&part, path, true).is_ok()
 }
 
-fn now_unix() -> i64 {
+pub(super) fn now_unix() -> i64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0)
 }
 

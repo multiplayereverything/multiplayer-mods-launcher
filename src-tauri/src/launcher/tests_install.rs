@@ -1327,6 +1327,172 @@ fn a_local_release_is_only_trusted_when_mods_info_is_local_too() {
     assert!(ok.is_ok(), "{:?}", ok.map(|g| g.id));
 }
 
+/// A mods-info zip as GitHub makes it, one top-level folder.
+fn mods_info_zip(index: &str, releases: Option<&str>, extra: &[(&str, &[u8])]) -> Vec<u8> {
+    let rec = record().to_string();
+    let mut e: Vec<(&str, &[u8])> = vec![
+        ("mods-info-main/records/index.json", index.as_bytes()),
+        ("mods-info-main/records/lab-coop.json", rec.as_bytes()),
+        ("mods-info-main/records/unlisted.json", b"{\"id\":\"unlisted\"}"),
+        ("mods-info-main/servers.json", b"{}"),
+    ];
+    if let Some(r) = releases {
+        e.push(("mods-info-main/releases.json", r.as_bytes()));
+    }
+    e.extend_from_slice(extra);
+    zip(&e)
+}
+
+const LISTED: &str = r#"{"mods":["lab-coop","gone","Bad Id"]}"#;
+
+#[test]
+fn a_mods_info_zip_gives_the_listed_records_and_releases() {
+    use super::mods_zip::read_snapshot;
+    let s = read_snapshot(&mods_info_zip(LISTED, Some("{\"format\":1}"), &[])).unwrap();
+    assert_eq!(s.records.len(), 1, "the listed one that exists; not the unlisted one, the missing one or the bad id");
+    assert!(s.records[0].contains("lab-coop"));
+    assert_eq!(s.releases.as_deref(), Some("{\"format\":1}"));
+    // No records/ at all is an answer: no mods, as a 404 was.
+    let s = read_snapshot(&zip(&[("mods-info-main/servers.json", b"{}")])).unwrap();
+    assert!(s.records.is_empty() && s.releases.is_none());
+}
+
+#[test]
+fn a_mods_info_zip_that_is_not_right_is_refused_whole() {
+    use super::mods_zip::read_snapshot;
+    let good = mods_info_zip(LISTED, None, &[]);
+    assert!(read_snapshot(&good[..good.len() / 2]).is_err(), "cut short");
+    assert!(read_snapshot(&good[..good.len() - 1]).is_err(), "one byte short");
+    assert!(read_snapshot(b"<html>not a zip</html>").is_err());
+    assert!(read_snapshot(&[]).is_err());
+    assert!(read_snapshot(&mods_info_zip(LISTED, None, &[("other-main/x.json", b"{}")])).unwrap_err().contains("top-level"), "two folders");
+    assert!(read_snapshot(&zip(&[("loose.json", b"{}")])).is_ok(), "a lone file is its own folder, and holds no mods");
+    assert!(read_snapshot(&mods_info_zip("<html>", None, &[])).unwrap_err().contains("isn't a list"));
+    let twice = mods_info_zip(LISTED, None, &[("mods-info-main/records/lab-coop.json", b"{\"id\":\"lab-coop\",\"evil\":1}")]);
+    assert!(read_snapshot(&twice).unwrap_err().contains("twice"), "a name twice");
+    // Damaged inside: the entry's checksum fails.
+    let mut bad = good.clone();
+    let at = bad.windows(7).position(|w| w == b"\"mods\":").unwrap();
+    bad[at + 1] = b'x';
+    assert!(read_snapshot(&bad).is_err(), "a damaged entry");
+    // Too big: one entry we'd read, and everything together.
+    let big = vec![b' '; 1024 * 1024 + 1];
+    assert!(read_snapshot(&mods_info_zip(LISTED, None, &[("mods-info-main/releases.json", &big)])).unwrap_err().contains("too big"));
+    let mib = vec![b' '; 1024 * 1024];
+    let names: Vec<String> = (0..33).map(|i| format!("mods-info-main/f{i}.bin")).collect();
+    let many: Vec<(&str, &[u8])> = names.iter().map(|n| (n.as_str(), &mib[..])).collect();
+    assert!(read_snapshot(&zip(&many)).unwrap_err().contains("too much"));
+}
+
+#[test]
+fn the_zip_is_asked_for_every_15_minutes_and_a_failure_is_never_a_burst() {
+    use super::community::{Cache, load_cache, save_cache};
+    use super::mods_zip::{ZIP_MAX_AGE_SECONDS, refresh};
+    let dir = TempDir::new("mods-zip");
+    let data = dir.path().to_string();
+    let (records, releases, wait) = (dir.join("records.json"), dir.join("mods\\releases.json"), dir.join("mods-info-wait.json"));
+    let s = Server::new();
+    let (zip_url, base) = (s.url("/mods-info.zip"), s.url("/mods-info/"));
+    let age = |seconds: i64| {
+        let c = load_cache(&records).unwrap();
+        save_cache(&records, &Cache { fetched_at: c.fetched_at - seconds, raw: c.raw });
+    };
+    let text = |p: &str| paths::read_file(p).map(|t| String::from_utf8_lossy(&t).to_string());
+
+    // One request brings both, and nothing from the per-file route.
+    s.set("/mods-info.zip", &mods_info_zip(LISTED, Some("one"), &[]));
+    assert_eq!(refresh(&zip_url, &base, &data, false), Ok(true));
+    assert_eq!(load_cache(&records).unwrap().raw.len(), 1);
+    assert_eq!(text(&releases).as_deref(), Some("one"));
+    assert_eq!((s.hits("/mods-info.zip"), s.hits("/mods-info/records/index.json")), (1, 0));
+
+    // Under 15 minutes old: nothing is asked, however often the window gets the focus.
+    assert_eq!(refresh(&zip_url, &base, &data, false), Ok(false));
+    assert_eq!(s.hits("/mods-info.zip"), 1);
+    // Older: asked again. Nothing new is no change; a new releases.json alone is one, because the mods need a new look.
+    age(ZIP_MAX_AGE_SECONDS);
+    assert_eq!(refresh(&zip_url, &base, &data, false), Ok(false));
+    assert_eq!(s.hits("/mods-info.zip"), 2);
+    s.set("/mods-info.zip", &mods_info_zip(LISTED, Some("two"), &[]));
+    age(ZIP_MAX_AGE_SECONDS);
+    assert_eq!(refresh(&zip_url, &base, &data, false), Ok(true));
+    assert_eq!(text(&releases).as_deref(), Some("two"));
+    // Ctrl+F5 doesn't wait.
+    assert_eq!(refresh(&zip_url, &base, &data, true), Ok(false));
+    assert_eq!(s.hits("/mods-info.zip"), 4);
+
+    // Gone from the zip: the old copy goes too, so the engine asks GitHub rather than trust it.
+    s.set("/mods-info.zip", &mods_info_zip(LISTED, None, &[]));
+    age(ZIP_MAX_AGE_SECONDS);
+    assert_eq!(refresh(&zip_url, &base, &data, false), Ok(true));
+    assert!(text(&releases).is_none());
+
+    // A damaged zip keeps everything as it was.
+    s.set("/mods-info.zip", &mods_info_zip(LISTED, Some("x"), &[])[..50]);
+    let before = load_cache(&records).unwrap();
+    age(ZIP_MAX_AGE_SECONDS);
+    let _ = refresh(&zip_url, &base, &data, false);
+    assert_eq!(load_cache(&records).unwrap().raw, before.raw);
+    assert!(text(&releases).is_none());
+
+    // While it waits, nothing goes to either host, whatever the focus does.
+    let (z, r) = (s.hits("/mods-info.zip"), s.hits("/mods-info/records/index.json"));
+    for _ in 0..25 {
+        assert_eq!(refresh(&zip_url, &base, &data, false), Ok(false));
+    }
+    assert_eq!((s.hits("/mods-info.zip"), s.hits("/mods-info/records/index.json")), (z, r), "no burst");
+
+    // It works again: the wait is forgotten.
+    s.set("/mods-info.zip", &mods_info_zip(LISTED, Some("three"), &[]));
+    assert_eq!(refresh(&zip_url, &base, &data, true), Ok(true));
+    assert_eq!(text(&releases).as_deref(), Some("three"));
+    assert!(text(&wait).is_none());
+
+    // A host that asks to be left alone is, and longer than the usual wait.
+    s.set_route("/mods-info.zip", Route { status: 429, headers: vec![("Retry-After".into(), "7200".into())], ..Default::default() });
+    age(ZIP_MAX_AGE_SECONDS);
+    let _ = refresh(&zip_url, &base, &data, false);
+    let root = serde_json::from_str::<serde_json::Value>(&text(&wait).unwrap()).unwrap();
+    assert!(root["nextTry"].as_i64().unwrap() - super::community::now_unix() > 3600, "{root}");
+    assert_eq!(root["failures"], 1);
+    let z = s.hits("/mods-info.zip");
+    assert_eq!(refresh(&zip_url, &base, &data, false), Ok(false));
+    assert_eq!(s.hits("/mods-info.zip"), z);
+}
+
+#[test]
+fn with_the_zip_down_the_per_file_route_brings_the_mods_at_most_hourly() {
+    use super::community::load_cache;
+    use super::mods_zip::refresh;
+    let dir = TempDir::new("mods-zip-down");
+    let data = dir.path().to_string();
+    let s = Server::new();
+    let (zip_url, base) = (s.url("/mods-info.zip"), s.url("/mods-info/"));
+    s.set_route("/mods-info.zip", Route { status: 503, ..Default::default() });
+    s.set("/mods-info/records/index.json", br#"{"mods":["lab-coop"]}"#);
+    s.set("/mods-info/records/lab-coop.json", record().to_string().as_bytes());
+    s.set("/mods-info/releases.json", b"from the file");
+
+    // A first run with the zip down still gets its mods.
+    assert_eq!(refresh(&zip_url, &base, &data, false), Ok(true));
+    assert_eq!(load_cache(&dir.join("records.json")).unwrap().raw.len(), 1);
+    assert_eq!(paths::read_file(&dir.join("mods\\releases.json")).as_deref(), Some(&b"from the file"[..]));
+    assert_eq!(s.hits("/mods-info/records/index.json"), 1);
+    // Failing again and again, even when forced past the wait, it doesn't ask for every file every time.
+    for _ in 0..5 {
+        let _ = refresh(&zip_url, &base, &data, true);
+    }
+    assert_eq!(s.hits("/mods-info/records/index.json"), 1, "at most hourly");
+    assert_eq!(s.hits("/mods-info.zip"), 6);
+
+    // No zip configured: the files alone, as before.
+    let dir = TempDir::new("mods-zip-none");
+    assert_eq!(refresh("", &base, dir.path(), false), Ok(true));
+    assert_eq!(s.hits("/mods-info/records/index.json"), 2);
+    assert_eq!(refresh("", &base, dir.path(), false), Ok(false));
+    assert_eq!(s.hits("/mods-info/records/index.json"), 2);
+}
+
 #[test]
 fn records_are_fetched_from_mods_info_at_most_once_an_hour() {
     use super::community::{Cache, MAX_AGE_SECONDS, load_cache, merge, mods_info_base, refresh_records_within, save_cache};

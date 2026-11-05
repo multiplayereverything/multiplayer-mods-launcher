@@ -47,7 +47,9 @@
   "discord": { "clientId": "" },
 
   "downloads": {
-    "catalog": "https://raw.githubusercontent.com/multiplayereverything/flash-games/main/catalog.json"
+    "catalog": "https://raw.githubusercontent.com/multiplayereverything/flash-games/main/catalog.json",
+    // mods-info as one download: every mod's record and the newest release of ours, from one commit.
+    "modsInfoZip": "https://github.com/multiplayereverything/mods-info/archive/refs/heads/main.zip"
   },
 
   "behavior": {

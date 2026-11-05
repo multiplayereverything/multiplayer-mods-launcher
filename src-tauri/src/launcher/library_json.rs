@@ -124,8 +124,8 @@ pub fn library_json() -> Result<Value, String> {
     Ok(build(&listed, &lib, &user, &site_list))
 }
 
-/// What the launcher reads from the internet about its games, brought up to date (each at most once an hour): mods-info's
-/// community mods, and the website's games.json with any new covers it points at. True when the library should be read
+/// What the launcher reads from the internet about its games, brought up to date: mods-info's records and releases (its
+/// zip, at most every 15 minutes), and, at most once an hour, the website's games.json with any new covers it points at. True when the library should be read
 /// again. The C++ window fetched games.json on its own thread at start.
 /// `force` (Ctrl+F5) asks again even when the saved copies are under an hour old.
 pub fn refresh_online_lists(force: bool) -> Result<bool, String> {
@@ -134,7 +134,7 @@ pub fn refresh_online_lists(force: bool) -> Result<bool, String> {
     let community = if std::env::var_os("FL_NO_COMMUNITY").is_some() {
         Ok(false)
     } else {
-        community::refresh_records_within(&community::mods_info_base(&cfg), &paths::join(&data_dir_of(&cfg), "records.json"), max_age)
+        super::mods_zip::refresh(&cfg.downloads.mods_info_zip, &community::mods_info_base(&cfg), &data_dir_of(&cfg), force)
     };
     let site = refresh_site(&cfg, max_age);
     match (community, site) {

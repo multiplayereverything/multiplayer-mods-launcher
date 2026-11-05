@@ -137,6 +137,7 @@ pub struct Rooms {
 pub struct Downloads {
     pub catalog: String,
     pub mods_info: String,
+    pub mods_info_zip: String,
     pub site: String,
 }
 
@@ -551,6 +552,7 @@ impl Default for Config {
             downloads: Downloads {
                 catalog: String::new(),
                 mods_info: String::new(),
+                mods_info_zip: String::new(),
                 site: "https://www.multiplayereverything.com/games.json".into(),
             },
             rooms: Rooms { servers: String::new(), server: String::new(), refresh_seconds: 30 },
@@ -1315,6 +1317,7 @@ pub fn load_config(text: &[u8], config_dir: &str) -> LoadResult {
             let s = Section::new(top.get("downloads", Type::Object), "downloads", &issues);
             s.str("catalog", &mut c.downloads.catalog);
             s.str("modsInfo", &mut c.downloads.mods_info);
+            s.str("modsInfoZip", &mut c.downloads.mods_info_zip);
             s.str("site", &mut c.downloads.site);
             if !c.downloads.site.is_empty() && !is_https_or_local(&c.downloads.site) {
                 s.error("site", "must be an https:// address");
@@ -1324,6 +1327,9 @@ pub fn load_config(text: &[u8], config_dir: &str) -> LoadResult {
             }
             if !c.downloads.mods_info.is_empty() && !is_https_or_local(&c.downloads.mods_info) {
                 s.error("modsInfo", "must be an https:// address");
+            }
+            if !c.downloads.mods_info_zip.is_empty() && !is_https_or_local(&c.downloads.mods_info_zip) {
+                s.error("modsInfoZip", "must be an https:// address");
             }
         }
         if let Some(list) = top.get("players", Type::Array) {

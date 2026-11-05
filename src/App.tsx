@@ -260,31 +260,43 @@ export default function App() {
 
   useEffect(() => {
     refresh()
-    refreshMods()
-  }, [refresh, refreshMods])
+  }, [refresh])
 
   // What mods-info and the website say: approved community mods, games the website added (Coming soon), statuses and
   // grades. Asked at start and every hour (the copies on disk are used for an hour, so nothing is asked more often).
-  useEffect(() => {
-    // A community mod that came with it needs its install state too (the C++ launcher reads the same saved copy).
-    const ask = () => refreshSite().then((changed) => { if (changed) { void refresh(); void refreshMods() } }).catch(() => {})
-    ask()
-    const id = window.setInterval(ask, 3600000)
-    return () => window.clearInterval(id)
+  const listsAsked = useRef<Promise<void> | null>(null)
+  const askLists = useCallback(() => {
+    if (listsAsked.current) return listsAsked.current
+    // A mod that came with it needs its install state too (the C++ launcher reads the same saved copy).
+    const asked = refreshSite()
+      .then((changed) => { if (changed) { void refresh(); void refreshMods() } })
+      .catch(() => {})
+      .finally(() => { listsAsked.current = null })
+    listsAsked.current = asked
+    return asked
   }, [refresh, refreshMods])
+  useEffect(() => {
+    // The lists first, briefly: on a first run the mods' newest releases come with them, and asking before they are here
+    // would spend the player's GitHub requests on what the lists are about to say.
+    void Promise.race([askLists(), new Promise((done) => window.setTimeout(done, 8000))]).then(() => refreshMods())
+    const id = window.setInterval(() => void askLists(), 3600000)
+    return () => window.clearInterval(id)
+  }, [askLists, refreshMods])
 
   // Coming back to the window: whether a modded game is still open may have changed (the C++ window polls it).
-  // At most every 30 seconds, since each look asks mods-info.
+  // At most every 30 seconds. The lists are looked at too: the player gets what's new when they come back, and nothing is
+  // downloaded while a game has the focus (mods_zip.rs keeps its own 15 minutes).
   const modsAt = useRef(Date.now())
   useEffect(() => {
     const onFocus = () => {
       if (Date.now() - modsAt.current < 30000) return
       modsAt.current = Date.now()
       void refreshMods()
+      void askLists()
     }
     window.addEventListener('focus', onFocus)
     return () => window.removeEventListener('focus', onFocus)
-  }, [refreshMods])
+  }, [refreshMods, askLists])
 
   const anyOnline = !!lib?.user.online && !!lib?.games.some((g) => g.onlineId && !g.comingSoon)
   const roomsServer = lib?.roomsServer ?? ''
