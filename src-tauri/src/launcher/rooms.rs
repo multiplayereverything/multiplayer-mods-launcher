@@ -297,7 +297,7 @@ pub fn all_rooms_from(cfg: &Config) -> Value {
 
 /// The C++ launcher's set-up before `--rooms` (launcher.json, the data, games and players folders), then one game.
 pub fn game_rooms(game: &str) -> Result<(Value, bool), String> {
-    // With mods-info's records, so a Flash game from team/ lists its rooms too.
+    // With mods-info's records, so a Flash game from a team record lists its rooms too.
     let cfg = load_with_community()?;
     open_library(&cfg);
     game_rooms_from(&cfg, game)

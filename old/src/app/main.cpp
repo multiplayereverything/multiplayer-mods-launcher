@@ -279,23 +279,12 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
 
     if (a.relayPort) return runRelay(a.relayPort);
 
-    // The community mods the app downloaded from mods-info (community.json in the data folder), each checked again
-    // here, so --mods, --install-mod and --launch know the same ones as the window. FL_NO_COMMUNITY leaves them out.
+    // The mods the app downloaded from mods-info (records.json in the data folder), each checked again here, so --mods,
+    // --install-mod and --launch know the same ones as the window. FL_NO_COMMUNITY leaves them out.
     CommunityCache records;
-    if (!getenv("FL_NO_COMMUNITY") && loadCommunityCache(fs::join(dataDir, L"records.json"), records) && !records.raw.empty()) {
+    if (!getenv("FL_NO_COMMUNITY") && loadCommunityCache(fs::join(dataDir, L"records.json"), records)) {
         int added = mergeRecords(lr.config, records);
         if (added) logger().info(L"Mods from mods-info: " + std::to_wstring(added));
-    } else if (!getenv("FL_NO_COMMUNITY")) {
-        CommunityCache team;
-        if (loadCommunityCache(fs::join(dataDir, L"team.json"), team)) {
-            int added = mergeTeam(lr.config, team);
-            if (added) logger().info(L"Team mods: " + std::to_wstring(added));
-        }
-        CommunityCache community;
-        if (loadCommunityCache(fs::join(dataDir, L"community.json"), community)) {
-            int added = mergeCommunity(lr.config, community);
-            if (added) logger().info(L"Community mods: " + std::to_wstring(added));
-        }
     }
 
     Library lib(cfg, base);

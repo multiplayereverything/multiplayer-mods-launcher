@@ -1,4 +1,4 @@
-# Mods from mods-info: community and team records
+# Mods from mods-info: records
 
 How a mod reaches the launcher without a launcher release.
 
@@ -13,16 +13,16 @@ keys besides the ones below: `platform` (`"flash"` or `"pc"`, the list it appear
 - An installed community mod is always `pc` and a Flash record always `flash`; only a link card takes `platform`'s word.
 - The lists run A to Z with nobody first. There is no Community mods category. The game page says Made by, with View
   all for that author's mods, and for someone else's mod whether we read its code.
-- Launchers up to 1.0.44 read only the two older folders and refuse unknown keys, so those stay, without the two keys,
-  until the owner removes them. A launcher reads them only when `records/` is missing or empty.
-- `scripts/records-migrate.py <mods-info checkout>` writes `records/` from the two folders.
+- `team/` and `community/` were deleted from mods-info on 2026-11-05 (`489b335`), after 1.0.45. Launchers up to 1.0.44
+  read only those two folders, so they show almost none of these mods until they update.
 
-The rules below still apply by repository:
+Which rules a record gets, by its repository:
 
-- `community/`: mods made by someone else, approved by the owner (the developer SDK). Strict, pinned, credited.
-- `team/`: Multiplayer Everything's own mods and Flash games. Each record is the game's launcher.json `games[]` entry
-  with a few record keys added, from a `multiplayereverything` repository only; a PC mod follows its newest release.
-  See [Team records](#team-records) below.
+- **Community record** (any other owner): a mod made by someone else, approved by the owner (the developer SDK). Strict,
+  pinned, credited.
+- **Team record** (`multiplayereverything`): our own mods and Flash games. Each record is the game's launcher.json
+  `games[]` entry with a few record keys added; a PC mod follows its newest release. See [Team records](#team-records)
+  below.
 
 The launcher is a fixed set of building blocks (finding the game, what it needs first, what goes where, what is
 skipped or kept, how it starts, the card); a record only combines them. A mod that needs something no block covers
@@ -48,21 +48,24 @@ A newer release of the mod reaches nobody until it goes through steps 2 and 3 ag
 ## In mods-info
 
 ```
-community/index.json      { "mods": ["lab-coop", ...] }   lowercase letters, digits and '-', at most 200
-community/<id>.json       one record per mod
+records/index.json      { "mods": ["lab-coop", ...] }   lowercase letters, digits and '-', at most 200
+records/<id>.json       one record per mod
 ```
+
+A community record:
 
 ```json
 {
   "id": "lab-coop",
   "repo": "someone/lab-coop",
+  "platform": "pc",
+  "author": "someone",
   "tag": "v1.2.0",
   "version": "1.2.0",
   "asset": "LabCoop-1.2.0.zip",
   "url": "https://github.com/someone/lab-coop/releases/download/v1.2.0/LabCoop-1.2.0.zip",
   "sha256": "<64 lower-case hex digits of the asset>",
   "manifest_sha256": "<of multiplayereverything.json>",
-  "author": "someone",
   "authorUrl": "https://github.com/someone",
   "approved_at": "2026-11-03",
   "approved_by": "JessniX",
@@ -110,9 +113,9 @@ may also carry what launcher.json gives a card, and may be a card that only link
 - `kind` is `pc` when left out, or `flash` (a developer's Flash game, below). A kind a launcher doesn't know is left
   out whole, so a later kind never shows half a card in an older launcher.
 
-Our own 7 PC mods and 17 Flash games became team records on 2026-11-04 (mods-info 107816f) and left launcher.json in
-1.0.42; `tests/fixtures/team` is the published copy the tests read, kept equal to mods-info by
-`the_team_records_in_a_mods_info_checkout_are_the_published_copy`.
+Our own PC mods and Flash games became team records on 2026-11-04 and left launcher.json in 1.0.42;
+`tests/fixtures/team` is the published copy the tests read (each record without `platform` and `author`), kept equal to
+mods-info by `our_records_in_a_mods_info_checkout_are_the_published_copy`.
 
 MDK2 HD, The Witness, Little Nightmares and Forager came to mods-info this way (2026-11-04), with the ids and pins
 they had in launcher.json, so installs, favorites and play stats carry over. Spore stays in launcher.json: it
@@ -120,15 +123,12 @@ writes beside its folder (`..\Data`) and keeps the game's own `steam_api.dll` wi
 
 ## Team records
 
-```
-team/index.json      { "mods": ["spooky-together", ...] }
-team/<id>.json       one of our own mods
-```
-
 ```json
 {
   "id": "spooky-together",
   "repo": "multiplayereverything/spooky-together",
+  "platform": "pc",
+  "author": "Multiplayer Everything",
   "minLauncher": "1.0.42",
   "approved_at": "2026-11-04",
   "approved_by": "Multiplayer Everything Team",
@@ -138,7 +138,7 @@ team/<id>.json       one of our own mods
 }
 ```
 
-- Besides `id`, `repo`, `minLauncher`, `approved_at` and `approved_by`, a team record is a launcher.json `games[]`
+- Besides `id`, `repo`, `platform`, `author`, `minLauncher`, `approved_at` and `approved_by`, a team record is a launcher.json `games[]`
   entry: `name`, `description`, `players`, `maxPlayers`, `color`, `colorEnd`, `guide`, `categories`, `site`, `online`,
   `image`, `imageFocus`, `settings`, and either `mod` (a PC mod, with every block launcher.json has: `sourceGame`,
   `allowedRoots`, `extras` by tag, any detection, any launch; the launcher makes its buttons) or `actions` (a Flash
@@ -152,12 +152,14 @@ team/<id>.json       one of our own mods
 - `repo` must be `multiplayereverything/<name>`. For a PC mod, `mod.package.github` must be that repo: the mod follows its newest
   release, checked against GitHub's SHA-256 at download (no review per version). A pinned `url` must be one of its
   release files. Every `extras` download must come from a `multiplayereverything` repository.
-- `categories` may not hold `community`, and must be launcher.json's categories. The card has no "made by" credit.
+- `categories` may not hold `community`, and must be launcher.json's categories. The page says Made by Multiplayer
+  Everything, with no profile link and no review line.
 - Then every check a launcher.json game gets. An id launcher.json already has is refused (launcher.json wins while
   both have it), and team records are read before community ones, so a developer's record can't take a team id.
 - The website writes them through a team-only path (not the developer form), for `multiplayereverything`
-  repositories only. The launcher session's test `the_team_records_in_a_mods_info_checkout_are_the_games_launcher_json_has`
-  (`FL_TEST_COMMUNITY_DIR=<mods-info checkout>`) proves each record makes exactly the game its launcher.json entry did.
+  repositories only. With `FL_TEST_COMMUNITY_DIR=<mods-info checkout>`, the test
+  `the_records_in_a_mods_info_checkout_make_the_games_the_tests_know` proves every record passes and ours make exactly
+  the games `tests/fixtures/team` makes.
 
 ## Flash records (1.0.43)
 
@@ -174,6 +176,7 @@ holds a command line, so it can't start anything but Ruffle Together with its ga
   "id": "lab-flash-coop",
   "repo": "someone/lab-flash",
   "kind": "flash",
+  "platform": "flash",
   "minLauncher": "1.0.43",
   "tag": "v2.0",
   "version": "2.0",
@@ -194,10 +197,10 @@ holds a command line, so it can't start anything but Ruffle Together with its ga
 }
 ```
 
-- `kind` is `flash`. Besides the keys every record may have (`id`, `repo`, `author`, `authorUrl`, `approved_at`,
+- `kind` is `flash`. Besides the keys every record may have (`id`, `repo`, `platform`, `author`, `authorUrl`, `approved_at`,
   `approved_by`, `minLauncher`) and the card's text (`description`, `players`, `maxPlayers`, `color`, `colorEnd`,
   `guide`, as above), it has only `tag`, `version`, `manifest_sha256` and `flash`. No `actions`, `categories` or
-  `online`: the card is listed under Community mods and Flash mods, and plays online through Ruffle Together's rooms.
+  `online`: the card is listed under Flash mods, and plays online through Ruffle Together's rooms.
 - `flash.game`: the game's name, the card's title (at most 80 characters).
 - `flash.file`: the game file, a `.swf` of the pinned release: `asset`, `url` (exactly
   `https://github.com/<repo>/releases/download/<tag>/<asset>`), `sha256`, and `size` in bytes (optional, at most
@@ -231,16 +234,16 @@ cards (`"minLauncher": "1.0.43"`). The C++ engine leaves them out, so its own Fl
 
 ## In the launcher
 
-- The app (`src-tauri/src/launcher/community.rs`) asks mods-info at start and then hourly, using the copies it saved
-  (`team.json` and `community.json` in the data folder) for an hour; Ctrl+F5 asks at once. A mods-info without the
-  folder (404) means none. Any other failure keeps the last good copy.
+- The app (`src-tauri/src/launcher/community.rs`) asks mods-info at start and then hourly, using the copy it saved
+  (`records.json` in the data folder) for an hour; Ctrl+F5 asks at once. A mods-info without the folder (404) means
+  no mods. Any other failure keeps the last good copy.
 - The C++ mod commands (`old/src/core/community.cpp`, until PORTING.md part 6) read the same saved copy and check
   each record again, so Install, Repair, Uninstall and Launch know the same mods as the window.
 - The card's description, players and picture come from the record, else from the website's `/api/projects` or
   `games.json` entry with the same id. A project the website lists
-  that has no approved record shows as a Community card that says it can't be installed yet.
+  that has no approved record shows as a card in its list that says it can't be installed yet.
 - The download is checked against the pinned SHA-256 before anything is installed, as for every mod.
-- `FL_NO_COMMUNITY` leaves community and team mods out (both sides). The lab's `communitymods` scenario installs one
+- `FL_NO_COMMUNITY` leaves all these mods out (both sides). The lab's `communitymods` scenario installs one
   from a stand-in mods-info and github.com and checks Uninstall leaves the game folder byte-identical; `teammods`
   does the same for a team record that follows its newest release and brings BepInEx, plays a Flash game from a team
   record (and leaves out one whose button runs a program), and shows a record for a newer launcher. A Flash game from

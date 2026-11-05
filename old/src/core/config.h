@@ -326,12 +326,12 @@ LoadResult loadConfigFile(const std::wstring& path);
 void validateConfig(const Config& cfg, std::vector<ConfigIssue>& issues);
 std::wstring formatIssues(const std::vector<ConfigIssue>& issues);
 
-// A community mod the owner approved into mods-info (community/<id>.json, docs/COMMUNITY_MODS.md): its pinned release
+// A community mod the owner approved into mods-info (records/<id>.json, docs/COMMUNITY_MODS.md): its pinned release
 // and a launcher.json "mod" recipe limited to what can't reach outside the game folder. It is checked by those rules
 // and then like any launcher.json mod; a record that fails is refused whole. An id launcher.json already has is
 // refused too. `localRelease`: the release may come from a local test server (only when mods-info is one).
 bool readCommunityMod(std::string_view json, const Config& cfg, bool localRelease, GameSpec& out, std::wstring& error);
-// One of the team's own mods (team/<id>.json): a launcher.json games[] entry with the record's keys, from a
+// One of the team's own mods (records/<id>.json): a launcher.json games[] entry with the record's keys, from a
 // multiplayereverything repository, downloading only from the team's repositories; then checked like launcher.json.
 // A record's repository decides which rules read it (records/ holds both kinds): the team's owner, or anyone else.
 bool isTeamRecord(std::string_view json);

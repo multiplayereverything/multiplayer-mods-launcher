@@ -50,10 +50,11 @@ Mods we make ourselves skip steps 1 and 3 (and can use "newest release", step 5)
 
 ## 5. The entry
 
-Since 1.0.42 our own mods are team records in mods-info (`team/<id>.json`, docs/COMMUNITY_MODS.md), not
-launcher.json entries: the record is the same games[] entry with `id`, `repo` and the approval added. Write the entry
-below, check and publish it on the website's dashboard (Team mods), then copy mods-info's `team/` into
-`tests/fixtures/team` so the tests know it. A mod made by someone else goes through the developer SDK instead
+Since 1.0.42 our own mods are team records in mods-info (`records/<id>.json`, docs/COMMUNITY_MODS.md), not
+launcher.json entries: the record is the same games[] entry with `id`, `repo`, `platform`, `author` and the approval
+added. Write the entry below, check and publish it on the website's dashboard (Team mods), then copy the record into
+`tests/fixtures/team` without `platform` and `author`, and add its id to that folder's `index.json`, so the tests know
+it. A mod made by someone else goes through the developer SDK instead
 (community records, below).
 
 - [ ] Copy the closest existing mod (`spooky-together`, `baldi-together`, `miside-together`) and change the

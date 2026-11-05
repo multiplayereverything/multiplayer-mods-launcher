@@ -79,7 +79,7 @@ export function makeSandbox(work, fakePlayer) {
     assets: [{ name: 'rt-1.0.1.zip', browser_download_url: `http://127.0.0.1:${PORTS.http}/rt-1.0.1.zip`, digest: `sha256:${sha256(rtZip)}` }],
   }))
 
-  // A community mod the owner approved into mods-info (community/<id>.json), its release on a stand-in for github.com,
+  // A community mod the owner approved into mods-info (records/<id>.json), its release on a stand-in for github.com,
   // and the fake game it goes into. The website lists it too (/api/projects), with a second project that has no record.
   const labGame = join(work, 'LabGame')
   write(join(labGame, 'LabGame.exe'), 'lab game binary')
@@ -208,8 +208,8 @@ export function makeSandbox(work, fakePlayer) {
     id: 'lab-next', repo: 'multiplayereverything/lab-next', minLauncher: '999.0', name: 'Lab Next', categories: ['pc'],
     mod: { id: 'lab-next', somethingNew: { x: 1 } },
   }))
-  // records/: the same mods in one folder, as the dashboard and scripts/records-migrate.py write them. team/ and
-  // community/ stay beside it for older launchers.
+  // records/, as the dashboard writes it: the mods above with platform and author. The two folders were only how this
+  // file lays them out, and are removed so that nothing can read them.
   const recordIds = []
   for (const folder of ['team', 'community']) {
     for (const id of JSON.parse(readFileSync(join(work, 'www', folder, 'index.json'), 'utf8')).mods) {
@@ -221,6 +221,7 @@ export function makeSandbox(work, fakePlayer) {
     }
   }
   write(join(work, 'www', 'records', 'index.json'), JSON.stringify({ mods: recordIds }))
+  for (const folder of ['team', 'community']) rmSync(join(work, 'www', folder), { recursive: true, force: true })
   write(join(work, 'www', 'api', 'projects'), JSON.stringify({ games: [
     { id: 'lab-coop', kind: 'pc', name: 'Lab Game', maintainer: 'someone', repo: 'someone/lab-coop', players: '1-4 players', description: 'Four players in one lab.' },
     { id: 'listed-only', kind: 'pc', name: 'Listed Only', maintainer: 'another', repo: 'another/listed-only', description: 'On the website, not in mods-info.' },

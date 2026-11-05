@@ -76,9 +76,9 @@ fn shipped() -> LoadResult {
     r
 }
 
-/// Our own games left launcher.json for mods-info team/ (1.0.42). tests/fixtures/team is the published copy (the test
-/// the_team_records_in_a_mods_info_checkout_are_the_published_copy keeps it equal), merged in as the app merges
-/// team.json, so "the shipped config" means what players get.
+/// Our own games left launcher.json for mods-info (1.0.42). tests/fixtures/team is the published copy (the test
+/// our_records_in_a_mods_info_checkout_are_the_published_copy keeps it equal), merged in as the app merges our records,
+/// so "the shipped config" means what players get.
 pub(super) fn team_fixtures() -> super::community::Cache {
     let dir = format!("{}\\..\\tests\\fixtures\\team", env!("CARGO_MANIFEST_DIR"));
     let index = std::fs::read(format!("{dir}\\index.json")).unwrap();

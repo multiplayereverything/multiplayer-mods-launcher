@@ -461,7 +461,7 @@ const scenarios = {
     await check('the status bar measures the server', /Server online \(\d+ ms\)/.test(await waitFor(() => wd.exec("return document.querySelector('.srv')?.textContent ?? ''").then((x) => /ms/.test(x) && x), 15000) || ''))
   },
 
-  // A community mod approved into mods-info (community/lab-coop.json): it arrives without a launcher update, installs
+  // A community mod approved into mods-info (records/lab-coop.json): it arrives without a launcher update, installs
   // its pinned release and uninstalls cleanly. The website's second project, with no record, is listed but can't install.
   async communitymods() {
     // The players scenario's game may still be open: its card over the grid would take the clicks below.
@@ -497,7 +497,7 @@ const scenarios = {
     await check('Uninstall leaves the community game folder exactly as it was', snapshot(box.labGame) === labBefore)
     await key('Escape')
 
-    // community/lab-solo.json: one DLL released on its own, the record the website's form writes when there's no manifest.
+    // records/lab-solo.json: one DLL released on its own, the record the website's form writes when there's no manifest.
     const soloBefore = snapshot(box.labSolo)
     await openGame('Lab Solo')
     const soloReady = await waitFor(async () => wd.exec("return [...document.querySelectorAll('.dpanel .pbtn')].some(b => b.textContent.includes('Install') && !b.disabled)"), 20000)
@@ -519,7 +519,7 @@ const scenarios = {
     await check('a listed project has no Install button', (await wd.exec("return [...document.querySelectorAll('.dpanel .pbtn')].filter(b => /Install/.test(b.textContent)).length")) === 0)
     await key('Escape')
 
-    // community/lab-link.json: a card the team wrote by hand, with its own text and one button to the mod's page.
+    // records/lab-link.json: a card the team wrote by hand, with its own text and one button to the mod's page.
     await openGame('Lab Link')
     const linkPage = await wd.exec("return document.querySelector('.gp')?.innerText ?? ''")
     await check('a link card shows its own description and players', linkPage.includes('A mod with an installer of its own.') && linkPage.includes('2-16 players'), linkPage.slice(0, 300))
@@ -554,7 +554,7 @@ const scenarios = {
     await check('Ctrl+F5 drops a mod taken down from mods-info', (await waitFor(async () => (await wd.count(card('Lab Late'))) === 0, 20000)) === true)
   },
 
-  // team/lab-team.json: one of our own mods from mods-info, as launcher.json would hold it. It follows its newest
+  // records/lab-team.json: one of our own mods from mods-info, as launcher.json would hold it. It follows its newest
   // release, brings BepInEx from the repository's loader release, and takes it away again on Uninstall.
   async teammods() {
     const before = snapshot(box.labTeam)
@@ -590,7 +590,7 @@ const scenarios = {
     await check('Uninstall takes the loader away with the mod: the folder is as it was', snapshot(box.labTeam) === before)
     await key('Escape')
 
-    // team/lab-flash.json: one of our Flash games from mods-info; its Play starts the player with the record's file.
+    // records/lab-flash.json: one of our Flash games from mods-info; its Play starts the player with the record's file.
     await openGame('Flash Team')
     const flashPage = await wd.exec("return document.querySelector('.gp')?.innerText ?? ''")
     await check('a Flash team record has its own card', flashPage.includes('One of our Flash games, from mods-info.'), flashPage.slice(0, 200))
@@ -601,7 +601,7 @@ const scenarios = {
     await key('Escape')
     await check('a Flash record whose button runs a program of its own is left out', (await wd.count(card('Bad Flash'))) === 0)
 
-    // team/lab-next.json needs a launcher that doesn't exist yet.
+    // records/lab-next.json needs a launcher that doesn't exist yet.
     await openGame('Lab Next')
     const next = await wd.exec("return document.querySelector('.gp')?.innerText ?? ''")
     await check('a record for a newer launcher asks for an update', next.includes('Needs Multiplayer Everything 999.0 or newer'), next.slice(0, 300))
@@ -609,7 +609,7 @@ const scenarios = {
     await key('Escape')
   },
 
-  // community/lab-devflash.json: a developer's Flash game. The launcher makes its buttons, downloads its pinned files into
+  // records/lab-devflash.json: a developer's Flash game. The launcher makes its buttons, downloads its pinned files into
   // their own folder, and starts the player with the release's key map.
   async devflash() {
     await wd.click(nav('Flash mods'))
@@ -636,7 +636,7 @@ const scenarios = {
     await waitFor(async () => !(await wd.exec("return document.querySelector('.island')?.textContent ?? ''")).includes('Playing'), FAKE_MS + 8000)
     await key('Escape')
 
-    // community/lab-newflash.json needs Ruffle Together 99.0: with an older release picked, Play offers the update.
+    // records/lab-newflash.json needs Ruffle Together 99.0: with an older release picked, Play offers the update.
     await wd.exec("return window.__TAURI_INTERNALS__.invoke('set_game_player', { game: 'lab-newflash', player: 'rt' })")
     await openGame('Lab New Flash')
     await wd.click(panel('Download game files'))

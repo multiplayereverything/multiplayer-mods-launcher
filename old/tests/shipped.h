@@ -1,6 +1,6 @@
-// The shipped config as players get it: launcher.json plus our own games, which left it for mods-info team/ (1.0.42).
-// tests/fixtures/team is the published copy (the Rust test the_team_records_in_a_mods_info_checkout_are_the_published_copy
-// keeps it equal to mods-info), merged in as the app merges team.json.
+// The shipped config as players get it: launcher.json plus our own games, which left it for mods-info (1.0.42).
+// tests/fixtures/team is the published copy (the Rust test our_records_in_a_mods_info_checkout_are_the_published_copy
+// keeps it equal to mods-info), merged in as the app merges our records.
 #pragma once
 #include <string>
 #include <vector>

@@ -418,7 +418,7 @@ pub fn download_game_files(files: &[CatalogFile], dir: &str, progress: Progress,
 /// player lookups are logged at each refresh) and settings.json. An error is the C++ launcher's exit 3.
 fn open_command() -> Result<Config, String> {
     let (mut cfg, issues) = load_launcher_config_issues()?;
-    // With mods-info's records, so a Flash game from team/ downloads its game files like one launcher.json has.
+    // With mods-info's records, so a Flash game from a team record downloads its game files like one launcher.json has.
     super::library_json::add_community(&mut cfg);
     let mut base = Vars::default();
     base.set("LAUNCHER_DIR", &cfg.config_dir);

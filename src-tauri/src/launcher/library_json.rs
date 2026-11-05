@@ -49,7 +49,7 @@ pub fn load_launcher_config_issues() -> Result<(Config, Vec<ConfigIssue>), Strin
     Ok((cfg, issues))
 }
 
-/// The data folder launcher.json names (settings.json, site.json, community.json live there).
+/// The data folder launcher.json names (settings.json, site.json, records.json live there).
 fn data_dir_of(cfg: &Config) -> String {
     let mut base = Vars::default();
     base.set("LAUNCHER_DIR", &cfg.config_dir);
@@ -57,21 +57,13 @@ fn data_dir_of(cfg: &Config) -> String {
 }
 
 /// Adds the mods from the copy of mods-info's records/ kept in the data folder (records.json;
-/// src/launcher/community.rs), as the C++ mod commands do from the same file. A mods-info without that folder yet leaves
-/// the copies of team/ and community/ to read. FL_NO_COMMUNITY leaves them all out.
+/// src/launcher/community.rs), as the C++ mod commands do from the same file. FL_NO_COMMUNITY leaves them out.
 pub fn add_community(cfg: &mut Config) {
     if std::env::var_os("FL_NO_COMMUNITY").is_some() {
         return;
     }
-    if let Some(cache) = community::load_cache(&paths::join(&data_dir_of(cfg), "records.json")).filter(|c| !c.raw.is_empty()) {
+    if let Some(cache) = community::load_cache(&paths::join(&data_dir_of(cfg), "records.json")) {
         community::merge_records(cfg, &cache);
-        return;
-    }
-    if let Some(cache) = community::load_cache(&paths::join(&data_dir_of(cfg), "team.json")) {
-        community::merge_team(cfg, &cache);
-    }
-    if let Some(cache) = community::load_cache(&paths::join(&data_dir_of(cfg), "community.json")) {
-        community::merge(cfg, &cache);
     }
 }
 
@@ -142,22 +134,7 @@ pub fn refresh_online_lists(force: bool) -> Result<bool, String> {
     let community = if std::env::var_os("FL_NO_COMMUNITY").is_some() {
         Ok(false)
     } else {
-        let base = community::mods_info_base(&cfg);
-        let records_path = paths::join(&data_dir_of(&cfg), "records.json");
-        let records = community::refresh_folder_within(&base, "records", &records_path, max_age);
-        let have_records = community::load_cache(&records_path).is_some_and(|c| !c.raw.is_empty());
-        let team = if have_records { Ok(false) } else { community::refresh_folder_within(&base, "team", &paths::join(&data_dir_of(&cfg), "team.json"), max_age) };
-        let dev = if have_records { Ok(false) } else { community::refresh_cache_within(&base, &paths::join(&data_dir_of(&cfg), "community.json"), max_age) };
-        let old = match (team, dev) {
-            (Ok(a), Ok(b)) => Ok(a || b),
-            (Ok(true), _) | (_, Ok(true)) => Ok(true),
-            (Err(e), _) | (_, Err(e)) => Err(e),
-        };
-        match (records, old) {
-            (Ok(a), Ok(b)) => Ok(a || b),
-            (Ok(true), _) | (_, Ok(true)) => Ok(true),
-            (Err(e), _) | (_, Err(e)) => Err(e),
-        }
+        community::refresh_records_within(&community::mods_info_base(&cfg), &paths::join(&data_dir_of(&cfg), "records.json"), max_age)
     };
     let site = refresh_site(&cfg, max_age);
     match (community, site) {

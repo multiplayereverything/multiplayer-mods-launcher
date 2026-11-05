@@ -462,7 +462,7 @@ fn shipped_config() -> super::config::Config {
 
 const SHA: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
-/// An approved record as the website writes it into mods-info's community/<id>.json.
+/// An approved record as the website writes it into mods-info's records/<id>.json.
 fn record() -> serde_json::Value {
     serde_json::json!({
         "id": "lab-coop",
@@ -633,16 +633,29 @@ fn a_link_record_is_a_card_with_one_button_to_the_mods_page() {
     }
 }
 
-/// FL_TEST_COMMUNITY_DIR=<a mods-info checkout>: every record in its community/ passes. One whose id launcher.json
+/// The records in a mods-info checkout (FL_TEST_COMMUNITY_DIR), read as the launcher reads them.
+fn checkout_records(dir: &str) -> Vec<(String, String)> {
+    let index = std::fs::read(format!("{dir}\\records\\index.json")).unwrap();
+    let ids = super::community::parse_index(&index).unwrap();
+    ids.into_iter().map(|id| {
+        let text = std::fs::read_to_string(format!("{dir}\\records\\{id}.json")).unwrap();
+        (id, text)
+    }).collect()
+}
+
+fn is_ours(text: &str) -> bool {
+    let r: serde_json::Value = serde_json::from_str(text).unwrap();
+    r["repo"].as_str().unwrap_or("").to_lowercase().starts_with("multiplayereverything/")
+}
+
+/// FL_TEST_COMMUNITY_DIR=<a mods-info checkout>: every community record in its records/ passes. One whose id launcher.json
 /// still has makes the same card as that entry (how the community entries moved to mods-info was checked).
 #[test]
 fn the_records_in_a_mods_info_checkout_pass() {
     let Ok(dir) = std::env::var("FL_TEST_COMMUNITY_DIR") else { return };
-    let index = std::fs::read(format!("{dir}\\community\\index.json")).unwrap();
-    let ids = super::community::parse_index(&index).unwrap();
+    let records = checkout_records(&dir);
     let shipped = shipped_config();
-    for id in &ids {
-        let text = std::fs::read_to_string(format!("{dir}\\community\\{id}.json")).unwrap();
+    for (id, text) in records.iter().filter(|(_, t)| !is_ours(t)) {
         let mut cfg = shipped.clone();
         let before = cfg.games.iter().position(|g| &g.id == id).map(|i| cfg.games.remove(i));
         let g = super::community::read_record(&text, &cfg, false).unwrap_or_else(|e| panic!("{id}: {e}"));
@@ -655,6 +668,7 @@ fn the_records_in_a_mods_info_checkout_pass() {
         assert_eq!(others(&g), others(&b), "{id}: the tips besides the credit");
         assert_eq!(g.guide.tips.iter().filter(|t| t.starts_with("Made by ")).count(), 1, "{id}: one credit");
         assert!(g.guide.tips[0].starts_with("Made by "), "{id}");
+        let text = text.as_str();
         let urls = |x: &super::config::GameSpec| x.guide.links.iter().map(|l| l.url.clone()).collect::<std::collections::BTreeSet<_>>();
         let mut want = urls(&b);
         want.insert(format!("https://github.com/{}", text.split("\"repo\": \"").nth(1).unwrap().split('"').next().unwrap()));
@@ -677,62 +691,54 @@ fn the_records_in_a_mods_info_checkout_pass() {
             _ => panic!("{id}: one installs and the other doesn't"),
         }
     }
-    assert!(!ids.is_empty());
+    assert!(!records.is_empty());
 }
 
-/// The team records in a mods-info checkout (FL_TEST_COMMUNITY_DIR) are exactly the published copy the tests use
-/// (tests/fixtures/team), so what the tests prove holds for what players get. After a record changes on mods-info,
-/// copy team/ into tests/fixtures/team.
+/// Our records in a mods-info checkout (FL_TEST_COMMUNITY_DIR) are the published copy the tests use (tests/fixtures/team,
+/// each without records/'s platform and author), so what the tests prove holds for what players get. After one of our
+/// records changes on mods-info, copy it into tests/fixtures/team without those two keys.
 #[test]
-fn the_team_records_in_a_mods_info_checkout_are_the_published_copy() {
+fn our_records_in_a_mods_info_checkout_are_the_published_copy() {
     let Ok(dir) = std::env::var("FL_TEST_COMMUNITY_DIR") else { return };
-    let Ok(index) = std::fs::read(format!("{dir}\\team\\index.json")) else { return };
-    let ids = super::community::parse_index(&index).unwrap();
+    let ours: Vec<_> = checkout_records(&dir).into_iter().filter(|(_, t)| is_ours(t)).collect();
     let copy = super::tests::team_fixtures();
-    assert_eq!(ids.len(), copy.raw.len(), "the number of records");
-    let norm = |t: String| t.replace("\r\n", "\n");
-    for (id, mine) in ids.iter().zip(copy.raw) {
-        let theirs = std::fs::read_to_string(format!("{dir}\\team\\{id}.json")).unwrap();
-        assert_eq!(norm(theirs), norm(mine), "{id}: mods-info and tests/fixtures/team differ");
+    assert_eq!(ours.len(), copy.raw.len(), "the number of records");
+    for (id, theirs) in &ours {
+        let mut theirs: serde_json::Value = serde_json::from_str(theirs).unwrap();
+        let o = theirs.as_object_mut().unwrap();
+        assert_eq!(o.remove("author").as_ref().and_then(|a| a.as_str()), Some("Multiplayer Everything"), "{id}");
+        assert!(o.remove("platform").is_some(), "{id}");
+        let mine = copy.raw.iter().map(|m| serde_json::from_str::<serde_json::Value>(m).unwrap()).find(|m| m["id"] == id.as_str());
+        assert_eq!(Some(theirs), mine, "{id}: mods-info and tests/fixtures/team differ");
     }
 }
 
-/// records/ in a mods-info checkout (FL_TEST_COMMUNITY_DIR, written by scripts/records-migrate.py): every record passes
-/// the rules its repository picks and makes exactly the game its team/ or community/ copy makes, so moving to the one
-/// folder changes nothing but where the launcher reads from.
+/// records/ in a mods-info checkout (FL_TEST_COMMUNITY_DIR): every record passes the rules its repository picks, and ours
+/// make exactly the games tests/fixtures/team makes.
 #[test]
-fn the_records_in_a_mods_info_checkout_make_the_same_games_as_the_old_folders() {
+fn the_records_in_a_mods_info_checkout_make_the_games_the_tests_know() {
     let Ok(dir) = std::env::var("FL_TEST_COMMUNITY_DIR") else { return };
-    if !std::path::Path::new(&format!("{dir}\\records\\index.json")).exists() {
-        return;
-    }
-    let read = |folder: &str| {
-        let index = std::fs::read(format!("{dir}\\{folder}\\index.json")).unwrap();
-        let ids = super::community::parse_index(&index).unwrap();
-        let raw = ids.iter().map(|id| std::fs::read_to_string(format!("{dir}\\{folder}\\{id}.json")).unwrap()).collect();
-        super::community::Cache { fetched_at: 0, raw }
-    };
+    let records = checkout_records(&dir);
     let shipped = || {
         let path = format!("{}\\..\\launcher\\launcher.json", env!("CARGO_MANIFEST_DIR"));
         super::config::load_config_file(&super::paths::normalize(&path)).config
     };
     let (mut one, mut two) = (shipped(), shipped());
-    let before = one.games.len();
-    let left_out = super::community::merge_records(&mut one, &read("records"));
+    let raw = records.iter().map(|(_, t)| t.clone()).collect();
+    let left_out = super::community::merge_records(&mut one, &super::community::Cache { fetched_at: 0, raw });
     assert!(left_out.is_empty(), "records left out: {left_out:?}");
-    let mut left_out = super::community::merge_team(&mut two, &read("team"));
-    left_out.extend(super::community::merge(&mut two, &read("community")));
-    assert!(left_out.is_empty(), "old copies left out: {left_out:?}");
-    assert!(one.games.len() > before);
+    let left_out = super::community::merge_team(&mut two, &super::tests::team_fixtures());
+    assert!(left_out.is_empty(), "fixtures left out: {left_out:?}");
+    let ours: std::collections::BTreeSet<_> = two.games.iter().map(|g| g.id.clone()).collect();
     let games = |c: &super::config::Config| {
-        let mut g: Vec<(String, String)> = c.games.iter().map(|g| (g.id.clone(), format!("{g:?}"))).collect();
+        let mut g: Vec<(String, String)> = c.games.iter().filter(|g| ours.contains(&g.id)).map(|g| (g.id.clone(), format!("{g:?}"))).collect();
         g.sort();
         g
     };
     let (one, two) = (games(&one), games(&two));
     assert_eq!(one.iter().map(|g| &g.0).collect::<Vec<_>>(), two.iter().map(|g| &g.0).collect::<Vec<_>>(), "the same ids");
     for (a, b) in one.iter().zip(&two) {
-        assert_eq!(a.1, b.1, "{}: records/ and the old folders make different games", a.0);
+        assert_eq!(a.1, b.1, "{}: records/ and tests/fixtures/team make different games", a.0);
     }
 }
 
@@ -851,7 +857,7 @@ fn a_record_for_a_newer_launcher_asks_for_an_update() {
     assert!(read_rec(&ok).unwrap_or_else(|e| panic!("{e}")).mod_spec.is_some());
 }
 
-// ---- team records (team/<id>.json): our own mods, as launcher.json holds them today ------------------------------
+// ---- team records (records/<id>.json): our own mods, as launcher.json holds them today ------------------------------
 
 /// The published team record `id` (tests/fixtures/team), and the shipped config without that game: where reading the
 /// record must make the game again.
@@ -1042,7 +1048,7 @@ fn a_record_that_claims_to_be_ours_still_gets_the_strict_rules() {
 }
 
 #[test]
-fn without_a_records_copy_the_old_folders_are_read() {
+fn only_the_records_copy_is_read() {
     let dir = TempDir::new("records");
     let save = |name: &str, raw: Vec<serde_json::Value>| {
         assert!(super::community::save_cache(&dir.join(name), &records_cache(raw)));
@@ -1052,19 +1058,18 @@ fn without_a_records_copy_the_old_folders_are_read() {
     cfg.paths.data = dir.path().to_string();
     let has = |cfg: &super::config::Config, id: &str| cfg.games.iter().any(|g| g.id == id);
 
+    // Copies an older launcher left in the data folder bring nothing back, with or without records.json.
     save("team.json", vec![team.clone()]);
     save("community.json", vec![record()]);
     super::library_json::add_community(&mut cfg);
-    assert!(has(&cfg, "hobo") && has(&cfg, "lab-coop"), "no records.json: both old copies");
+    assert!(!has(&cfg, "hobo") && !has(&cfg, "lab-coop"), "no records.json: no mods");
 
-    // An empty copy is a mods-info without the folder yet, not a mods-info with no mods.
     let mut cfg = base.clone();
     cfg.paths.data = dir.path().to_string();
     save("records.json", vec![]);
     super::library_json::add_community(&mut cfg);
-    assert!(has(&cfg, "hobo") && has(&cfg, "lab-coop"));
+    assert!(!has(&cfg, "hobo") && !has(&cfg, "lab-coop"), "an empty copy: no mods");
 
-    // With records, only they count: a mod taken down there doesn't come back from an old copy.
     let mut cfg = base.clone();
     cfg.paths.data = dir.path().to_string();
     save("records.json", vec![record()]);
@@ -1205,7 +1210,7 @@ fn a_short_flash_team_record_says_only_what_the_launcher_can_make() {
     assert_eq!(read_team(&r, &cfg).unwrap().min_player, "1.0.5");
 }
 
-/// A developer's Flash game as the website writes it into community/<id>.json.
+/// A developer's Flash game as the website writes it into records/<id>.json.
 fn flash_record() -> serde_json::Value {
     let rel = "https://github.com/someone/lab-flash/releases/download/v2.0";
     serde_json::json!({
@@ -1323,30 +1328,31 @@ fn a_local_release_is_only_trusted_when_mods_info_is_local_too() {
 }
 
 #[test]
-fn community_records_are_fetched_from_mods_info_at_most_once_an_hour() {
-    use super::community::{Cache, load_cache, merge, mods_info_base, refresh_cache, save_cache};
-    let dir = TempDir::new("community");
-    let cache = dir.join("community.json");
+fn records_are_fetched_from_mods_info_at_most_once_an_hour() {
+    use super::community::{Cache, MAX_AGE_SECONDS, load_cache, merge, mods_info_base, refresh_records_within, save_cache};
+    let dir = TempDir::new("records");
+    let cache = dir.join("records.json");
     let s = Server::new();
     let base = s.url("/mods-info/");
-    // No community folder yet: no community mods, and that is kept as an answer.
+    let refresh_cache = |base: &str, cache: &str| refresh_records_within(base, cache, MAX_AGE_SECONDS);
+    // No records folder: no mods, and that is kept as an answer.
     assert_eq!(refresh_cache(&base, &cache), Ok(true));
     assert!(load_cache(&cache).unwrap().raw.is_empty());
     // Two listed, one missing on the server, the index with a bad id and a repeat.
-    s.set("/mods-info/community/index.json", br#"{"mods":["lab-coop","gone","Bad Id","lab-coop"]}"#);
-    s.set("/mods-info/community/lab-coop.json", record().to_string().as_bytes());
+    s.set("/mods-info/records/index.json", br#"{"mods":["lab-coop","gone","Bad Id","lab-coop"]}"#);
+    s.set("/mods-info/records/lab-coop.json", record().to_string().as_bytes());
     let old = load_cache(&cache).unwrap();
     save_cache(&cache, &Cache { fetched_at: old.fetched_at - 3600, raw: old.raw });
     assert_eq!(refresh_cache(&base, &cache), Ok(true));
     let c = load_cache(&cache).unwrap();
     assert_eq!(c.raw.len(), 1);
-    assert_eq!(s.hits("/mods-info/community/gone.json"), 1);
+    assert_eq!(s.hits("/mods-info/records/gone.json"), 1);
     // Under an hour old: mods-info isn't asked again.
     assert_eq!(refresh_cache(&base, &cache), Ok(false));
-    assert_eq!(s.hits("/mods-info/community/index.json"), 2, "the 404 and the fetch after it, nothing since");
+    assert_eq!(s.hits("/mods-info/records/index.json"), 2, "the 404 and the fetch after it, nothing since");
     // A broken index keeps the last good copy.
     save_cache(&cache, &Cache { fetched_at: c.fetched_at - 3600, raw: c.raw.clone() });
-    s.set("/mods-info/community/index.json", b"<html>");
+    s.set("/mods-info/records/index.json", b"<html>");
     assert!(refresh_cache(&base, &cache).is_err());
     assert_eq!(load_cache(&cache).unwrap().raw, c.raw);
     assert!(refresh_cache("http://example.com/", &dir.join("x.json")).is_err(), "only https");

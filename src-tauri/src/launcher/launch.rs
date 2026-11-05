@@ -217,7 +217,7 @@ pub(crate) fn config_source() -> String {
 /// game exits. `report` gets the relay's state as a JSON line whenever it changes. Returns the C++ launcher's exit
 /// code and the message it printed: the launched text on success, the reason otherwise. A stop returns (0, "").
 pub fn run(req: &Request, report: &mut dyn FnMut(&str), stop: &Stop) -> (i32, String) {
-    // With mods-info's records: a Flash game from team/ starts like one launcher.json has.
+    // With mods-info's records: a Flash game from a team record starts like one launcher.json has.
     let cfg = match load_with_community() {
         Ok(c) => c,
         Err(e) => return (3, e),

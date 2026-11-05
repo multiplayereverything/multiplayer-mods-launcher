@@ -879,7 +879,7 @@ std::string teamRecord(const std::string& id, Config& without) {
 }  // namespace
 
 TEST(team_record_is_the_same_game_as_its_launcher_json_entry) {
-    // Our own mods move from launcher.json to mods-info team/ unchanged: the same card, rooms and every building block.
+    // Our own mods move from launcher.json to mods-info unchanged: the same card, rooms and every building block.
     for (const char* id : {"spooky-together", "gta-coop"}) {
         Config cfg;
         std::string r = teamRecord(id, cfg);
@@ -997,7 +997,7 @@ TEST(team_record_comes_only_from_the_teams_repositories) {
 
 TEST(community_mods_come_from_the_apps_saved_copy) {
     TempDir dir("community");
-    std::wstring path = fs::join(dir.path(), L"community.json");
+    std::wstring path = fs::join(dir.path(), L"records.json");
     CommunityCache c;
     c.fetchedAt = 1700000000;
     c.raw = {communityRecord(), R"({ "id": "broken" })"};

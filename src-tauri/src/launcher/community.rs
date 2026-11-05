@@ -1,27 +1,21 @@
 //! Mods mods-info lists for the launcher (docs/COMMUNITY_MODS.md). Every mod has one record in records/, and the
-//! record's repository decides which rules read it, never anything the record says about itself. Launchers up to
-//! 1.0.44 read the same mods from two folders, which stay until the owner removes them, and this launcher falls back
-//! to them when records/ is missing:
+//! record's repository decides which rules read it, never anything the record says about itself:
 //!
-//! - community/: developers' mods the owner approved. A developer describes their mod in a manifest in their own
-//!   GitHub release; at approval the website pins the release and writes the record. Strict: the keys below only.
-//! - team/: Multiplayer Everything's own mods, written by the website's team-only path, from repositories owned by
-//!   multiplayereverything only. A team record is a launcher.json games[] entry with the record's keys added, so it may
-//!   use every building block launcher.json has, and it follows its repository's newest release. It is a PC mod (a
-//!   "mod") or a Flash game (its "actions": buttons that start the launcher's own player with a game file).
+//! - Any other owner: a community record, a developer's mod the owner approved. A developer describes their mod in a
+//!   manifest in their own GitHub release; at approval the website pins the release and, when the owner offers it,
+//!   writes the record. Strict: the keys below only. Records the team writes by hand may also carry the card's text, or
+//!   be a card that only links to the mod's page ("kind": "link").
+//! - multiplayereverything: a team record, Multiplayer Everything's own mod, written by the website's team-only path. It
+//!   is a launcher.json games[] entry with the record's keys added, so it may use every building block launcher.json
+//!   has, and it follows its repository's newest release. It is a PC mod (a "mod") or a Flash game (its "actions":
+//!   buttons that start the launcher's own player with a game file).
 //!
 //! Either may say "minLauncher": an older launcher shows the game as needing an update instead of reading the rest.
 //!
-//! Community mods, more closely: A developer describes their mod in a
-//! manifest in their own GitHub release; at approval the website pins the release and, when the owner offers it,
-//! writes it to mods-info: community/index.json lists the ids, community/<id>.json holds each one's pinned release and
-//! install recipe. Records the team writes by hand may also carry the card's text, or be a card that only links to
-//! the mod's page ("kind": "link"). The launcher adds those games without an update of its own.
-//!
-//! The rules are old/src/core/config.cpp's `readCommunityMod`: a record may only use the keys listed here (anything
-//! else is refused, not ignored), writes only inside the game folder, downloads only its pinned github.com release
-//! with a SHA-256, and starts only through steam://. Then it gets every check a launcher.json mod gets. A record that
-//! fails is left out whole. The copy kept in the data folder (community.json) is what the C++ mod commands read too.
+//! The community rules are old/src/core/config.cpp's `readCommunityMod`: a record may only use the keys listed here
+//! (anything else is refused, not ignored), writes only inside the game folder, downloads only its pinned github.com
+//! release with a SHA-256, and starts only through steam://. Then it gets every check a launcher.json mod gets. A record
+//! that fails is left out whole. The copy kept in the data folder (records.json) is what the C++ mod commands read too.
 
 use super::config::{ConfigIssue, Issues, Severity, add_mod_actions, read_card_of, read_mod, validate_config};
 use super::config::{Config, GameSpec, PinnedFile, read_game};
@@ -53,7 +47,7 @@ fn id_ok(id: &str) -> bool {
     !id.is_empty() && id.len() <= 48 && id.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
 }
 
-/// The ids community/index.json lists ({"mods": ["id", ...]}), at most 200, each once.
+/// The ids records/index.json lists ({"mods": ["id", ...]}), at most 200, each once.
 pub fn parse_index(text: &[u8]) -> Option<Vec<String>> {
     let root = json::parse(text).ok()?;
     let mods = root.find("mods").filter(|m| m.is_array())?;
@@ -93,19 +87,11 @@ fn now_unix() -> i64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0)
 }
 
-/// Brings community.json up to date from mods-info, unless it is under an hour old. Ok(true) when the records changed.
-/// A mods-info without a community folder yet (404) means no community mods; any other failure keeps the last copy.
-pub fn refresh_cache(base: &str, cache_path: &str) -> Result<bool, String> {
-    refresh_cache_within(base, cache_path, MAX_AGE_SECONDS)
-}
-
-/// The same with the saved copy's age limit given; 0 always asks mods-info (Ctrl+F5).
-pub fn refresh_cache_within(base: &str, cache_path: &str, max_age: i64) -> Result<bool, String> {
-    refresh_folder_within(base, "community", cache_path, max_age)
-}
-
-/// One of mods-info's record folders ("community" or "team") into its copy on disk (community.json, team.json).
-pub fn refresh_folder_within(base: &str, folder: &str, cache_path: &str, max_age: i64) -> Result<bool, String> {
+/// Brings records.json up to date from mods-info's records/, unless it is under `max_age` seconds old; 0 always asks
+/// mods-info (Ctrl+F5). Ok(true) when the records changed. A mods-info without the folder (404) means no mods; any other
+/// failure keeps the last copy.
+pub fn refresh_records_within(base: &str, cache_path: &str, max_age: i64) -> Result<bool, String> {
+    let folder = "records";
     let saved = load_cache(cache_path);
     let now = now_unix();
     if saved.as_ref().is_some_and(|c| now >= c.fetched_at && now - c.fetched_at < max_age) {
@@ -338,7 +324,7 @@ fn check_shape(r: &Value, id: &str, repo: &str, local_release: bool) -> Result<(
     Ok(())
 }
 
-/// One community/<id>.json as a game of the launcher, or why it is left out. `local_release`: the release may come from
+/// One community record as a game of the launcher, or why it is left out. `local_release`: the release may come from
 /// a local test server, only when mods-info itself is one.
 pub fn read_record(text_: &str, cfg: &Config, local_release: bool) -> Result<GameSpec, String> {
     let r = json::parse(text_.as_bytes()).map_err(|e| format!("not a JSON object ({e})"))?;
@@ -611,7 +597,7 @@ fn team_repo(repo: &str) -> bool {
     repo_name(repo) && repo.split('/').next().is_some_and(|o| o.eq_ignore_ascii_case(TEAM_OWNER))
 }
 
-/// One team/<id>.json as a game of the launcher, or why it is left out.
+/// One team record as a game of the launcher, or why it is left out.
 pub fn read_team_record(text_: &str, cfg: &Config, local_release: bool) -> Result<GameSpec, String> {
     let r = json::parse(text_.as_bytes()).map_err(|e| format!("not a JSON object ({e})"))?;
     if !r.is_object() {
@@ -1000,7 +986,7 @@ fn flash_entry(mut entry: Value, cfg: &Config, fl: &FlashGame) -> Value {
     entry
 }
 
-/// A developer's Flash game (community/<id>.json, "kind": "flash"): the pinned release's game file, the buttons the
+/// A developer's Flash game (records/<id>.json, "kind": "flash"): the pinned release's game file, the buttons the
 /// launcher makes, and the author's credit.
 fn read_dev_flash_record(r: &Value, cfg: &Config, id: &str, repo: &str, local_release: bool) -> Result<GameSpec, String> {
     let (tag, version) = (text(r, "tag"), text(r, "version"));
