@@ -205,6 +205,19 @@ export function makeSandbox(work, fakePlayer) {
     id: 'lab-next', repo: 'multiplayereverything/lab-next', minLauncher: '999.0', name: 'Lab Next', categories: ['pc'],
     mod: { id: 'lab-next', somethingNew: { x: 1 } },
   }))
+  // records/: the same mods in one folder, as the dashboard and scripts/records-migrate.py write them. team/ and
+  // community/ stay beside it for older launchers.
+  const recordIds = []
+  for (const folder of ['team', 'community']) {
+    for (const id of JSON.parse(readFileSync(join(work, 'www', folder, 'index.json'), 'utf8')).mods) {
+      const r = JSON.parse(readFileSync(join(work, 'www', folder, `${id}.json`), 'utf8'))
+      const flash = folder === 'team' ? (r.categories ?? []).includes('flash') : r.kind === 'flash'
+      const author = folder === 'team' ? 'Multiplayer Everything' : (r.author || r.repo.split('/')[0])
+      write(join(work, 'www', 'records', `${id}.json`), JSON.stringify({ ...r, platform: flash ? 'flash' : 'pc', author }))
+      recordIds.push(id)
+    }
+  }
+  write(join(work, 'www', 'records', 'index.json'), JSON.stringify({ mods: recordIds }))
   write(join(work, 'www', 'api', 'projects'), JSON.stringify({ games: [
     { id: 'lab-coop', kind: 'pc', name: 'Lab Game', maintainer: 'someone', repo: 'someone/lab-coop', players: '1-4 players', description: 'Four players in one lab.' },
     { id: 'listed-only', kind: 'pc', name: 'Listed Only', maintainer: 'another', repo: 'another/listed-only', description: 'On the website, not in mods-info.' },
@@ -230,7 +243,7 @@ export function makeSandbox(work, fakePlayer) {
     ],
     categories: [
       { id: 'flash', name: 'Flash mods', group: 'platform' }, { id: 'pc', name: 'PC mods', group: 'platform' },
-      { id: 'online', name: 'Online multiplayer' }, { id: 'coop', name: 'Co-op' }, { id: 'community', name: 'Community mods' },
+      { id: 'online', name: 'Online multiplayer' }, { id: 'coop', name: 'Co-op' },
     ],
     games: [
       {

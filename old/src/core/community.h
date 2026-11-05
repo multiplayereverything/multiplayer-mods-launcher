@@ -31,5 +31,7 @@ int mergeCommunity(Config& cfg, const CommunityCache& cache);
 // The same for the team's own mods (mods-info team/, the app's team.json), through readTeamMod. Before
 // mergeCommunity: a developer's record never takes one of the team's ids.
 int mergeTeam(Config& cfg, const CommunityCache& cache);
+// mods-info records/ (the app's records.json): both kinds in one list, the team's first.
+int mergeRecords(Config& cfg, const CommunityCache& cache);
 
 }  // namespace fl

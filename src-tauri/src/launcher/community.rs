@@ -1,4 +1,7 @@
-//! Mods mods-info lists for the launcher (docs/COMMUNITY_MODS.md), in two folders:
+//! Mods mods-info lists for the launcher (docs/COMMUNITY_MODS.md). Every mod has one record in records/, and the
+//! record's repository decides which rules read it, never anything the record says about itself. Launchers up to
+//! 1.0.44 read the same mods from two folders, which stay until the owner removes them, and this launcher falls back
+//! to them when records/ is missing:
 //!
 //! - community/: developers' mods the owner approved. A developer describes their mod in a manifest in their own
 //!   GitHub release; at approval the website pins the release and writes the record. Strict: the keys below only.
@@ -342,41 +345,73 @@ pub fn read_record(text_: &str, cfg: &Config, local_release: bool) -> Result<Gam
     if !r.is_object() {
         return Err("not a JSON object".into());
     }
+    let g = read_record_of(&r, cfg, local_release)?;
+    Ok(credited(g, &r, cfg, text(&r, "repo")))
+}
+
+/// Someone else's mod says so, whatever the record calls its author: the team's name is never theirs to use.
+fn credited(mut g: GameSpec, r: &Value, cfg: &Config, repo: &str) -> GameSpec {
+    let owner = repo.split('/').next().unwrap_or(repo);
+    let author = text(r, "author").trim();
+    let ours = |a: &str| a.eq_ignore_ascii_case(&cfg.branding.title) || a.eq_ignore_ascii_case(TEAM_OWNER);
+    g.author = if author.is_empty() || ours(author) { owner.to_string() } else { author.to_string() };
+    let url = text(r, "authorUrl");
+    g.author_url = if url.starts_with("https://github.com/") { url.to_string() } else { format!("https://github.com/{owner}") };
+    g.community = true;
+    g
+}
+
+/// Which list a developer's record goes in. A mod the launcher installs is a PC mod and a Flash record a Flash game,
+/// whatever "platform" says; only a link card, which could be either, takes its word.
+fn platform_of<'a>(r: &'a Value, kind: &str) -> Result<&'a str, String> {
+    let said = r.find("platform").map(|_| text(r, "platform"));
+    if said.is_some_and(|p| p != "pc" && p != "flash") {
+        return Err("platform: \"pc\" or \"flash\"".into());
+    }
+    Ok(match kind {
+        "flash" => "flash",
+        "link" => said.unwrap_or("pc"),
+        _ => "pc",
+    })
+}
+
+fn read_record_of(r: &Value, cfg: &Config, local_release: bool) -> Result<GameSpec, String> {
     // "pc" (the default): a mod the launcher installs. "link": a card that only links to the mod's page. "flash": a Flash
     // game played in Ruffle Together (1.0.43). A kind this launcher doesn't know is left out whole, so an older
     // launcher never shows half of one.
-    let kind = r.find("kind").map(|_| text(&r, "kind")).unwrap_or("pc");
-    let (id, repo) = (text(&r, "id"), text(&r, "repo"));
+    let kind = r.find("kind").map(|_| text(r, "kind")).unwrap_or("pc");
+    let (id, repo) = (text(r, "id"), text(r, "repo"));
     if !id_ok(id) {
         return Err("id: lowercase letters, digits and '-', up to 48".into());
     }
     if !repo_name(repo) {
         return Err("repo must be \"owner/name\"".into());
     }
-    if let Some(min) = needs_newer(&r)? {
-        return Ok(update_card(&r, cfg, id, &min, vec!["community".into()]));
+    let platform = platform_of(r, kind)?;
+    if let Some(min) = needs_newer(r)? {
+        return Ok(update_card(r, cfg, id, &min, vec![platform.to_string()]));
     }
     match kind {
-        "pc" => only_keys(&r, &[RECORD_KEYS, CARD_KEYS, &["tag", "version", "asset", "url", "sha256", "manifest_sha256", "mod"]].concat(), "record")?,
-        "link" => only_keys(&r, &[RECORD_KEYS, CARD_KEYS, &["link"]].concat(), "record")?,
-        "flash" => only_keys(&r, &[RECORD_KEYS, CARD_KEYS, &["tag", "version", "manifest_sha256", "flash"]].concat(), "record")?,
+        "pc" => only_keys(r, &[RECORD_KEYS, CARD_KEYS, &["tag", "version", "asset", "url", "sha256", "manifest_sha256", "mod"]].concat(), "record")?,
+        "link" => only_keys(r, &[RECORD_KEYS, CARD_KEYS, &["link"]].concat(), "record")?,
+        "flash" => only_keys(r, &[RECORD_KEYS, CARD_KEYS, &["tag", "version", "manifest_sha256", "flash"]].concat(), "record")?,
         _ => return Err(format!("kind \"{kind}\" isn't known to this launcher")),
     }
     if cfg.games.iter().any(|g| g.id == id || g.site_id == id || g.mod_spec.as_ref().is_some_and(|m| m.info.id == id)) {
         return Err(format!("launcher.json already has \"{id}\""));
     }
     if kind == "flash" {
-        return read_dev_flash_record(&r, cfg, id, repo, local_release);
+        return read_dev_flash_record(r, cfg, id, repo, local_release);
     }
     let issues: Issues = Default::default();
-    let mut g = GameSpec { id: id.to_string(), site_id: id.to_string(), categories: vec!["community".into()], ..Default::default() };
-    check_card(&r)?;
-    read_card_of(&r, &format!("community.{id}"), &issues, &mut g);
+    let mut g = GameSpec { id: id.to_string(), site_id: id.to_string(), categories: vec![platform.to_string()], ..Default::default() };
+    check_card(r)?;
+    read_card_of(r, &format!("community.{id}"), &issues, &mut g);
     if kind == "link" {
-        return read_link(&r, cfg, g, issues);
+        return read_link(r, cfg, g, issues);
     }
-    let (tag, asset) = (text(&r, "tag"), text(&r, "asset"));
-    let (version, url, sha) = (text(&r, "version"), text(&r, "url"), text(&r, "sha256"));
+    let (tag, asset) = (text(r, "tag"), text(r, "asset"));
+    let (version, url, sha) = (text(r, "version"), text(r, "url"), text(r, "sha256"));
     if !plain_segment(tag) || !plain_segment(asset) {
         return Err("tag and asset must be plain names".into());
     }
@@ -390,7 +425,7 @@ pub fn read_record(text_: &str, cfg: &Config, local_release: bool) -> Result<Gam
     if !release_url_ok(url, repo, tag, asset, local_release) {
         return Err(format!("url must be https://github.com/{repo}/releases/download/{tag}/{asset}"));
     }
-    check_shape(&r, id, repo, local_release)?;
+    check_shape(r, id, repo, local_release)?;
 
     let m = r.find("mod").unwrap();
     g.name = text(m.find("game").unwrap(), "name").to_string(); // a community card is named after the game
@@ -400,7 +435,7 @@ pub fn read_record(text_: &str, cfg: &Config, local_release: bool) -> Result<Gam
     spec.package.url = url.to_string();
     spec.package.sha256 = sha.to_string();
     if spec.info.publisher.is_empty() {
-        spec.info.publisher = text(&r, "author").to_string();
+        spec.info.publisher = text(r, "author").to_string();
     }
     if spec.info.website.is_empty() {
         spec.info.website = format!("https://github.com/{repo}");
@@ -420,7 +455,7 @@ pub fn read_record(text_: &str, cfg: &Config, local_release: bool) -> Result<Gam
 
 /// Keys every record may have, and the card's own text (what launcher.json's games[] give a card besides its name).
 /// Card text is for records the team writes by hand; the website's form never writes it (docs/COMMUNITY_MODS.md).
-const RECORD_KEYS: &[&str] = &["id", "repo", "kind", "author", "authorUrl", "approved_at", "approved_by", "minLauncher"];
+const RECORD_KEYS: &[&str] = &["id", "repo", "kind", "platform", "author", "authorUrl", "approved_at", "approved_by", "minLauncher"];
 const CARD_KEYS: &[&str] = &["description", "players", "maxPlayers", "color", "colorEnd", "guide"];
 
 /// The card text a record may carry: plain text and https links only, short enough to fit on the card.
@@ -533,7 +568,7 @@ fn update_card(r: &Value, cfg: &Config, id: &str, min: &str, categories: Vec<Str
 /// The only owner a team record's repository, and every repository it downloads from, may have.
 const TEAM_OWNER: &str = "multiplayereverything";
 /// The record's own keys; the rest is a launcher.json games[] entry: the card and the mod, no buttons of its own.
-const TEAM_RECORD_KEYS: &[&str] = &["id", "repo", "minLauncher", "approved_at", "approved_by"];
+const TEAM_RECORD_KEYS: &[&str] = &["id", "repo", "platform", "author", "minLauncher", "approved_at", "approved_by"];
 const TEAM_GAME_KEYS: &[&str] = &[
     "name", "description", "players", "maxPlayers", "color", "colorEnd", "guide", "categories", "site", "online", "image", "imageFocus",
     "mod", "actions", "flash", "settings",
@@ -990,7 +1025,7 @@ fn read_dev_flash_record(r: &Value, cfg: &Config, id: &str, repo: &str, local_re
             entry.set(k, v.clone());
         }
     }
-    entry.set("categories", strings_value(&["community", "flash"]));
+    entry.set("categories", strings_value(&["flash"]));
     let entry = flash_entry(entry, cfg, &fl);
     let issues: Issues = Default::default();
     let mut g = read_game(&entry, &format!("community.{id}"), &issues);
@@ -1017,6 +1052,16 @@ fn checked(g: GameSpec, cfg: &Config, issues: Issues, test_release: bool) -> Res
         return Err(format!("{}: {}", e.place, e.message));
     }
     Ok(g)
+}
+
+/// records/: every mod in one list. The repository picks the rules (team_repo checks the owner), and the team's come
+/// first, so a developer's record never takes one of their ids.
+pub fn merge_records(cfg: &mut Config, cache: &Cache) -> Vec<String> {
+    let is_team = |raw: &String| json::parse(raw.as_bytes()).is_ok_and(|r| team_repo(text(&r, "repo")));
+    let (team, others): (Vec<String>, Vec<String>) = cache.raw.iter().cloned().partition(is_team);
+    let mut left_out = merge_team(cfg, &Cache { fetched_at: cache.fetched_at, raw: team });
+    left_out.extend(merge(cfg, &Cache { fetched_at: cache.fetched_at, raw: others }));
+    left_out
 }
 
 /// Adds every record that passes to the games; the reasons the others were left out.

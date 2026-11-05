@@ -104,7 +104,8 @@ A mod whose repository is not under `multiplayereverything` is a community mod. 
 pin the version; we do not vouch for it beyond what we read.
 
 - [ ] **Ask first.** Full support (the launcher installs it) or only a link to its GitHub page? The owner decides, every time.
-- [ ] **Category** is `["community"]` and nothing else. Not `pc`, not `coop`.
+- [ ] **List** comes from the record: an installed mod is in PC mods, a Flash record in Flash mods, next to ours, A to Z.
+      A link card says which with `platform`. Who made it shows as Made by on the page, and the review line says whether we read its code.
 - [ ] **Name** the card after the game ("Forager", "MDK2 HD", "Spore"), never "<game> Co-op" or "Split-screen".
 - [ ] **Credit the author and the repository**: `mod.publisher` and `mod.website`, a "Made by X, not by Multiplayer Everything" line
       in the guide tips, a labelled link in `guide.links`, and a link action (the amber button) whose second line names the author
@@ -123,7 +124,7 @@ pin the version; we do not vouch for it beyond what we read.
 ### A community Flash game
 
 The same rules, with a Flash record (`"kind": "flash"`, docs/COMMUNITY_MODS.md "Flash records"): the card lands in
-Community mods and Flash mods, named after the game (`flash.game`).
+Flash mods, named after the game (`flash.game`).
 
 - [ ] **Pin the game file and its key map** from one release: `flash.file` (the `.swf`) and, when the game has its own
       `.keys` file, `flash.keys` the same way, each with the SHA-256 of the exact file you played. A built-in map is

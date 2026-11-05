@@ -239,6 +239,8 @@ struct GameSpec {
     std::wstring name, description, playerCount, controls, image;
     // Which part of the cover stays in view when it is cropped: 0 top, 1 bottom.
     float imageFocus = 0.5f;
+    std::string author;     // someone else's mod in launcher.json: who made it
+    std::string authorUrl;
     int maxPlayers = 0;  // player slots to light; 0 = highest number in playerCount
     // Rooms on the central server: the mod's id there ("gm2") and the action
     // that joins a room. Empty id: the game has no online rooms.
@@ -331,6 +333,8 @@ std::wstring formatIssues(const std::vector<ConfigIssue>& issues);
 bool readCommunityMod(std::string_view json, const Config& cfg, bool localRelease, GameSpec& out, std::wstring& error);
 // One of the team's own mods (team/<id>.json): a launcher.json games[] entry with the record's keys, from a
 // multiplayereverything repository, downloading only from the team's repositories; then checked like launcher.json.
+// A record's repository decides which rules read it (records/ holds both kinds): the team's owner, or anyone else.
+bool isTeamRecord(std::string_view json);
 bool readTeamMod(std::string_view json, const Config& cfg, bool localRelease, GameSpec& out, std::wstring& error);
 
 }  // namespace fl

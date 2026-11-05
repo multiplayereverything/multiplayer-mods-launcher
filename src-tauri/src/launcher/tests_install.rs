@@ -502,7 +502,7 @@ fn an_approved_community_record_becomes_an_installable_card() {
     let g = read_rec(&record()).unwrap();
     assert_eq!(g.id, "lab-coop");
     assert_eq!(g.name, "Lab Game", "a community card is named after the game");
-    assert_eq!(g.categories, ["community"]);
+    assert_eq!(g.categories, ["pc"]);
     let m = g.mod_spec.as_ref().unwrap();
     assert_eq!(m.package.version, "1.2.0");
     assert_eq!(m.package.sha256, SHA);
@@ -605,7 +605,7 @@ fn a_link_record_is_a_card_with_one_button_to_the_mods_page() {
         })
     };
     let g = read_rec(&link()).unwrap();
-    assert_eq!((g.name.as_str(), g.categories.as_slice()), ("Lab Link", ["community".to_string()].as_slice()));
+    assert_eq!((g.name.as_str(), g.categories.as_slice()), ("Lab Link", ["pc".to_string()].as_slice()));
     assert!(g.mod_spec.is_none(), "nothing to install");
     assert_eq!(g.max_players, 4);
     assert_eq!(g.actions.len(), 1);
@@ -694,6 +694,45 @@ fn the_team_records_in_a_mods_info_checkout_are_the_published_copy() {
     for (id, mine) in ids.iter().zip(copy.raw) {
         let theirs = std::fs::read_to_string(format!("{dir}\\team\\{id}.json")).unwrap();
         assert_eq!(norm(theirs), norm(mine), "{id}: mods-info and tests/fixtures/team differ");
+    }
+}
+
+/// records/ in a mods-info checkout (FL_TEST_COMMUNITY_DIR, written by scripts/records-migrate.py): every record passes
+/// the rules its repository picks and makes exactly the game its team/ or community/ copy makes, so moving to the one
+/// folder changes nothing but where the launcher reads from.
+#[test]
+fn the_records_in_a_mods_info_checkout_make_the_same_games_as_the_old_folders() {
+    let Ok(dir) = std::env::var("FL_TEST_COMMUNITY_DIR") else { return };
+    if !std::path::Path::new(&format!("{dir}\\records\\index.json")).exists() {
+        return;
+    }
+    let read = |folder: &str| {
+        let index = std::fs::read(format!("{dir}\\{folder}\\index.json")).unwrap();
+        let ids = super::community::parse_index(&index).unwrap();
+        let raw = ids.iter().map(|id| std::fs::read_to_string(format!("{dir}\\{folder}\\{id}.json")).unwrap()).collect();
+        super::community::Cache { fetched_at: 0, raw }
+    };
+    let shipped = || {
+        let path = format!("{}\\..\\launcher\\launcher.json", env!("CARGO_MANIFEST_DIR"));
+        super::config::load_config_file(&super::paths::normalize(&path)).config
+    };
+    let (mut one, mut two) = (shipped(), shipped());
+    let before = one.games.len();
+    let left_out = super::community::merge_records(&mut one, &read("records"));
+    assert!(left_out.is_empty(), "records left out: {left_out:?}");
+    let mut left_out = super::community::merge_team(&mut two, &read("team"));
+    left_out.extend(super::community::merge(&mut two, &read("community")));
+    assert!(left_out.is_empty(), "old copies left out: {left_out:?}");
+    assert!(one.games.len() > before);
+    let games = |c: &super::config::Config| {
+        let mut g: Vec<(String, String)> = c.games.iter().map(|g| (g.id.clone(), format!("{g:?}"))).collect();
+        g.sort();
+        g
+    };
+    let (one, two) = (games(&one), games(&two));
+    assert_eq!(one.iter().map(|g| &g.0).collect::<Vec<_>>(), two.iter().map(|g| &g.0).collect::<Vec<_>>(), "the same ids");
+    for (a, b) in one.iter().zip(&two) {
+        assert_eq!(a.1, b.1, "{}: records/ and the old folders make different games", a.0);
     }
 }
 
@@ -806,7 +845,7 @@ fn a_record_for_a_newer_launcher_asks_for_an_update() {
     assert!(g.coming_soon && g.actions.is_empty() && g.mod_spec.is_none());
     assert_eq!(g.name, r["mod"]["game"]["name"].as_str().unwrap());
     assert!(g.description.contains("999.0 or newer"), "{}", g.description);
-    assert_eq!(g.categories, vec!["community".to_string()]);
+    assert_eq!(g.categories, vec!["pc".to_string()]);
     let mut ok = record();
     ok["minLauncher"] = "1.0".into();
     assert!(read_rec(&ok).unwrap_or_else(|e| panic!("{e}")).mod_spec.is_some());
@@ -944,6 +983,111 @@ fn team_records_merge_first_and_win_their_ids() {
 }
 
 // ---- Flash records: the launcher makes the buttons (1.0.43) --------------------------------------------------------
+
+// ---- records/: one folder, and the repository decides the rules ---------------------------------------------------
+
+fn records_cache(raw: Vec<serde_json::Value>) -> super::community::Cache {
+    super::community::Cache { fetched_at: 0, raw: raw.iter().map(|r| r.to_string()).collect() }
+}
+
+#[test]
+fn records_go_in_their_platforms_list_whoever_made_them() {
+    let (mut team, mut cfg) = team_record("spooky-together");
+    team["platform"] = "pc".into();
+    team["author"] = "Multiplayer Everything".into();
+    let (mut flash, _) = team_record("hobo");
+    flash["platform"] = "flash".into();
+    flash["author"] = "Multiplayer Everything".into();
+    cfg.games.retain(|g| g.id != "hobo");
+    let mut dev_pc = record();
+    dev_pc["platform"] = "pc".into();
+    let mut dev_flash = flash_record();
+    dev_flash["platform"] = "flash".into();
+    let left_out = super::community::merge_records(&mut cfg, &records_cache(vec![dev_flash, dev_pc, team, flash]));
+    assert!(left_out.is_empty(), "{left_out:?}");
+    let g = |id: &str| cfg.games.iter().find(|g| g.id == id).unwrap_or_else(|| panic!("{id}"));
+    assert!(g("spooky-together").categories.contains(&"pc".to_string()) && !g("spooky-together").community);
+    assert!(g("hobo").categories.contains(&"flash".to_string()) && g("hobo").author.is_empty());
+    assert_eq!((g("lab-coop").categories.as_slice(), g("lab-coop").community), (["pc".to_string()].as_slice(), true));
+    assert_eq!((g("lab-flash-coop").categories.as_slice(), g("lab-flash-coop").community), (["flash".to_string()].as_slice(), true));
+    assert!(cfg.games.iter().all(|g| !g.categories.iter().any(|c| c == "community")), "no game has the old category");
+}
+
+#[test]
+fn a_record_that_claims_to_be_ours_still_gets_the_strict_rules() {
+    let mut cfg = shipped_config();
+    let mut r = record();
+    r["author"] = "Multiplayer Everything".into();
+    r["platform"] = "flash".into(); // an installed mod stays a PC mod, whatever it says
+    let n = cfg.games.len();
+    assert!(super::community::merge_records(&mut cfg, &records_cache(vec![r])).is_empty());
+    let g = &cfg.games[n];
+    assert!(g.community);
+    assert_eq!(g.author, "someone", "the team's name isn't theirs to use");
+    assert_eq!(g.categories, ["pc"]);
+    assert_eq!(g.mod_spec.as_ref().unwrap().package.version, "1.2.0", "still the pinned release");
+
+    // A team record's powers, in a record from someone else's repository: refused whole, not read as ours.
+    let (mut stolen, mut cfg) = team_record("hobo");
+    stolen["repo"] = "someone/hobo".into();
+    stolen["author"] = "Multiplayer Everything".into();
+    let n = cfg.games.len();
+    let left_out = super::community::merge_records(&mut cfg, &records_cache(vec![stolen]));
+    assert_eq!(left_out.len(), 1, "{left_out:?}");
+    assert_eq!(cfg.games.len(), n);
+
+    let mut bad = record();
+    bad["platform"] = "console".into();
+    assert!(read_rec(&bad).unwrap_err().contains("platform"));
+}
+
+#[test]
+fn without_a_records_copy_the_old_folders_are_read() {
+    let dir = TempDir::new("records");
+    let save = |name: &str, raw: Vec<serde_json::Value>| {
+        assert!(super::community::save_cache(&dir.join(name), &records_cache(raw)));
+    };
+    let (team, base) = team_record("hobo");
+    let mut cfg = base.clone();
+    cfg.paths.data = dir.path().to_string();
+    let has = |cfg: &super::config::Config, id: &str| cfg.games.iter().any(|g| g.id == id);
+
+    save("team.json", vec![team.clone()]);
+    save("community.json", vec![record()]);
+    super::library_json::add_community(&mut cfg);
+    assert!(has(&cfg, "hobo") && has(&cfg, "lab-coop"), "no records.json: both old copies");
+
+    // An empty copy is a mods-info without the folder yet, not a mods-info with no mods.
+    let mut cfg = base.clone();
+    cfg.paths.data = dir.path().to_string();
+    save("records.json", vec![]);
+    super::library_json::add_community(&mut cfg);
+    assert!(has(&cfg, "hobo") && has(&cfg, "lab-coop"));
+
+    // With records, only they count: a mod taken down there doesn't come back from an old copy.
+    let mut cfg = base.clone();
+    cfg.paths.data = dir.path().to_string();
+    save("records.json", vec![record()]);
+    super::library_json::add_community(&mut cfg);
+    assert!(has(&cfg, "lab-coop") && !has(&cfg, "hobo"));
+}
+
+#[test]
+fn a_record_from_the_new_folder_makes_the_same_game_as_its_old_copy() {
+    for id in ["hobo", "spooky-together", "gta-coop", "zombotron"] {
+        let (old, cfg) = team_record(id);
+        let mut new = old.clone();
+        new["platform"] = if id == "hobo" || id == "zombotron" { "flash" } else { "pc" }.into();
+        new["author"] = "Multiplayer Everything".into();
+        let (a, b) = (read_team(&old, &cfg).unwrap(), read_team(&new, &cfg).unwrap());
+        let ids = |g: &super::config::GameSpec| g.actions.iter().map(|a| (a.id.clone(), a.args.clone())).collect::<Vec<_>>();
+        assert_eq!(ids(&a), ids(&b), "{id}");
+        assert_eq!((a.name, a.categories), (b.name, b.categories), "{id}");
+    }
+    let (old, new) = (record(), { let mut r = record(); r["platform"] = "pc".into(); r });
+    let (a, b) = (read_rec(&old).unwrap(), read_rec(&new).unwrap());
+    assert_eq!((a.name, a.categories, a.author), (b.name, b.categories, b.author));
+}
 
 fn short_team_record(id: &str) -> serde_json::Value {
     let path = format!("{}\\..\\tests\\fixtures\\team-short\\{id}.json", env!("CARGO_MANIFEST_DIR"));
@@ -1091,7 +1235,7 @@ fn flash_record() -> serde_json::Value {
 fn a_developers_flash_record_downloads_its_pinned_files_and_gets_the_standard_buttons() {
     let g = read_rec(&flash_record()).unwrap_or_else(|e| panic!("{e}"));
     assert_eq!((g.id.as_str(), g.name.as_str(), g.site_id.as_str()), ("lab-flash-coop", "Lab Flash", "lab-flash-coop"));
-    assert_eq!(g.categories, ["community", "flash"]);
+    assert_eq!(g.categories, ["flash"]);
     assert_eq!((g.online_id.as_str(), g.join_action.as_str(), g.max_players), ("ruffle-coop", "online", 3));
     assert_eq!(g.min_player, "1.0.5");
     assert!(g.mod_spec.is_none() && !g.coming_soon);
@@ -1240,6 +1384,7 @@ fn website_projects_become_community_cards() {
     assert_eq!(cfg.games.len(), n + 1);
     let t = cfg.games.last().unwrap();
     assert!(t.id == "site-test" && t.name == "TEST" && t.coming_soon && t.mod_spec.is_none());
-    assert_eq!(t.categories, ["community"]);
+    assert_eq!(t.categories, ["pc"]);
+    assert!(t.community);
     assert_eq!(t.description, "A test.");
 }

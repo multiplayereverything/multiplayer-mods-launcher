@@ -281,7 +281,11 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
 
     // The community mods the app downloaded from mods-info (community.json in the data folder), each checked again
     // here, so --mods, --install-mod and --launch know the same ones as the window. FL_NO_COMMUNITY leaves them out.
-    if (!getenv("FL_NO_COMMUNITY")) {
+    CommunityCache records;
+    if (!getenv("FL_NO_COMMUNITY") && loadCommunityCache(fs::join(dataDir, L"records.json"), records) && !records.raw.empty()) {
+        int added = mergeRecords(lr.config, records);
+        if (added) logger().info(L"Mods from mods-info: " + std::to_wstring(added));
+    } else if (!getenv("FL_NO_COMMUNITY")) {
         CommunityCache team;
         if (loadCommunityCache(fs::join(dataDir, L"team.json"), team)) {
             int added = mergeTeam(lr.config, team);

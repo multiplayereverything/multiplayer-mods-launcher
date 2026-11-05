@@ -746,7 +746,7 @@ TEST(community_record_becomes_a_pinned_mod) {
     CHECK(g.mod->package.version == L"1.2.0");
     CHECK(g.mod->package.sha256.size() == 64);
     CHECK(g.mod->mod.publisher == L"someone");
-    CHECK(g.categories.size() == 1 && g.categories[0] == "community");
+    CHECK(g.categories.size() == 1 && g.categories[0] == "pc");
 }
 
 TEST(community_record_that_reaches_further_is_refused) {

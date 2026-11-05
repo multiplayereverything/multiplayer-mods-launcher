@@ -1,6 +1,23 @@
 # Mods from mods-info: community and team records
 
-How a mod reaches the launcher without a launcher release. mods-info has two folders of records:
+How a mod reaches the launcher without a launcher release.
+
+## One folder: records/
+
+Every mod has one record in `records/` (`records/index.json`, `records/<id>.json`), ours and everyone else's, with two
+keys besides the ones below: `platform` (`"flash"` or `"pc"`, the list it appears in) and `author` (Made by).
+
+- **The repository picks the rules, never a key in the record.** `multiplayereverything/<name>` is read as a team
+  record; any other owner under the strict community rules. A community record that calls its author Multiplayer
+  Everything is shown as made by its repository's owner.
+- An installed community mod is always `pc` and a Flash record always `flash`; only a link card takes `platform`'s word.
+- The lists run A to Z with nobody first. There is no Community mods category. The game page says Made by, with View
+  all for that author's mods, and for someone else's mod whether we read its code.
+- Launchers up to 1.0.44 read only the two older folders and refuse unknown keys, so those stay, without the two keys,
+  until the owner removes them. A launcher reads them only when `records/` is missing or empty.
+- `scripts/records-migrate.py <mods-info checkout>` writes `records/` from the two folders.
+
+The rules below still apply by repository:
 
 - `community/`: mods made by someone else, approved by the owner (the developer SDK). Strict, pinned, credited.
 - `team/`: Multiplayer Everything's own mods and Flash games. Each record is the game's launcher.json `games[]` entry
@@ -23,7 +40,7 @@ list one at all (ask the owner, credit the author, review by hand) are in [ADDIN
 2. At approval the website checks the manifest, pins that release (tag, file, SHA-256) and writes the record below
    to [mods-info](https://github.com/multiplayereverything/mods-info) when the owner offers it in the dashboard.
    Taking the project down in the dashboard removes it again.
-3. Only the owner's offer publishes it. Within an hour every launcher has it: a card in Community mods, named after
+3. Only the owner's offer publishes it. Within an hour every launcher has it: a card in PC mods or Flash mods, named after
    the game, crediting the author and the repository, with Install, Update, Repair, Uninstall and Launch.
 
 A newer release of the mod reaches nobody until it goes through steps 2 and 3 again.

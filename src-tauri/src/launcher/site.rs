@@ -151,13 +151,20 @@ pub fn mark_community(list: &mut [SiteGame]) {
     }
 }
 
-/// A project the website lists that the launcher can't install yet (no approved record in mods-info) becomes a
-/// Community card that says so; one it can install gets the project's description, players and cover.
+/// A project the website lists that the launcher can't install yet (no approved record in mods-info) becomes a card
+/// in its platform's list that says so; one it can install gets the project's description, players and cover.
 pub fn merge_projects(cfg: &mut Config, list: &[SiteGame], cover_dir: &str) {
     let before = cfg.games.len();
     merge_site(cfg, list, cover_dir);
     for g in &mut cfg.games[before..] {
-        g.categories = vec!["community".into()];
+        let s = list.iter().find(|s| s.id == g.id);
+        let flash = s.is_some_and(|s| s.platform.to_lowercase().contains("flash"));
+        g.categories = vec![if flash { "flash" } else { "pc" }.to_string()];
+        g.community = true;
+        if let Some(s) = s {
+            g.author = s.author.clone();
+            g.author_url = s.author_url.clone();
+        }
         if g.description == "A multiplayer mod we are planning." {
             g.description = "A community mod listed on the website. It can't be installed from the launcher yet.".into();
         }

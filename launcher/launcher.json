@@ -96,8 +96,6 @@
     // "group": categories with the same group sit together; a line separates groups.
     { "id": "pc", "name": "PC mods", "icon": "E7F4", "group": "platform" },
     { "id": "flash", "name": "Flash mods", "icon": "E8B8", "group": "platform" },
-    // Mods made by other people. A game tagged "community" (next to "pc") is listed here, so players can tell them from ours.
-    { "id": "community", "name": "Community mods", "icon": "E716", "group": "platform" },
     { "id": "online", "name": "Online multiplayer", "icon": "E774", "group": "kind" },
     { "id": "local", "name": "Local multiplayer", "icon": "E765", "group": "kind" },
     { "id": "coop", "name": "Co-op", "icon": "E716", "group": "kind" },
@@ -109,7 +107,9 @@
       "id": "spore-coop",
       "name": "Spore",
       "players": "2-4 players (co-op)",
-      "categories": ["community"],
+      "categories": ["pc"],
+      "author": "WoodyWizard",
+      "authorUrl": "https://github.com/WoodyWizard",
       "guide": {
         "needs": [
           "Your own copy of Spore with Galactic Adventures, from GOG or Steam (the current builds). Other copies start without co-op.",

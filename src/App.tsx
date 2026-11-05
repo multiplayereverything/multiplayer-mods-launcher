@@ -19,9 +19,8 @@ import { moveFocus, usePad } from './usePad'
 import './App.css'
 
 type View = 'home' | 'library' | 'rooms' | 'settings' | 'game' | 'lobby'
-type Sort = 'ours' | 'recent' | 'name' | 'players'
+type Sort = 'recent' | 'name' | 'players'
 const SORTS: { id: Sort; name: string }[] = [
-  { id: 'ours', name: 'Our order' },
   { id: 'recent', name: 'Recent' },
   { id: 'name', name: 'A to Z' },
   { id: 'players', name: 'Most players' },
@@ -168,7 +167,13 @@ export default function App() {
   const [anim, setAnim] = useState('enter')
   // The list's category and order are this window's own conveniences, kept between runs like the C++ window keeps its own.
   const [cat, setCat] = useState(() => stored('fl.cat', 'all'))
-  const [sort, setSort] = useState<Sort>(() => stored('fl.sort', 'ours') as Sort)
+  // A to Z unless the player chose otherwise; "ours", the order before 1.0.45, reads as A to Z.
+  const [sort, setSort] = useState<Sort>(() => {
+    const s = stored('fl.sort', 'name')
+    return s === 'ours' ? 'name' : (s as Sort)
+  })
+  // Made by's View all: the library showing one author's mods.
+  const [byAuthor, setByAuthor] = useState('')
   useEffect(() => {
     keep('fl.cat', cat)
     keep('fl.sort', sort)
@@ -488,6 +493,11 @@ export default function App() {
           say(String(e), 'error')
         })
     },
+    viewAuthor: (author) => {
+      setCat('all')
+      setByAuthor(author)
+      go('library')
+    },
     openLobby: (game, quick) => {
       setLobbyQuick(!!quick)
       go('lobby', game.id)
@@ -715,11 +725,10 @@ export default function App() {
   const shown = useMemo(() => {
     if (!lib) return []
     const q = query.trim().toLowerCase()
-    const list = lib.games.filter((g) => inCat(g, cat) &&
+    const list = lib.games.filter((g) => inCat(g, cat) && (!byAuthor || g.author === byAuthor) &&
       (!q || g.name.toLowerCase().includes(q) || g.description.toLowerCase().includes(q) || (g.mod?.gameName ?? '').toLowerCase().includes(q)))
     const order = new Map(lib.games.map((g, i) => [g.id, i]))
     const key: Record<Sort, (g: Game) => number | string> = {
-      ours: (g) => order.get(g.id) ?? 0,
       recent: (g) => -lastPlayed(lib, g.id),
       name: (g) => g.name.toLowerCase(),
       players: (g) => -g.maxPlayers,
@@ -729,7 +738,7 @@ export default function App() {
       const y = key[sort](b)
       return x < y ? -1 : x > y ? 1 : (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0)
     })
-  }, [lib, cat, query, sort, inCat])
+  }, [lib, cat, query, sort, inCat, byAuthor])
 
   if (!lib && !loadError) {
     // The window's shape while the C++ launcher answers, so nothing jumps when the library arrives.
@@ -821,7 +830,8 @@ export default function App() {
     page = (
       <div className="page">
         <div className="dhead">
-          <h1>{catName}</h1>
+          <h1>{byAuthor ? `Made by ${byAuthor}` : catName}</h1>
+          {byAuthor && <button className="linkbtn" onClick={() => setByAuthor('')}>Show everyone's mods</button>}
           <p>{lib.branding.subtitle || 'Every game here plays with friends.'}</p>
           <label className="bigsearch">
             <Glyph code="E721" size={20} />
@@ -1021,7 +1031,7 @@ export default function App() {
     const sheetGame = lib.games.find((g) => g.id === tvSheet)
     let tvPage = page
     if (view === 'home') tvPage = <TvHome c={tvc} games={[...new Set([...recent, ...playable.filter((g) => favs.has(g.id)), ...playable])]} />
-    else if (view === 'library') tvPage = <TvLibrary c={tvc} cats={sideList.filter((x) => x.id !== 'rooms' && x.n > 0)} inCat={inCat} />
+    else if (view === 'library') tvPage = <TvLibrary c={tvc} author={byAuthor} onAllAuthors={() => setByAuthor('')} cats={sideList.filter((x) => x.id !== 'rooms' && x.n > 0)} inCat={inCat} />
     else if (view === 'rooms') tvPage = <TvRooms c={tvc} onJoin={(g, code) => { const a = joinByCode(g); if (a) actions.run(g, a, code) }} />
     else tvPage = <div className="tv-page">{page}</div>
     return (
@@ -1067,14 +1077,14 @@ export default function App() {
           <button className={`nav ${side === 'home' ? 'on' : ''}`} onClick={() => go('home')} title={mini ? 'Home' : undefined}>
             <Glyph code="E80F" /><span className="lbl">Home</span>
           </button>
-          <button className={`nav ${side === 'library' && cat === 'all' ? 'on' : ''}`} onClick={() => { setCat('all'); go('library') }} title={mini ? 'All games' : undefined}>
+          <button className={`nav ${side === 'library' && cat === 'all' ? 'on' : ''}`} onClick={() => { setCat('all'); setByAuthor(''); go('library') }} title={mini ? 'All games' : undefined}>
             <Glyph code="E8A9" /><span className="lbl">All games</span><span className="n">{lib.games.length}</span>
           </button>
           {sideList.map((c) => {
             const on = c.id === 'rooms' ? side === 'rooms' : side === 'library' && cat === c.id
             return (
               <button key={c.id} className={`nav ${on ? 'on' : ''}`} title={mini ? c.name : undefined} aria-current={on ? 'page' : undefined}
-                onClick={() => { if (c.id === 'rooms') go('rooms'); else { setCat(c.id); go('library') } }}>
+                onClick={() => { if (c.id === 'rooms') go('rooms'); else { setCat(c.id); setByAuthor(''); go('library') } }}>
                 <Glyph code={c.icon} /><span className="lbl">{c.name}</span>{c.n >= 0 && <span className="n">{c.n}</span>}
               </button>
             )

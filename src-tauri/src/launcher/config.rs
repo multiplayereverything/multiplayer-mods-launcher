@@ -466,6 +466,10 @@ pub struct GameSpec {
     pub downloads: Vec<PinnedFile>,
     /// The oldest Ruffle Together the game runs in (a Flash record's "ruffle"); empty = any.
     pub min_player: String,
+    // Someone else's mod (a developer's record, or an author in launcher.json), and who made it. Empty is the team's.
+    pub author: String,
+    pub author_url: String,
+    pub community: bool,
 }
 
 /// One pinned release file: where it goes (a folder inside the games folder), its address and its SHA-256.
@@ -503,6 +507,9 @@ impl Default for GameSpec {
             actions: Vec::new(),
             downloads: Vec::new(),
             min_player: String::new(),
+            author: String::new(),
+            author_url: String::new(),
+            community: false,
         }
     }
 }
@@ -1146,6 +1153,9 @@ pub(crate) fn read_game(item: &Value, place: &str, issues: &Issues) -> GameSpec 
     s.str("controls", &mut g.controls);
     s.str("image", &mut g.image);
     s.str("site", &mut g.site_id);
+    s.str("author", &mut g.author);
+    s.str("authorUrl", &mut g.author_url);
+    g.community = !g.author.is_empty();
     s.real("imageFocus", &mut g.image_focus, 0.0, 1.0);
     s.boolean("comingSoon", &mut g.coming_soon);
     if let Some(st) = s.get("settings", Type::Array) {

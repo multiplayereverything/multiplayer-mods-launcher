@@ -1016,6 +1016,8 @@ GameSpec readGame(const Value& item, const std::wstring& where, std::vector<Conf
     s.str("controls", g.controls);
     s.str("image", g.image);
     s.str("site", g.siteId);
+    s.str("author", g.author);
+    s.str("authorUrl", g.authorUrl);
     if (auto gv = s.get("guide", Type::Object)) {
         Section gs(gv, s.child("guide"), issues);
         gs.strList("needs", g.guide.needs);
@@ -1730,7 +1732,7 @@ bool readCommunityMod(std::string_view text, const Config& cfg, bool localReleas
         return refuse(error, L"id: lowercase letters, digits and '-', up to 48");
     if (!repoName(repo)) return refuse(error, L"repo must be \"owner/name\"");
     if (tooNew(r, error)) return false;
-    if (!onlyKeys(r, {"id", "repo", "kind", "tag", "version", "asset", "url", "sha256", "manifest_sha256", "author", "authorUrl",
+    if (!onlyKeys(r, {"id", "repo", "kind", "platform", "tag", "version", "asset", "url", "sha256", "manifest_sha256", "author", "authorUrl",
                       "approved_at", "approved_by", "minLauncher", "mod", "description", "players", "maxPlayers", "color", "colorEnd", "guide"},
                   L"record", error))
         return false;
@@ -1761,7 +1763,7 @@ bool readCommunityMod(std::string_view text, const Config& cfg, bool localReleas
     g.id = sid;
     g.siteId = sid;
     g.name = strOf(*m.find("game"), "name");  // a community card is named after the game
-    g.categories = {"community"};
+    g.categories = {"pc"};
     std::vector<ConfigIssue> issues;
     g.mod = std::make_shared<const mod::Spec>(readMod(m, g, L"community." + id + L".mod", issues));
     addModActions(g);
@@ -1813,6 +1815,11 @@ namespace {
 bool checkTeamPackage(const Value& mv, const std::wstring& id, const std::wstring& repo, bool localRelease, std::wstring& error);
 }  // namespace
 
+bool isTeamRecord(std::string_view text) {
+    Value r = json::parse(text, nullptr);
+    return r.isObject() && teamRepo(strOf(r, "repo"));
+}
+
 bool readTeamMod(std::string_view text, const Config& cfg, bool localRelease, GameSpec& out, std::wstring& error) {
     std::string perr;
     Value r = json::parse(text, &perr);
@@ -1826,7 +1833,7 @@ bool readTeamMod(std::string_view text, const Config& cfg, bool localRelease, Ga
     // A Flash game whose buttons the app makes from "flash" (1.0.43): the app's alone, the mod engine has nothing to do.
     if (r.find("flash") && !r.find("mod")) return refuse(error, L"");
     // The record's own keys; the rest is a launcher.json games[] entry: the card and the mod, no buttons of its own.
-    if (!onlyKeys(r, {"id", "repo", "minLauncher", "approved_at", "approved_by", "name", "description", "players", "maxPlayers", "color",
+    if (!onlyKeys(r, {"id", "repo", "platform", "author", "minLauncher", "approved_at", "approved_by", "name", "description", "players", "maxPlayers", "color",
                       "colorEnd", "guide", "categories", "site", "online", "image", "imageFocus", "mod", "actions", "settings"},
                   L"team record", error))
         return false;
@@ -1851,7 +1858,7 @@ bool readTeamMod(std::string_view text, const Config& cfg, bool localRelease, Ga
     Value entry = Value::object();
     for (size_t i = 0; i < r.size(); ++i) {
         const std::string& k = r.keyAt(i);
-        if (k == "id" || (k != "repo" && k != "minLauncher" && k != "approved_at" && k != "approved_by")) entry.set(k, r.at(i));
+        if (k == "id" || (k != "repo" && k != "platform" && k != "author" && k != "minLauncher" && k != "approved_at" && k != "approved_by")) entry.set(k, r.at(i));
     }
     std::vector<ConfigIssue> issues;
     GameSpec g = readGame(entry, L"team." + id, issues);  // exactly what launcher.json makes of it

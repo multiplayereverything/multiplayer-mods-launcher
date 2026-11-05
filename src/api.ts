@@ -44,6 +44,9 @@ export interface Game {
   comingSoon: boolean
   lobby: boolean
   categories: string[]
+  author: string
+  authorUrl: string
+  community: boolean
   mod?: { modName: string; publisher: string; website: string; gameName: string; pinnedVersion: string }
   guide: { needs: string[]; steps: string[]; tips: string[]; links: { label: string; url: string }[] }
   actions: Action[]
@@ -365,6 +368,7 @@ function sampleLibrary(): Library {
       id: g.id, name: g.name, description: g.description ?? '', players: g.players ?? '', maxPlayers: g.maxPlayers ?? 2,
       color: g.color ?? '#3a3f4b', colorEnd: g.colorEnd ?? '#1a1d24', image: g.image ?? '', imageFocus: g.imageFocus ?? 0.5,
       onlineId: g.online?.id ?? '', joinAction: g.online ? 'online' : '', comingSoon: SAMPLE_SOON.has(g.id), lobby: false, categories: g.categories ?? [],
+      author: s.branding.title, authorUrl: '', community: false,
       mod: g.mod ? { modName: g.name, publisher: g.mod.publisher ?? '', website: g.mod.website ?? '', gameName: g.mod.gameName ?? g.name, pinnedVersion: '' } : undefined,
       guide: { needs: [], steps: [], tips: [], links: g.actions.filter((a) => a.link).map((a) => ({ label: a.label, url: a.link! })) },
       settings: [], player: '', outdated: false,

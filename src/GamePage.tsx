@@ -136,6 +136,7 @@ export interface PageActions {
   refresh: () => void
   modOp: (game: Game, op: 'install' | 'repair' | 'uninstall') => void
   openLobby: (game: Game, quick?: boolean) => void
+  viewAuthor: (author: string) => void
   stopHosting: (session: number) => void
   download: (game: Game) => void
   locate: (game: Game, action: Action) => void
@@ -258,8 +259,7 @@ export function GamePage({
     setSetValues((v) => ({ ...v, [id]: value }))
     setGameSetting(game.id, id, value).catch(() => {})
   }
-  const community = game.site?.community
-  const creditUrl = game.site?.authorUrl || (game.site?.repo ? `https://github.com/${game.site.repo}` : '')
+  const creditUrl = game.authorUrl || (game.community && game.site?.repo ? `https://github.com/${game.site.repo}` : '')
   const hasGuide = game.guide.steps.length > 0 || game.guide.needs.length > 0 || game.guide.tips.length > 0
 
   useEffect(() => {
@@ -330,16 +330,17 @@ export function GamePage({
         <div className="gp-title">
           <h1 aria-label={game.name}>{title}</h1>
           {cats.length > 0 && <span className="cats">{cats.join(', ')}</span>}
-          {community && game.site && (
+          {game.author && (
             <span className="credit">
-              <span>Community mod by</span>
+              <span>Made by</span>
               {creditUrl
-                ? <button className="linkbtn" onClick={() => open(creditUrl)}>{game.site.author || game.site.repo}</button>
-                : <b>{game.site.author || 'its author'}</b>}
-              <span className="muted">{game.site.reviewed ? 'We read its code.' : 'Not reviewed by us.'}</span>
+                ? <button className="linkbtn" onClick={() => open(creditUrl)}>{game.author}</button>
+                : <b>{game.author}</b>}
+              <button className="linkbtn" onClick={() => actions.viewAuthor(game.author)}>View all</button>
+              {game.community && game.site && <span className="muted">{game.site.reviewed ? 'We read its code.' : 'Not reviewed by us.'}</span>}
             </span>
           )}
-          {game.mod && <span className="cats">Mod for {modName}, by {game.mod.publisher || 'Multiplayer Everything'}</span>}
+          {game.mod && <span className="cats">Mod for {modName}</span>}
         </div>
       </div>
       {busy && <div className="gp-prog"><span className="bar"><i /></span>{modLine}</div>}

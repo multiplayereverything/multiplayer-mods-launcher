@@ -148,7 +148,7 @@ const scenarios = {
       return c['All games'] === '16' && c
     })
     await check('the sidebar counts every game', !!counts, JSON.stringify(counts))
-    await check('the sidebar counts each category', counts && counts['Flash mods'] === '8' && counts['PC mods'] === '2' && counts['Online multiplayer'] === '3' && counts['Community mods'] === '5' && counts['Coming soon'] === '2', JSON.stringify(counts))
+    await check('the sidebar counts each category', counts && counts['Flash mods'] === '8' && counts['PC mods'] === '5' && counts['Online multiplayer'] === '3' && !('Community mods' in counts) && counts['Coming soon'] === '2', JSON.stringify(counts))
     await wd.click(nav('Flash mods'))
     await check('a category shows its games', (await waitFor(async () => (await wd.count("//button[contains(@class,'card-c')]")) === 8)) === true)
     await wd.click(nav('All games'))
@@ -471,12 +471,12 @@ const scenarios = {
     const arrived = await waitFor(async () => (await wd.count(card('Lab Game'))) === 1 && (await wd.count(card('Listed Only'))) === 1, 20000)
     await check('approved community mods and listed projects come from mods-info and the website', arrived === true)
     if (!arrived) return
-    const saved = existsSync(join(work, 'data', 'community.json')) ? readFileSync(join(work, 'data', 'community.json'), 'utf8') : ''
+    const saved = existsSync(join(work, 'data', 'records.json')) ? readFileSync(join(work, 'data', 'records.json'), 'utf8') : ''
     await check('the records are kept in the data folder for the mod commands', saved.includes('lab-coop'))
     await openGame('Lab Game')
     const page = await wd.exec("return document.querySelector('.gp')?.innerText ?? ''")
     await check('the card has the website\'s description', page.includes('Four players in one lab.'), page.slice(0, 200))
-    await check('the card says whose mod it is', page.includes('by someone'), page.slice(0, 300))
+    await check('the card says whose mod it is', page.includes('Made by\nsomeone'), page.slice(0, 300))
     await wd.click("//div[@role='tablist']//button[normalize-space(.)='How to play']")
     const guide = await wd.exec("return document.querySelector('.gp')?.innerText ?? ''")
     await check('its guide credits the author and links the repository', guide.includes('Made by someone, not by Multiplayer Everything') && guide.includes('lab-coop by someone on GitHub'), guide.slice(0, 300))
@@ -533,7 +533,7 @@ const scenarios = {
     await key('Escape')
 
     // Ctrl+F5: a mod approved a minute ago comes now, not when the saved copy's hour is up; one taken down goes again.
-    const www = join(work, 'www', 'community')
+    const www = join(work, 'www', 'records')
     const indexBefore = readFileSync(join(www, 'index.json'), 'utf8')
     const late = JSON.parse(readFileSync(join(www, 'lab-solo.json'), 'utf8'))
     late.id = late.mod.id = 'lab-late'
@@ -562,9 +562,8 @@ const scenarios = {
     const arrived = await waitFor(async () => (await wd.count(card('Lab Team'))) === 1, 20000)
     await check('a team record from mods-info is one of the PC mods', arrived === true)
     if (!arrived) return
-    await wd.click(nav('Community mods'))
-    await check('and not a community mod', (await waitFor(async () => (await wd.count(card('Lab Game'))) === 1, 5000)) === true && (await wd.count(card('Lab Team'))) === 0)
-    const saved = existsSync(join(work, 'data', 'team.json')) ? readFileSync(join(work, 'data', 'team.json'), 'utf8') : ''
+    await check('next to a community PC mod in the same list', (await wd.count(card('Lab Game'))) === 1)
+    const saved = existsSync(join(work, 'data', 'records.json')) ? readFileSync(join(work, 'data', 'records.json'), 'utf8') : ''
     await check('the team records are kept in the data folder for the mod commands', saved.includes('lab-team'))
     await openGame('Lab Team')
     const page = await wd.exec("return document.querySelector('.gp')?.innerText ?? ''")
@@ -607,12 +606,11 @@ const scenarios = {
   // community/lab-devflash.json: a developer's Flash game. The launcher makes its buttons, downloads its pinned files into
   // their own folder, and starts the player with the release's key map.
   async devflash() {
-    await wd.click(nav('Community mods'))
-    const arrived = await waitFor(async () => (await wd.count(card('Lab Dev Flash'))) === 1, 20000)
-    await check('a developer\'s Flash game from mods-info is a community mod', arrived === true)
-    if (!arrived) return
     await wd.click(nav('Flash mods'))
-    await check('and a Flash mod', (await waitFor(async () => (await wd.count(card('Lab Dev Flash'))) === 1, 5000)) === true)
+    const arrived = await waitFor(async () => (await wd.count(card('Lab Dev Flash'))) === 1, 20000)
+    await check('a developer\'s Flash game from mods-info is one of the Flash mods', arrived === true)
+    if (!arrived) return
+    await check('next to our own', (await wd.count(card('Flash Team'))) === 1)
     await openGame('Lab Dev Flash')
     await wd.click("//div[@role='tablist']//button[normalize-space(.)='How to play']")
     const guide = await wd.exec("return document.querySelector('.gp')?.innerText ?? ''")
@@ -763,6 +761,37 @@ const scenarios = {
   },
 
   // One list: nobody's mods first, every game says who made it, and only someone else's says whether we checked it.
+  async onelist() {
+    await waitFor(async () => !(await wd.exec("return document.querySelector('.island')?.textContent ?? ''")).includes('Playing'), FAKE_MS + 8000)
+    await wd.click(nav('All games'))
+    await waitFor(async () => (await wd.count(card('Lab Dev Flash'))) === 1, 20000)
+    await check('there is no Community mods list', (await wd.count(nav('Community mods'))) === 0)
+    await check('there is no Our order', !(await wd.exec('return document.body.innerText')).includes('Our order'))
+    const names = await wd.exec("return [...document.querySelectorAll('.card-c .name')].map(n => n.textContent)")
+    const az = [...names].sort((a, b) => (a.toLowerCase() < b.toLowerCase() ? -1 : a.toLowerCase() > b.toLowerCase() ? 1 : 0))
+    await check('the list runs A to Z, ours and theirs mixed', names.length > 3 && names.join('|') === az.join('|'), names.join(', '))
+    const credit = () => wd.exec("return document.querySelector('.credit')?.textContent ?? ''")
+    await openGame('Flash Team')
+    const ours = await credit()
+    await check('our own mod says Made by us, with no review line', ours.includes('Made by') && ours.includes('Multiplayer Everything') && ours.includes('View all') && !ours.includes('review') && !ours.includes('read its code'), ours)
+    await key('Escape')
+    await openGame('Lab Game')
+    const theirs = await credit()
+    await check('a community mod says who made it and whether we checked it', theirs.includes('someone') && theirs.includes('View all') && theirs.includes('Not reviewed by us'), theirs)
+    await wd.click("//span[contains(@class,'credit')]//button[normalize-space(.)='View all']")
+    await check('View all opens that author\'s mods', !!(await wd.find("//h1[normalize-space(.)='Made by someone']", 4000).catch(() => null)))
+    const his = await wd.exec("return [...document.querySelectorAll('.card-c .name')].map(n => n.textContent)")
+    await check('and only theirs', his.includes('Lab Game') && his.includes('Lab Dev Flash') && !his.includes('Flash Team') && !his.includes('Lab Team'), his.join(', '))
+    await wd.click("//button[normalize-space(.)=\"Show everyone's mods\"]")
+    await check('Show everyone\'s mods brings the rest back', (await wd.count(card('Flash Team'))) === 1)
+    await wd.exec("localStorage.setItem('fl.sort', 'ours'); location.reload()")
+    await new Promise((r) => setTimeout(r, 1500))
+    await wd.click(nav('All games'))
+    await waitFor(async () => (await wd.count(card('Lab Game'))) === 1, 20000)
+    const again = await wd.exec("return [...document.querySelectorAll('.card-c .name')].map(n => n.textContent)")
+    await check('a saved Our order opens as A to Z', again.join('|') === [...again].sort((a, b) => (a.toLowerCase() < b.toLowerCase() ? -1 : a.toLowerCase() > b.toLowerCase() ? 1 : 0)).join('|'), again.join(', '))
+  },
+
   async padjoin() {
     // Joining with only a controller in the desktop window: A on a text field opens the on-screen keyboard over the
     // dialog, the D-pad stays in it, B cancels only the keyboard, and Done leads on to Join.
@@ -911,8 +940,9 @@ const scenarios = {
     await key('PageDown')
     await check('RB goes to Games', !!(await waitFor(async () => (await wd.count("//div[contains(@class,'tv-lib')]")) > 0)))
     await check('Games shows every game', (await waitFor(async () => (await wd.count("//div[contains(@class,'tv-grid')]//button[contains(@class,'tv-tile')]")) === 16)) === true)
+    await check('TV mode has no Community filter', (await wd.count("//button[contains(@class,'tv-chip')][contains(normalize-space(.),'Community')]")) === 0)
     await wd.click("//button[contains(@class,'tv-chip')][starts-with(normalize-space(.),'PC mods')]")
-    await check('a filter narrows the games', (await waitFor(async () => (await wd.count("//div[contains(@class,'tv-grid')]//button[contains(@class,'tv-tile')]")) === 2)) === true)
+    await check('a filter narrows the games', (await waitFor(async () => (await wd.count("//div[contains(@class,'tv-grid')]//button[contains(@class,'tv-tile')]")) === 5)) === true)
     await key('Escape')
     await check('B goes back Home', !!(await waitFor(async () => (await wd.count("//div[contains(@class,'tv-home')]")) > 0)))
     await wd.click("//section[contains(@class,'tv-hero')]//button[contains(normalize-space(.),'Game page')]")

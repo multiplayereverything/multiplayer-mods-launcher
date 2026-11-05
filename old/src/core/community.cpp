@@ -60,6 +60,13 @@ int mergeTeam(Config& cfg, const CommunityCache& cache) {
     return added;
 }
 
+int mergeRecords(Config& cfg, const CommunityCache& cache) {
+    CommunityCache team, others;
+    for (const auto& raw : cache.raw) (isTeamRecord(raw) ? team : others).raw.push_back(raw);
+    int added = mergeTeam(cfg, team);
+    return added + mergeCommunity(cfg, others);
+}
+
 int mergeCommunity(Config& cfg, const CommunityCache& cache) {
     bool local = localBase(cfg.modsInfoBase());
     int added = 0;

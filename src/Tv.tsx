@@ -127,15 +127,16 @@ export function TvHome({ c, games }: { c: TvCommon; games: Game[] }) {
   )
 }
 
-export function TvLibrary({ c, cats, inCat }: { c: TvCommon; cats: { id: string; name: string }[]; inCat: (g: Game, id: string) => boolean }) {
+export function TvLibrary({ c, cats, inCat, author, onAllAuthors }: { c: TvCommon; cats: { id: string; name: string }[]; inCat: (g: Game, id: string) => boolean; author: string; onAllAuthors: () => void }) {
   const [cat, setCat] = useState('all')
   const box = useRef<HTMLDivElement>(null)
   useFirstFocus(box)
   const all = [{ id: 'all', name: 'All games' }, ...cats]
-  const list = c.lib.games.filter((g) => inCat(g, cat))
+  const list = c.lib.games.filter((g) => inCat(g, cat) && (!author || g.author === author))
   return (
     <div className="tv-lib" ref={box}>
       <div className="tv-chips" role="group" aria-label="Show">
+        {author && <button className="tv-chip on" onClick={onAllAuthors}>Made by {author}: show everyone's</button>}
         {all.map((k) => (
           <button key={k.id} className={`tv-chip ${k.id === cat ? 'on' : ''}`} aria-pressed={k.id === cat} onClick={() => setCat(k.id)}>
             {k.name}<span className="n">{c.lib.games.filter((g) => inCat(g, k.id)).length}</span>

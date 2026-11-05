@@ -56,11 +56,15 @@ fn data_dir_of(cfg: &Config) -> String {
     paths::normalize(&base.expand(&cfg.paths.data))
 }
 
-/// Adds the mods from the copies of mods-info's team/ and community/ kept in the data folder (team.json,
-/// community.json; src/launcher/community.rs), as the C++ mod commands do from the same files. The team's first, so a
-/// developer's record never takes one of their ids. FL_NO_COMMUNITY leaves both out.
+/// Adds the mods from the copy of mods-info's records/ kept in the data folder (records.json;
+/// src/launcher/community.rs), as the C++ mod commands do from the same file. A mods-info without that folder yet leaves
+/// the copies of team/ and community/ to read. FL_NO_COMMUNITY leaves them all out.
 pub fn add_community(cfg: &mut Config) {
     if std::env::var_os("FL_NO_COMMUNITY").is_some() {
+        return;
+    }
+    if let Some(cache) = community::load_cache(&paths::join(&data_dir_of(cfg), "records.json")).filter(|c| !c.raw.is_empty()) {
+        community::merge_records(cfg, &cache);
         return;
     }
     if let Some(cache) = community::load_cache(&paths::join(&data_dir_of(cfg), "team.json")) {
@@ -119,10 +123,12 @@ pub fn library_json() -> Result<Value, String> {
         }
     }
     for g in &mut listed.games {
-        if let Some(m) = g.mod_spec.as_ref().filter(|_| g.description.is_empty() && g.categories == ["community"]) {
+        if let Some(m) = g.mod_spec.as_ref().filter(|_| g.description.is_empty() && g.community) {
             g.description = format!("A co-op mod for {} by {}.", m.game.name, m.info.publisher);
         }
     }
+    // One order for everything the window lists: by name, nobody's mods first.
+    listed.games.sort_by_cached_key(|g| g.name.to_lowercase());
     Ok(build(&listed, &lib, &user, &site_list))
 }
 
@@ -137,9 +143,17 @@ pub fn refresh_online_lists(force: bool) -> Result<bool, String> {
         Ok(false)
     } else {
         let base = community::mods_info_base(&cfg);
-        let team = community::refresh_folder_within(&base, "team", &paths::join(&data_dir_of(&cfg), "team.json"), max_age);
-        let dev = community::refresh_cache_within(&base, &paths::join(&data_dir_of(&cfg), "community.json"), max_age);
-        match (team, dev) {
+        let records_path = paths::join(&data_dir_of(&cfg), "records.json");
+        let records = community::refresh_folder_within(&base, "records", &records_path, max_age);
+        let have_records = community::load_cache(&records_path).is_some_and(|c| !c.raw.is_empty());
+        let team = if have_records { Ok(false) } else { community::refresh_folder_within(&base, "team", &paths::join(&data_dir_of(&cfg), "team.json"), max_age) };
+        let dev = if have_records { Ok(false) } else { community::refresh_cache_within(&base, &paths::join(&data_dir_of(&cfg), "community.json"), max_age) };
+        let old = match (team, dev) {
+            (Ok(a), Ok(b)) => Ok(a || b),
+            (Ok(true), _) | (_, Ok(true)) => Ok(true),
+            (Err(e), _) | (_, Err(e)) => Err(e),
+        };
+        match (records, old) {
             (Ok(a), Ok(b)) => Ok(a || b),
             (Ok(true), _) | (_, Ok(true)) => Ok(true),
             (Err(e), _) | (_, Err(e)) => Err(e),
@@ -400,6 +414,17 @@ pub fn build(cfg: &Config, lib: &Library, user: &UserData, site: &[SiteGame]) ->
             acts.push(Value::Object(ao));
         }
         o.insert("actions".into(), Value::Array(acts));
+        // Who made it. Anything the record or the website doesn't credit to someone else is the team's.
+        let theirs = find_site(site, &g.site_id, &g.id, &g.online_id).map(|k| &site[k]).filter(|s| s.community);
+        let author = match (g.author.as_str(), theirs) {
+            ("", Some(s)) if !s.author.is_empty() => s.author.as_str(),
+            ("", Some(s)) => s.maintainer.as_str(),
+            ("", None) => cfg.branding.title.as_str(),
+            (a, _) => a,
+        };
+        o.insert("author".into(), json!(author));
+        o.insert("authorUrl".into(), json!(if g.author_url.is_empty() { theirs.map_or("", |s| s.author_url.as_str()) } else { g.author_url.as_str() }));
+        o.insert("community".into(), json!(g.community || theirs.is_some()));
         // What the website says: the grade chip, the facts line and the "in sync" dots of the details panel.
         if let Some(k) = find_site(site, &g.site_id, &g.id, &g.online_id) {
             let sg = &site[k];
