@@ -612,8 +612,18 @@ export default function App() {
     setTvText(null)
     setSwitcher(false)
   }
+  // B closes what's open before it leaves the page behind it.
+  const padBack = () => {
+    if (sheetPad.current.back?.()) return
+    if (offerPlayer) {
+      if (!installingPlayer) setOfferPlayer(null)
+    } else if (switcher) setSwitcher(false)
+    // From inside the page, as a real key travels: the dialog's window handler must see it before the page's goes back.
+    else if (document.querySelector('.dialog[aria-modal="true"]')) document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    else back()
+  }
   const pad = usePad({
-    back,
+    back: padBack,
     search: () => {
       const g = tv ? focusedGame() : undefined
       if (g) go('game', g.id)
@@ -628,7 +638,7 @@ export default function App() {
     },
     menu: () => toggleTv('controller Start'),
     press: (el) => {
-      if (!tv || !(el instanceof HTMLInputElement) || !['text', 'password', 'search', ''].includes(el.type) || el.disabled) return false
+      if (!(el instanceof HTMLInputElement) || !['text', 'password', 'search', ''].includes(el.type) || el.disabled) return false
       tvField.current = el
       setTvText(textRequest(el))
       return true
@@ -868,6 +878,7 @@ export default function App() {
 
   const overlays = (
     <>
+      {tvText && <TvTextSheet req={tvText} pad={pad} padRef={sheetPad} onClose={() => (setTvText(null), tvField.current?.focus())} />}
       {offerPlayer && (
         <div className="scrim" onMouseDown={(e) => e.target === e.currentTarget && !installingPlayer && setOfferPlayer(null)}>
           <div className="dialog" role="dialog" aria-modal="true" aria-label={`Install ${offerPlayer.name}?`}>
@@ -1020,7 +1031,6 @@ export default function App() {
           {tvPage}
         </main>
         <TvHints pad={pad} />
-        {tvText && <TvTextSheet req={tvText} pad={pad} padRef={sheetPad} onClose={() => (setTvText(null), tvField.current?.focus())} />}
         {sheetGame && (
           <TvPlaySheet game={sheetGame} lib={lib} rooms={allRooms?.[sheetGame.id]} pad={pad} padRef={sheetPad} onClose={() => setTvSheet('')}
             onRun={(a, code, address) => {

@@ -2,6 +2,7 @@
 // while it is open: the D-pad stays inside it (moveFocus keeps to an aria-modal box), B steps back, and on the
 // keyboard X deletes, as a console's keyboard does. A real keyboard types into it too, and the mouse clicks.
 import { useEffect, useRef, useState, type MutableRefObject } from 'react'
+import { createPortal } from 'react-dom'
 import type { Action, Game, Library, Rooms } from './api'
 import { hostChoices, isCoop, joinByAddress, joinByCode, looksLikeAddress, mainActions, roomAbout } from './model'
 import { Glyph } from './ui'
@@ -186,10 +187,11 @@ export function TvPlaySheet({ game, lib, rooms, pad, padRef, onRun, onLobby, onP
 }
 
 // Any text field with the controller (your name, a room's name or password): A on the field opens this; Done puts
-// the text into the field as typing would, so the page saves it as it always does. Shift switches case.
+// the text into the field as typing would, so the page saves it as it always does. Shift switches case. It works in
+// the desktop window too, on the document itself so that it opens over a dialog and the D-pad stays in it.
 export interface TextRequest { title: string; value: string; max: number; secret: boolean; done: (text: string) => void }
 
-const SYMBOLS = '-_.!?'
+const SYMBOLS = '-_.:!?'
 
 export function TvTextSheet({ req, pad, padRef, onClose }: { req: TextRequest; pad: boolean; padRef: MutableRefObject<SheetPad>; onClose: () => void }) {
   const [text, setText] = useState(req.value)
@@ -233,7 +235,7 @@ export function TvTextSheet({ req, pad, padRef, onClose }: { req: TextRequest; p
   }, [padRef, onClose, req.max])
   const shown = req.secret ? '•'.repeat(text.length) : text
   const ch = (c: string) => (upper ? c : c.toLowerCase())
-  return (
+  return createPortal(
     <div className="scrim tv-scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="tv-sheet" role="dialog" aria-modal="true" aria-label={`Type: ${req.title}`}>
         <div className="tv-sheet-h">
@@ -264,6 +266,7 @@ export function TvTextSheet({ req, pad, padRef, onClose }: { req: TextRequest; p
           <span><PadKey k="B" pad={pad} />Cancel{pad ? '' : ' (Esc)'}</span>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }

@@ -101,6 +101,8 @@ export function usePad(handlers: PadHandlers): boolean {
       const pressed = (i: number) => state[i] && !held[i]
       // Only while this window has the focus: a pad held in another app is not ours.
       if (document.hasFocus()) {
+        // A browser only shows the focus ring after keyboard use, so a controller has to ask for it.
+        if (state.some((_, i) => pressed(i))) document.documentElement.classList.add('pad-nav')
         const dirs: [number, Dir][] = [[12, 'up'], [13, 'down'], [14, 'left'], [15, 'right']]
         for (const [i, d] of dirs) {
           if (pressed(i)) {
@@ -125,12 +127,15 @@ export function usePad(handlers: PadHandlers): boolean {
       held = state
       raf = requestAnimationFrame(tick)
     }
+    const onMouse = () => document.documentElement.classList.remove('pad-nav')
     window.addEventListener('gamepadconnected', onChange)
     window.addEventListener('gamepaddisconnected', onChange)
+    window.addEventListener('mousedown', onMouse)
     onChange()
     return () => {
       window.removeEventListener('gamepadconnected', onChange)
       window.removeEventListener('gamepaddisconnected', onChange)
+      window.removeEventListener('mousedown', onMouse)
       cancelAnimationFrame(raf)
     }
   }, [])

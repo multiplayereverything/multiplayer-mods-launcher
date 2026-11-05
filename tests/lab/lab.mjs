@@ -702,6 +702,128 @@ const scenarios = {
     await wd.exec("navigator.getGamepads = () => []; window.dispatchEvent(new Event('gamepaddisconnected'))")
   },
 
+  async paddialog() {
+    // The Host dialog with only a controller: you can see where you are, the D-pad gets everywhere and stays there,
+    // A presses, B closes the dialog and not the page behind it.
+    await openGame('Co-op Test')
+    // The pad is ignored while another window has the focus; this scenario shouldn't depend on what else is on the PC.
+    await wd.exec(`document.hasFocus = () => true
+      window.__pad = { buttons: Array.from({ length: 17 }, () => ({ pressed: false })), axes: [0, 0, 0, 0] }
+      navigator.getGamepads = () => [window.__pad]
+      window.dispatchEvent(new Event('gamepadconnected'))`)
+    const press = async (i) => {
+      await wd.exec('window.__pad.buttons[arguments[0]].pressed = true', i)
+      await new Promise((r) => setTimeout(r, 120))
+      await wd.exec('window.__pad.buttons[arguments[0]].pressed = false', i)
+      await new Promise((r) => setTimeout(r, 120))
+    }
+    const focused = () => wd.exec('return document.activeElement?.textContent ?? ""')
+    const inDlg = () => wd.exec("return !!document.activeElement?.closest('[role=dialog]')")
+    await wd.exec("[...document.querySelectorAll('.dpanel button')].find(b => b.textContent.includes('Host a game')).focus()")
+    await press(0)
+    await check('A opens the Host dialog', !!(await wd.find("//div[@role='dialog']", 4000).catch(() => null)))
+    await check('the dialog starts on Host', (await focused()) === 'Host', await focused())
+    await press(12)
+    const onIp = await focused()
+    await check('the D-pad moves up to Your IP address', onIp.includes('Your IP address'), onIp)
+    await check('you can see which control has the focus', await wd.exec("const s = getComputedStyle(document.activeElement); return s.outlineStyle !== 'none' && parseFloat(s.outlineWidth) > 0"))
+    await press(0)
+    await check('A picks Your IP address', await wd.exec("return document.activeElement?.getAttribute('aria-pressed') === 'true'"))
+    // The page behind the dialog redraws on its own; that must not throw the focus back to Host.
+    await new Promise((r) => setTimeout(r, 2500))
+    await check('the focus stays where you put it', (await focused()).includes('Your IP address'), await focused())
+    await press(12)
+    await press(12)
+    await check('the D-pad reaches the player counts', (await focused()).includes('players'), await focused())
+    await press(14)
+    await press(14)
+    await check('left and right move along the player counts', (await focused()) === '2 players', await focused())
+    await press(1)
+    await check('B closes the dialog', (await wd.count("//div[@role='dialog']")) === 0)
+    await check('B leaves you on the game', (await wd.count(panel('Host a game'))) === 1)
+    await check('the focus goes back to Host a game', (await focused()).includes('Host a game'), await focused())
+    await press(0)
+    await press(12)
+    await press(12)
+    await press(12)
+    await check('the D-pad reaches 3 players', (await focused()) === '3 players', await focused())
+    await press(0)
+    await press(13)
+    await press(13)
+    await press(13)
+    await press(15)
+    await check('the D-pad gets back to Host', (await focused()) === 'Host', await focused())
+    clearArgs()
+    await press(0)
+    const a = (await launchedWith()).join(' ')
+    await check('A on Host starts the choice', a.includes('--coop-players 3'), a)
+    await wd.exec("navigator.getGamepads = () => []; window.dispatchEvent(new Event('gamepaddisconnected')); delete document.hasFocus")
+    // Its game closes before the next scenario: the Playing message would lie over what that one clicks.
+    await waitFor(async () => !(await wd.exec("return document.querySelector('.island')?.textContent ?? ''")).includes('Playing'), FAKE_MS + 8000)
+  },
+
+  // One list: nobody's mods first, every game says who made it, and only someone else's says whether we checked it.
+  async padjoin() {
+    // Joining with only a controller in the desktop window: A on a text field opens the on-screen keyboard over the
+    // dialog, the D-pad stays in it, B cancels only the keyboard, and Done leads on to Join.
+    await openGame('Co-op Test')
+    await wd.exec(`document.hasFocus = () => true
+      window.__pad = { buttons: Array.from({ length: 17 }, () => ({ pressed: false })), axes: [0, 0, 0, 0] }
+      navigator.getGamepads = () => [window.__pad]
+      window.dispatchEvent(new Event('gamepadconnected'))`)
+    const press = async (i) => {
+      await wd.exec('window.__pad.buttons[arguments[0]].pressed = true', i)
+      await new Promise((r) => setTimeout(r, 120))
+      await wd.exec('window.__pad.buttons[arguments[0]].pressed = false', i)
+      await new Promise((r) => setTimeout(r, 120))
+    }
+    const focused = () => wd.exec('return document.activeElement?.textContent ?? ""')
+    const field = () => wd.exec("return document.querySelector('#join-code')?.value ?? null")
+    const sheet = () => wd.count("//div[@role='dialog' and contains(@class,'tv-sheet')]")
+    const topKey = (label) => wd.exec(`[...document.querySelectorAll('.tv-kb button')].find(b => b.textContent.endsWith(${JSON.stringify(label)})).focus()`)
+    await wd.exec("[...document.querySelectorAll('.dpanel button')].find(b => b.textContent.includes('Join a game')).focus()")
+    await press(0)
+    await check('A opens the Join dialog on its field', await wd.exec("return document.activeElement?.id === 'join-code'"))
+    await press(0)
+    await check('A on the field opens the keyboard', (await sheet()) === 1)
+    await check('the keyboard opens over the dialog', await wd.exec("const b = document.querySelector('.tv-sheet').getBoundingClientRect(); return !!document.elementFromPoint(b.left + b.width / 2, b.top + 20)?.closest('.tv-sheet')"))
+    await check('the focus starts on the keyboard', await wd.exec("return !!document.activeElement?.closest('.tv-kb')"))
+    await press(13)
+    await check('the D-pad stays in the keyboard', await wd.exec("return !!document.activeElement?.closest('.tv-kb')"))
+    await press(1)
+    await check('B cancels only the keyboard', (await sheet()) === 0 && (await wd.count("//div[@role='dialog']")) === 1)
+    await check('the focus returns to the field', await wd.exec("return document.activeElement?.id === 'join-code'"))
+    await press(0)
+    await topKey('1')
+    await press(0)
+    await press(2)
+    await press(0)
+    for (const ch of '92.168.1.22') await topKey(ch).then(() => press(0))
+    await check('the keyboard types what A presses, and X deletes', (await wd.exec("return document.querySelector('.tv-kb-field')?.textContent ?? ''")) === '192.168.1.22', await wd.exec("return document.querySelector('.tv-kb-field')?.textContent ?? ''"))
+    await check('every key fits in the keyboard', await wd.exec("const s = document.querySelector('.tv-sheet'); return s.scrollWidth <= s.clientWidth"))
+    await check('the keyboard has a colon for a port', await wd.exec("return [...document.querySelectorAll('.tv-kb button')].some(b => b.textContent === ':')"))
+    await topKey('Done')
+    await press(0)
+    await check('Done puts the text in the field', (await field()) === '192.168.1.22', String(await field()))
+    await check('the field keeps the focus', await wd.exec("return document.activeElement?.id === 'join-code'"))
+    await press(13)
+    await press(15)
+    await check('the D-pad reaches Join', (await focused()) === 'Join', await focused())
+    clearArgs()
+    await press(0)
+    const a = (await launchedWith()).join(' ')
+    await check('A on Join connects, with the usual port', a.includes('--coop-join 192.168.1.22:7790'), a)
+    await waitFor(async () => !(await wd.exec("return document.querySelector('.island')?.textContent ?? ''")).includes('Playing'), FAKE_MS + 8000)
+    // The same keyboard for the page's other fields.
+    await wd.click(nav('All games'))
+    await wd.exec("document.querySelector('.bigsearch input').focus()")
+    await press(0)
+    await check('A on the search opens the keyboard too', (await sheet()) === 1)
+    await press(1)
+    await check('B leaves the search as it was', (await sheet()) === 0 && (await wd.count("//h1[@aria-label]")) === 0)
+    await wd.exec("navigator.getGamepads = () => []; window.dispatchEvent(new Event('gamepaddisconnected')); delete document.hasFocus")
+  },
+
   async cardplay() {
     await wd.click(nav('All games'))
     await wd.exec("[...document.querySelectorAll('.card-c')].find(c => c.querySelector('.name')?.textContent === 'Relay Test').focus()")

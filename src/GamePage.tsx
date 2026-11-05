@@ -21,9 +21,13 @@ function Dialog({ title, children, onClose }: { title: string; children: ReactNo
       window.setTimeout(() => opener?.isConnected && opener.focus(), 0)
     }
   }, [])
+  // Once, when it opens: onClose changes whenever the page behind redraws, and a controller's focus must stay put.
   useEffect(() => {
     box.current?.querySelector<HTMLElement>('input, select, .btn.main')?.focus()
-    const esc = (e: KeyboardEvent) => e.key === 'Escape' && (e.stopImmediatePropagation(), onClose())
+  }, [])
+  useEffect(() => {
+    // The on-screen keyboard opens over a dialog: Esc cancels that first.
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && !document.querySelector('.tv-sheet') && (e.stopImmediatePropagation(), onClose())
     window.addEventListener('keydown', esc, true)
     return () => window.removeEventListener('keydown', esc, true)
   }, [onClose])
