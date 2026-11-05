@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Multiplayer Everything",
-  "version": "1.0.45",
+  "version": "1.0.46",
   "identifier": "com.multiplayereverything.launcher",
   "build": {
     "frontendDist": "../dist",
