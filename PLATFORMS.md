@@ -32,8 +32,8 @@ Newest first. One line per update: version, what changed, and whether each platf
 
 | Date | Version | Change | Windows | Linux |
 |---|---|---|---|---|
-| 2026-11-05 | unreleased | One list of mods: mods-info `records/`, no Community mods category, A to Z, Made by | yes | port with the Linux build |
-| 2026-11-05 | unreleased | Controller: the Host and Join dialogs work, on-screen keyboard in the desktop window | yes | port with the Linux build |
+| 2026-11-05 | 1.0.45 | One list of mods: mods-info `records/`, no Community mods category, A to Z, Made by | yes | port with the Linux build |
+| 2026-11-05 | 1.0.45 | Controller: the Host and Join dialogs work, on-screen keyboard in the desktop window | yes | port with the Linux build |
 | 2026-11-04 | 1.0.44 | Join by IP adds the game's port to an address typed without one | yes | port with the Linux build |
 | 2026-11-04 | 1.0.43 | Lab: `communitymods` waits for the previous game to close and for the zip's subfolders (`ec1f773`) | yes | port with the Linux build |
 | 2026-11-04 | 1.0.43 | Developers' Flash games come from mods-info, and the launcher makes their buttons | yes | port with the Linux build |
