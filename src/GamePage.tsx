@@ -281,7 +281,12 @@ export function GamePage({
       )
     else if (!mod.installed && mod.missing)
       // The loader this mod needs (install.requires) isn't in the game folder: the launcher can't install it.
-      modButtons = <PanelButton icon="E896" label={`Install ${modName}`} sub={mod.missing} warn disabled />
+      modButtons = (
+        <>
+          <PanelButton icon="E896" label={`Install ${modName}`} sub={mod.missing} warn disabled />
+          {mod.missingUrl && <PanelButton icon="E8A7" label="Open the help page" sub={mod.missingUrl.replace(/^https:\/\//, '')} onClick={() => open(mod.missingUrl!)} />}
+        </>
+      )
     else if (!mod.installed)
       modButtons = (
         <PanelButton primary icon="E896" label={`Install ${modName}`} disabled={!mod.published}
@@ -300,6 +305,16 @@ export function GamePage({
         </>
       )
     }
+  }
+
+  // An install.requires with "warn": it stops nothing, so it sits above the buttons instead of replacing them.
+  if (game.mod && !game.comingSoon && mod?.warning && mod.gameFound && !busy) {
+    modButtons = (
+      <>
+        <PanelButton icon="E7BA" label="Check this first" sub={mod.warning} warn disabled={!mod.warningUrl} onClick={mod.warningUrl ? () => open(mod.warningUrl!) : undefined} />
+        {modButtons}
+      </>
+    )
   }
 
   const tabs: { id: Tab; name: string }[] = [
@@ -353,6 +368,16 @@ export function GamePage({
               <>
                 <div className="stats">{stats.map(([k, v]) => <div key={k}><span>{k}</span><b>{v}</b></div>)}</div>
                 <p className="blurb">{game.description}</p>
+                {game.connection && (
+                  <div className="card">
+                    <h3>Connecting</h3>
+                    <div className="dl">
+                      {game.connection.ports.length > 0 && <div><dt>Ports</dt><dd>{game.connection.ports.join(', ')}</dd></div>}
+                      {game.connection.vpn && <div><dt>VPN</dt><dd>{{ no: 'Not needed', sometimes: 'Sometimes needed', yes: 'Needed' }[game.connection.vpn] ?? game.connection.vpn}</dd></div>}
+                      {game.connection.note && <div><dt>Note</dt><dd>{game.connection.note}</dd></div>}
+                    </div>
+                  </div>
+                )}
                 {!game.comingSoon && lib.user.online && <HowItRuns game={game} onReport={u?.plays ? () => actions.report(game) : undefined} />}
                 {g.steps.length > 0 && (
                   <div className="card">

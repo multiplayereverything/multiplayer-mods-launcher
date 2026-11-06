@@ -124,6 +124,18 @@ std::wstring checkRecord(const Spec& cfg, const InstalledState& st, const std::w
     return {};
 }
 
+bool componentLeftOut(const Component& comp, const std::wstring& gameDir) {
+    for (const auto& rel : comp.skipIfPresent)
+        if (fs::exists(fs::normalize(fs::join(gameDir, rel)))) return true;
+    if (comp.onlyIfFile.empty()) return false;
+    constexpr uint64_t kMaxBytes = 64ull * 1024 * 1024;  // a look at a game's library, not a read of its data
+    std::wstring path = fs::normalize(fs::join(gameDir, comp.onlyIfFile));
+    std::vector<uint8_t> bytes;
+    if (fs::fileSize(path).value_or(UINT64_MAX) > kMaxBytes || !fs::readFile(path, bytes)) return true;
+    std::string want = narrow(comp.onlyIfContains);
+    return std::search(bytes.begin(), bytes.end(), want.begin(), want.end()) == bytes.end();
+}
+
 PlanResult buildPlan(const Spec& cfg, const Resources& res, Operation op, const Selection& sel, const Vars& base) {
     PlanResult r;
     Plan& p = r.plan;
@@ -175,10 +187,7 @@ PlanResult buildPlan(const Spec& cfg, const Resources& res, Operation op, const 
         // A loader the player already has stays theirs: not copied over, not recorded, so not removed later.
         bool ours = p.previous && std::find(p.previous->components.begin(), p.previous->components.end(), comp.id) !=
                                       p.previous->components.end();
-        if (!ours && std::any_of(comp.skipIfPresent.begin(), comp.skipIfPresent.end(), [&](const std::wstring& rel) {
-                return fs::exists(fs::normalize(fs::join(p.gameDir, rel)));
-            }))
-            continue;
+        if (!ours && componentLeftOut(comp, p.gameDir)) continue;
         p.components.push_back(comp.id);
         if (comp.source.empty()) continue;
         std::wstring src = normRel(comp.source);

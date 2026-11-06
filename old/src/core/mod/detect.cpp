@@ -209,6 +209,11 @@ bool looksLikeGameDir(const Spec& cfg, const Vars& vars, const std::wstring& dir
     for (const auto& f : files) {
         std::wstring rel = vars.expand(f);
         if (!fs::exists(fs::join(dir, rel))) {
+            // The game's program under another name it has in some builds.
+            if (iequals(rel, cfg.game.executable) &&
+                std::any_of(cfg.game.alternateExecutables.begin(), cfg.game.alternateExecutables.end(),
+                            [&](const std::wstring& name) { return fs::isFile(fs::join(dir, name)); }))
+                continue;
             if (missing) *missing = rel;
             return false;
         }

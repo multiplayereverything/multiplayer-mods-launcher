@@ -1,5 +1,6 @@
 #include "core/mod/manager.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <ctime>
 
@@ -35,13 +36,51 @@ GameLocation findGame(const Spec& spec, const Vars& base, const std::wstring& ch
     return {};
 }
 
+namespace {
+
+constexpr uint64_t kMaxRequirementHashBytes = 1024ull * 1024 * 1024;  // inspect runs often: never read a huge file
+
+// Why this entry fails, or empty when it doesn't.
+std::wstring requirementFailure(const Requirement& r, const Vars& v, const std::wstring& gameDir) {
+    std::wstring path = fs::join(gameDir, replaceAll(normRel(v.expand(r.path)), L"/", L"\\"));
+    bool there = fs::exists(path);
+    std::wstring fallback;
+    if (r.absent) {
+        if (!there) return {};
+        fallback = L"Remove " + r.path + L" from the game folder first";
+    } else if (!there) {
+        fallback = L"The game folder needs " + r.path + L" first";
+    } else if (!r.sha256.empty()) {
+        bool match = false;
+        if (fs::isFile(path) && fs::fileSize(path).value_or(UINT64_MAX) <= kMaxRequirementHashBytes) {
+            std::wstring have = widen(fs::sha256File(path));
+            match = !have.empty() && std::any_of(r.sha256.begin(), r.sha256.end(), [&](const std::wstring& h) { return iequals(h, have); });
+        }
+        if (match) return {};
+        fallback = L"This mod needs another version of " + r.path;
+    } else {
+        return {};
+    }
+    return r.message.empty() ? fallback : v.expand(r.message);
+}
+
+}  // namespace
+
 std::wstring missingRequirement(const Spec& spec, const Vars& base, const std::wstring& gameDir) {
     if (gameDir.empty()) return {};
     Vars v = withSpec(base, spec);
-    for (const auto& r : spec.install.requires_)
-        if (!fs::exists(fs::join(gameDir, replaceAll(normRel(v.expand(r.path)), L"/", L"\\"))))
-            return r.message.empty() ? L"The game folder needs " + r.path + L" first" : v.expand(r.message);
+    for (const auto& r : spec.install.requires_) {
+        if (r.warn) continue;
+        if (std::wstring why = requirementFailure(r, v, gameDir); !why.empty()) return why;
+    }
     return {};
+}
+
+std::wstring gameExecutable(const Spec& spec, const std::wstring& gameDir) {
+    if (!fs::isFile(fs::join(gameDir, spec.game.executable)))
+        for (const auto& name : spec.game.alternateExecutables)
+            if (fs::isFile(fs::join(gameDir, name))) return name;
+    return spec.game.executable;
 }
 
 Status inspect(const Spec& spec, const Vars& base, const std::wstring& chosenDir) {
@@ -64,7 +103,15 @@ Status inspect(const Spec& spec, const Vars& base, const std::wstring& chosenDir
         s.problem = error;  // there, but unreadable: never guess what the mod owns
     }
     s.running = sys::isProcessRunning(spec.game.processNames);
-    s.missing = missingRequirement(spec, base, s.game.dir);
+    Vars need = withSpec(base, spec);
+    for (const auto& r : spec.install.requires_) {
+        std::wstring why = requirementFailure(r, need, s.game.dir);
+        if (why.empty()) continue;
+        std::wstring& text = r.warn ? s.warning : s.missing;
+        if (!text.empty()) continue;  // the first of each
+        text = why;
+        (r.warn ? s.warningUrl : s.missingUrl) = r.url;
+    }
     return s;
 }
 
@@ -76,8 +123,16 @@ Outcome install(const Spec& spec, const Vars& base, Operation op, const std::wst
     // Components that copy a file the game already has: put the copy into the payload folder (ours, in the cache)
     // so the engine installs it like any other file.
     Spec local = spec;
+    auto before = loadState(resolveDirs(spec, v, gameDir).get(L"STATE_DIR"));
     for (auto& comp : local.components) {
         if (comp.sourceGame.empty()) continue;
+        // Left out at this install: nothing to copy, and its file not being there is no problem. The plan decides the
+        // same way below.
+        bool ours = before && std::find(before->components.begin(), before->components.end(), comp.id) != before->components.end();
+        if (!ours && componentLeftOut(comp, gameDir)) {
+            comp.sourceGame.clear();
+            continue;
+        }
         std::wstring found;
         for (const auto& rel : comp.sourceGame) {
             std::wstring path = fs::join(gameDir, replaceAll(normRel(v.expand(rel)), L"/", L"\\"));
@@ -475,6 +530,7 @@ Outcome run(const Spec& spec, const Vars& base, const RunRequest& req, const Rep
 
 bool launchGame(const Spec& spec, const Vars& base, const std::wstring& gameDir, std::wstring& error) {
     Vars v = resolveDirs(spec, withSpec(base, spec), gameDir);
+    v.set(L"GAME_EXE", gameExecutable(spec, gameDir));
     if (!spec.launch.uri.empty()) {
         std::wstring uri = v.expand(spec.launch.uri);
         if (sys::openPath(uri)) return true;

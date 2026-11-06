@@ -70,6 +70,8 @@ Selection defaultSelection(const Spec& cfg, const std::optional<InstalledState>&
 uint64_t requiredBytes(const Spec& cfg, const Resources& res, const std::set<std::string>& components);
 
 PlanResult buildPlan(const Spec& cfg, const Resources& res, Operation op, const Selection& sel, const Vars& base);
+// Whether this game folder says to leave the component out at its first install (skipIfPresent, onlyIfFile).
+bool componentLeftOut(const Component& comp, const std::wstring& gameDir);
 PlanResult buildUninstallPlan(const Spec& cfg, const std::wstring& stateDir, const Vars& base);
 
 struct Progress {

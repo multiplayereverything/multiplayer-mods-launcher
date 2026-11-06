@@ -359,6 +359,8 @@ pub struct DetectionRule {
 pub struct ModGame {
     pub name: String,
     pub executable: String,
+    /// Other names the game's program has in some builds (gta-sa.exe beside gta_sa.exe).
+    pub alternate_executables: Vec<String>,
     pub steam_app_id: String,
     pub validation_files: Vec<String>,
     pub process_names: Vec<String>,
@@ -376,6 +378,9 @@ pub struct Component {
     pub target_name: String,
     pub source_game: Vec<String>,
     pub skip_if_present: Vec<String>,
+    /// Left out too unless this game-folder file holds this text (old/src/core/mod/spec.h).
+    pub only_if_file: String,
+    pub only_if_contains: String,
     pub required: bool,
     pub selected: bool,
 }
@@ -389,10 +394,15 @@ pub struct LaunchSpec {
     pub hint: String,
 }
 
-#[derive(Clone, Debug)]
+/// Something the game folder must have, or be without (old/src/core/mod/spec.h says how each kind works).
+#[derive(Clone, Debug, Default)]
 pub struct Requirement {
     pub path: String,
     pub message: String,
+    pub url: String,
+    pub sha256: Vec<String>,
+    pub absent: bool,
+    pub warn: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -408,6 +418,14 @@ pub struct Layout {
     pub backup_overwritten: bool,
     pub locked_file_retries: i32,
     pub extra_space_mb: i32,
+}
+
+/// How players reach each other, for the game's page: the ports to open and whether a VPN comes into it.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Connection {
+    pub ports: Vec<String>, // "7788/UDP"
+    pub vpn: String,        // "no", "sometimes" or "yes"; empty when the record doesn't say
+    pub note: String,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -446,6 +464,7 @@ pub struct GameSpec {
     pub id: String,
     pub name: String,
     pub description: String,
+    pub connection: Connection,
     pub player_count: String,
     pub controls: String,
     pub image: String,
@@ -489,6 +508,7 @@ impl Default for GameSpec {
             id: String::new(),
             name: String::new(),
             description: String::new(),
+            connection: Connection::default(),
             player_count: String::new(),
             controls: String::new(),
             image: String::new(),
@@ -839,6 +859,22 @@ fn read_card(s: &Section, g: &mut GameSpec, issues: &Issues) {
     }
     s.color("color", &mut g.color);
     s.color("colorEnd", &mut g.color_end);
+    if let Some(c) = s.get("connection", Type::Object) {
+        let cs = Section::new(Some(c), s.child("connection"), issues);
+        cs.str_list("ports", &mut g.connection.ports, None);
+        cs.str("vpn", &mut g.connection.vpn);
+        cs.str("note", &mut g.connection.note);
+        if g.connection.ports.iter().any(|p| !connection_port(p)) {
+            cs.error("ports", "ports such as \"7788/UDP\" or \"27015/TCP\"");
+        }
+        if !["", "no", "sometimes", "yes"].contains(&g.connection.vpn.as_str()) {
+            cs.error("vpn", "must be \"no\", \"sometimes\" or \"yes\"");
+        }
+    }
+}
+
+fn connection_port(p: &str) -> bool {
+    p.split_once('/').is_some_and(|(n, proto)| n.parse::<u16>().is_ok_and(|n| n > 0) && (proto == "UDP" || proto == "TCP"))
 }
 
 /// The same for a value of its own (a community record's top level).
@@ -1007,6 +1043,7 @@ pub(crate) fn read_mod(v: &Value, game: &GameSpec, place: &str, issues: &Issues)
         gs.str("name", &mut m.game.name);
         gs.str("executable", &mut m.game.executable);
         gs.str("steamAppId", &mut m.game.steam_app_id);
+        gs.str_list("alternateExecutables", &mut m.game.alternate_executables, None);
         gs.str_list("validationFiles", &mut m.game.validation_files, None);
         gs.str_list("processNames", &mut m.game.process_names, None);
         gs.boolean("allowUnvalidated", &mut m.game.allow_unvalidated);
@@ -1044,10 +1081,14 @@ pub(crate) fn read_mod(v: &Value, game: &GameSpec, place: &str, issues: &Issues)
         is.str("uninstallCleanupWith", &mut m.install.uninstall_cleanup_with);
         if let Some(rq) = is.get("requires", Type::Array) {
             for (i, item) in rq.items().iter().enumerate() {
-                let mut r = Requirement { path: String::new(), message: String::new() };
+                let mut r = Requirement::default();
                 let rs = Section::new(Some(item), format!("{}[{i}]", is.child("requires")), issues);
                 rs.str("path", &mut r.path);
                 rs.str("message", &mut r.message);
+                rs.str("url", &mut r.url);
+                rs.str_list("sha256", &mut r.sha256, None);
+                rs.boolean("absent", &mut r.absent);
+                rs.boolean("warn", &mut r.warn);
                 drop(rs);
                 m.install.requires.push(r);
             }
@@ -1067,6 +1108,8 @@ pub(crate) fn read_mod(v: &Value, game: &GameSpec, place: &str, issues: &Issues)
                 target_name: String::new(),
                 source_game: Vec::new(),
                 skip_if_present: Vec::new(),
+                only_if_file: String::new(),
+                only_if_contains: String::new(),
                 required: false,
                 selected: true,
             };
@@ -1079,6 +1122,11 @@ pub(crate) fn read_mod(v: &Value, game: &GameSpec, place: &str, issues: &Issues)
             cs.str("targetName", &mut c.target_name);
             cs.str_list("sourceGame", &mut c.source_game, None);
             cs.str_list("skipIfPresent", &mut c.skip_if_present, None);
+            if let Some(only) = cs.get("onlyIfFile", Type::Object) {
+                let os = Section::new(Some(only), cs.child("onlyIfFile"), issues);
+                os.str("path", &mut c.only_if_file);
+                os.str("contains", &mut c.only_if_contains);
+            }
             cs.boolean("required", &mut c.required);
             cs.boolean("selected", &mut c.selected);
             drop(cs);
@@ -1613,6 +1661,11 @@ pub fn validate_config(cfg: &Config, issues: &mut Vec<ConfigIssue>) {
                         err(issues, format!("{mw}.components.{}.sourceGame", c.id), "paths inside the game folder".into());
                     }
                 }
+                if c.only_if_file.is_empty() != c.only_if_contains.is_empty()
+                    || (!c.only_if_file.is_empty() && (norm_rel(&c.only_if_file).is_empty() || c.only_if_file.contains('$')))
+                {
+                    err(issues, format!("{mw}.components.{}.onlyIfFile", c.id), "a \"path\" inside the game folder and the text it \"contains\"".into());
+                }
                 check_vars(&c.source, &format!("{mw}.components"), issues);
                 check_vars(&c.target, &format!("{mw}.components"), issues);
             }
@@ -1645,6 +1698,18 @@ pub fn validate_config(cfg: &Config, issues: &mut Vec<ConfigIssue>) {
                 if r.path.is_empty() || r.path.contains('$') || norm_rel(&r.path).is_empty() {
                     err(issues, format!("{mw}.install.requires[{k}].path"), "a path inside the game folder, without ${GAME_DIR} (BepInEx\\core)".into());
                 }
+                if !r.url.is_empty() && !starts_with_i(&r.url, "https://") {
+                    err(issues, format!("{mw}.install.requires[{k}].url"), "must be an https:// address".into());
+                }
+                if r.absent && !r.sha256.is_empty() {
+                    err(issues, format!("{mw}.install.requires[{k}]"), "\"absent\" and \"sha256\" can't go together".into());
+                }
+                if r.sha256.iter().any(|h| h.len() != 64 || !h.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))) {
+                    err(issues, format!("{mw}.install.requires[{k}].sha256"), "64 lower-case hex digits each".into());
+                }
+            }
+            if m.game.alternate_executables.iter().any(|n| n.is_empty() || n.contains(['/', '\\', ':', '$'])) {
+                err(issues, format!("{mw}.game.alternateExecutables"), "file names".into());
             }
             for (k, pat) in m.install.uninstall_cleanup.iter().enumerate() {
                 let prefix = match pat.find(['*', '?']) {

@@ -49,6 +49,7 @@ export interface Game {
   community: boolean
   mod?: { modName: string; publisher: string; website: string; gameName: string; pinnedVersion: string }
   guide: { needs: string[]; steps: string[]; tips: string[]; links: { label: string; url: string }[] }
+  connection?: { ports: string[]; vpn: string; note: string }
   actions: Action[]
   // What the website's games.json says (grade A-D or X, version, what stays in sync), when it knows the game.
   site?: SiteInfo
@@ -130,6 +131,9 @@ export interface ModInfo {
   running: boolean
   problem: string
   missing: string
+  missingUrl?: string
+  warning?: string
+  warningUrl?: string
   known: boolean
   published: boolean
   newest: string

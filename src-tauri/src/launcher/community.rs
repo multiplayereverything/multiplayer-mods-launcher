@@ -226,7 +226,13 @@ fn check_shape(r: &Value, id: &str, repo: &str, local_release: bool) -> Result<(
         return Err(format!("mod.website must be https://github.com/{repo}"));
     }
     let g = m.find("game").filter(|g| g.is_object()).ok_or("no mod.game")?;
-    only_keys(g, &["name", "executable", "steamAppId", "validationFiles", "processNames", "detection"], "mod.game")?;
+    only_keys(g, &["name", "executable", "alternateExecutables", "steamAppId", "validationFiles", "processNames", "detection"], "mod.game")?;
+    if let Some(alt) = g.find("alternateExecutables") {
+        let bad = |n: &Value| n.as_str().is_none_or(|n| n.is_empty() || n.contains(['/', '\\', ':', '$']));
+        if !alt.is_array() || alt.items().is_empty() || alt.items().len() > 5 || alt.items().iter().any(bad) {
+            return Err("mod.game.alternateExecutables: one to five file names".into());
+        }
+    }
     if text(g, "name").is_empty() {
         return Err("mod.game.name is missing".into());
     }
@@ -280,7 +286,7 @@ fn check_shape(r: &Value, id: &str, repo: &str, local_release: bool) -> Result<(
                 if !r.is_object() {
                     return Err("mod.install.requires: objects with path and message".into());
                 }
-                only_keys(r, &["path", "message"], "mod.install.requires")?;
+                only_keys(r, &["path", "message", "url", "sha256", "absent", "warn"], "mod.install.requires")?;
             }
         }
     }
@@ -290,15 +296,34 @@ fn check_shape(r: &Value, id: &str, repo: &str, local_release: bool) -> Result<(
         if !c.is_object() {
             return Err(format!("{place}: must be an object"));
         }
-        only_keys(c, &["id", "name", "source", "target", "targetName", "required", "skipIfPresent"], &place)?;
+        only_keys(c, &["id", "name", "source", "sourceGame", "target", "targetName", "required", "skipIfPresent", "onlyIfFile"], &place)?;
         // Left out when the game already has one of these (a loader another mod installed): paths in the game folder.
         if let Some(sk) = c.find("skipIfPresent") {
             if !sk.is_array() || sk.items().is_empty() || sk.items().len() > 10 || sk.items().iter().any(|p| p.as_str().is_none_or(|p| !inside_package(p))) {
                 return Err(format!("{place}.skipIfPresent: one to ten paths inside the game folder, such as BepInEx/core"));
             }
         }
-        if !inside_package(text(c, "source")) {
+        // A copy of a file the game already has, under a name of its own, for a loader that wraps it: it reads and writes
+        // only inside the game folder, and the copy goes on uninstall.
+        if let Some(sg) = c.find("sourceGame") {
+            if !sg.is_array() || sg.items().is_empty() || sg.items().len() > 5 || sg.items().iter().any(|p| p.as_str().is_none_or(|p| !inside_package(p))) {
+                return Err(format!("{place}.sourceGame: one to five paths inside the game folder"));
+            }
+            if text(c, "targetName").is_empty() {
+                return Err(format!("{place}.sourceGame needs a targetName"));
+            }
+        } else if !inside_package(text(c, "source")) {
             return Err(format!("{place}.source: a path inside the package"));
+        }
+        if let Some(only) = c.find("onlyIfFile") {
+            if !only.is_object() {
+                return Err(format!("{place}.onlyIfFile: an object with path and contains"));
+            }
+            only_keys(only, &["path", "contains"], &format!("{place}.onlyIfFile"))?;
+            let contains = text(only, "contains");
+            if !inside_package(text(only, "path")) || contains.is_empty() || contains.chars().count() > 200 {
+                return Err(format!("{place}.onlyIfFile: a path inside the game folder and up to 200 characters of text"));
+            }
         }
         let target = text(c, "target");
         if !target.is_empty() && !inside_game(target) {
@@ -313,8 +338,10 @@ fn check_shape(r: &Value, id: &str, repo: &str, local_release: bool) -> Result<(
         return Err("mod.launch: either uri (steam://rungameid/<app id>) or executable (${GAME_DIR}\\<program>.exe)".into());
     }
     if !exe.is_empty() {
-        let ok = starts_with_i(exe, "${GAME_DIR}\\") && !exe.contains("..") && !exe[12..].contains(['$', ':', '/'])
-            && exe.to_ascii_lowercase().ends_with(".exe");
+        let the_game = exe.eq_ignore_ascii_case("${GAME_DIR}\\${GAME_EXE}"); // under whichever name this folder has
+        let ok = the_game
+            || (starts_with_i(exe, "${GAME_DIR}\\") && !exe.contains("..") && !exe[12..].contains(['$', ':', '/'])
+                && exe.to_ascii_lowercase().ends_with(".exe"));
         return if ok { Ok(()) } else { Err("mod.launch.executable must be ${GAME_DIR}\\<program>.exe, inside the game folder".into()) };
     }
     let tail = if starts_with_i(uri, "steam://rungameid/") { &uri[18..] } else { "" };
@@ -442,13 +469,25 @@ fn read_record_of(r: &Value, cfg: &Config, local_release: bool) -> Result<GameSp
 /// Keys every record may have, and the card's own text (what launcher.json's games[] give a card besides its name).
 /// Card text is for records the team writes by hand; the website's form never writes it (docs/COMMUNITY_MODS.md).
 const RECORD_KEYS: &[&str] = &["id", "repo", "kind", "platform", "author", "authorUrl", "approved_at", "approved_by", "minLauncher"];
-const CARD_KEYS: &[&str] = &["description", "players", "maxPlayers", "color", "colorEnd", "guide"];
+const CARD_KEYS: &[&str] = &["description", "players", "maxPlayers", "color", "colorEnd", "guide", "connection"];
 
 /// The card text a record may carry: plain text and https links only, short enough to fit on the card.
 fn check_card(r: &Value) -> Result<(), String> {
     for key in ["description", "players"] {
         if r.find(key).is_some_and(|v| v.as_str().is_none_or(|s| s.chars().count() > 600)) {
             return Err(format!("{key}: text, at most 600 characters"));
+        }
+    }
+    if let Some(c) = r.find("connection") {
+        if !c.is_object() {
+            return Err("connection must be an object".into());
+        }
+        only_keys(c, &["ports", "vpn", "note"], "connection")?;
+        if c.find("ports").is_some_and(|p| !p.is_array() || p.items().len() > 6) {
+            return Err("connection.ports: up to 6".into());
+        }
+        if c.find("note").is_some_and(|n| n.as_str().is_none_or(|n| n.chars().count() > 300)) {
+            return Err("connection.note: text, at most 300 characters".into());
         }
     }
     let Some(gd) = r.find("guide") else { return Ok(()) };
@@ -556,7 +595,7 @@ const TEAM_OWNER: &str = "multiplayereverything";
 /// The record's own keys; the rest is a launcher.json games[] entry: the card and the mod, no buttons of its own.
 const TEAM_RECORD_KEYS: &[&str] = &["id", "repo", "platform", "author", "minLauncher", "approved_at", "approved_by"];
 const TEAM_GAME_KEYS: &[&str] = &[
-    "name", "description", "players", "maxPlayers", "color", "colorEnd", "guide", "categories", "site", "online", "image", "imageFocus",
+    "name", "description", "players", "maxPlayers", "color", "colorEnd", "guide", "connection", "categories", "site", "online", "image", "imageFocus",
     "mod", "actions", "flash", "settings",
 ];
 /// What a Flash game's button may say: the game file, the player's arguments and its texts. No program, page, server,

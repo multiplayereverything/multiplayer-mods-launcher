@@ -302,6 +302,9 @@ std::string modsJson(const std::vector<ModReport>& mods) {
         o.set("running", m.running);
         o.set("problem", str(m.problem));
         o.set("missing", str(m.missing));
+        o.set("missingUrl", str(m.missingUrl));
+        o.set("warning", str(m.warning));
+        o.set("warningUrl", str(m.warningUrl));
         o.set("known", m.known);
         o.set("published", m.published);
         o.set("stale", m.stale);

@@ -30,11 +30,16 @@ struct Status {
     std::wstring installedVersion;
     bool running = false;   // the game's process is running: files may be locked
     std::wstring problem;   // an install record that can't be used
-    std::wstring missing;   // what the game folder lacks before this mod can go in (install.requires)
+    std::wstring missing;   // what stops this mod going in, from install.requires
+    std::wstring missingUrl;
+    std::wstring warning;   // an install.requires with "warn": worth saying, stops nothing
+    std::wstring warningUrl;
 };
 Status inspect(const Spec& spec, const Vars& base, const std::wstring& chosenDir);
-// The first install.requires entry whose file the game folder lacks, as its message; empty when all are there.
+// The first failed install.requires entry that stops the install, as its message; empty when none does.
 std::wstring missingRequirement(const Spec& spec, const Vars& base, const std::wstring& gameDir);
+// The game's program in this folder: game.executable, or the first of game.alternateExecutables when only that is there.
+std::wstring gameExecutable(const Spec& spec, const std::wstring& gameDir);
 
 // Runs install / update / repair against the unpacked package in `payloadDir`.
 // `spec.mod.version` must be the version being installed.

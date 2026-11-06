@@ -789,7 +789,22 @@ fn a_community_record_that_could_do_more_than_it_shows_is_refused_whole() {
     // The engine looks for a requirement under the game folder: with ${GAME_DIR} in front, Install would never turn on.
     add(&|r| r["mod"]["install"]["requires"] = serde_json::json!([{ "path": "${GAME_DIR}\\BepInEx\\core", "message": "x" }]), "without ${GAME_DIR}");
     add(&|r| r["mod"]["components"][0]["source"] = "../secret".into(), "source: a path inside the package");
-    add(&|r| r["mod"]["components"][0]["sourceGame"] = serde_json::json!(["x"]), "sourceGame: not allowed");
+    // A copy of a game file stays inside the game folder and has a name of its own.
+    add(&|r| r["mod"]["components"][0]["sourceGame"] = serde_json::json!(["..\\..\\Windows\\x.dll"]), "sourceGame: one to five paths");
+    add(&|r| r["mod"]["components"][0]["sourceGame"] = serde_json::json!(["C:\\Windows\\x.dll"]), "sourceGame: one to five paths");
+    add(&|r| r["mod"]["components"][0]["sourceGame"] = serde_json::json!([]), "sourceGame: one to five paths");
+    add(&|r| r["mod"]["components"][0]["sourceGame"] = serde_json::json!(["x.dll"]), "sourceGame needs a targetName");
+    add(&|r| r["mod"]["components"][0]["onlyIfFile"] = serde_json::json!({ "path": "..\\x.dll", "contains": "a" }), "onlyIfFile: a path");
+    add(&|r| r["mod"]["components"][0]["onlyIfFile"] = serde_json::json!({ "path": "x.dll", "contains": "" }), "onlyIfFile: a path");
+    add(&|r| r["mod"]["components"][0]["onlyIfFile"] = serde_json::json!({ "path": "x.dll", "contains": "a", "run": "b" }), "onlyIfFile.run: not allowed");
+    add(&|r| r["mod"]["game"]["alternateExecutables"] = serde_json::json!(["..\\x.exe"]), "alternateExecutables: one to five");
+    add(&|r| r["mod"]["install"]["requires"] = serde_json::json!([{ "path": "x", "exec": "y" }]), "requires.exec: not allowed");
+    add(&|r| r["mod"]["install"]["requires"] = serde_json::json!([{ "path": "x", "url": "http://plain.example" }]), "https://");
+    add(&|r| r["mod"]["install"]["requires"] = serde_json::json!([{ "path": "x", "sha256": ["ABC"] }]), "64 lower-case");
+    add(&|r| r["mod"]["install"]["requires"] = serde_json::json!([{ "path": "x", "absent": true, "sha256": ["a"] }]), "can't go together");
+    add(&|r| r["connection"] = serde_json::json!({ "run": "x" }), "connection.run: not allowed");
+    add(&|r| r["connection"] = serde_json::json!({ "ports": ["all"] }), "7788/UDP");
+    add(&|r| r["connection"] = serde_json::json!({ "vpn": "maybe" }), "vpn");
     add(&|r| r["mod"]["components"] = serde_json::json!([]), "at least one");
     add(&|r| r["mod"]["game"]["detection"][0] = serde_json::json!({ "type": "registry", "key": "HKLM" }), "only \"steam\" and \"path\"");
     add(&|r| r["mod"]["game"]["executable"] = "../evil.exe".into(), "must be a file name");
@@ -838,6 +853,37 @@ fn a_community_record_may_bring_its_loader_skip_it_and_start_a_program() {
     assert_eq!(m.install.uninstall_cleanup_with, "loader");
     assert_eq!(m.launch.executable, "${GAME_DIR}\\LabCoopLauncher.exe");
     assert!(m.launch.uri.is_empty());
+}
+
+/// A mod that wraps one of the game's own files, a game with two names for its program, what the folder must have or be
+/// without, and how players connect. Generic: nothing here knows any one game.
+#[test]
+fn a_community_record_may_wrap_a_game_file_and_state_what_the_folder_needs() {
+    let mut r = record();
+    let mut keep = r["mod"]["components"][0].clone();
+    keep.as_object_mut().unwrap().remove("source");
+    keep["id"] = "keep".into();
+    keep["sourceGame"] = serde_json::json!(["real.dll", "lib.dll"]);
+    keep["targetName"] = "real.dll".into();
+    keep["target"] = "${GAME_DIR}".into();
+    keep["onlyIfFile"] = serde_json::json!({ "path": "lib.dll", "contains": "the-real-lib" });
+    r["mod"]["components"].as_array_mut().unwrap().insert(0, keep);
+    r["mod"]["game"]["alternateExecutables"] = serde_json::json!(["other.exe"]);
+    r["mod"]["launch"] = serde_json::json!({ "executable": "${GAME_DIR}\\${GAME_EXE}" });
+    r["mod"]["install"]["requires"] = serde_json::json!([
+        { "path": "game.exe", "sha256": ["a".repeat(64)], "message": "Needs 1.0", "url": "https://example.com/help", "warn": true },
+        { "path": "Other.dll", "absent": true, "message": "No" }
+    ]);
+    r["connection"] = serde_json::json!({ "ports": ["7788/UDP"], "vpn": "sometimes", "note": "Forward the port if it can't connect." });
+    let g = read_rec(&r).unwrap_or_else(|e| panic!("{e}"));
+    let m = g.mod_spec.as_ref().unwrap();
+    assert_eq!(m.components[0].source_game, ["real.dll", "lib.dll"]);
+    assert_eq!((m.components[0].only_if_file.as_str(), m.components[0].only_if_contains.as_str()), ("lib.dll", "the-real-lib"));
+    assert_eq!(m.game.alternate_executables, ["other.exe"]);
+    assert!(m.install.requires[0].warn && !m.install.requires[0].absent && m.install.requires[0].url == "https://example.com/help");
+    assert!(m.install.requires[1].absent && !m.install.requires[1].warn);
+    assert_eq!(g.connection.ports, ["7788/UDP"]);
+    assert_eq!(g.connection.vpn, "sometimes");
 }
 
 /// "minLauncher": a launcher too old for a record says so on a card with nothing to press, and reads nothing else of

@@ -24,6 +24,9 @@ struct DetectionRule {
 
 struct GameInfo {
     std::wstring name, executable, steamAppId;
+    // Other names the game's program has in some builds (gta-sa.exe beside gta_sa.exe): ${GAME_EXE} is whichever the
+    // folder has when the game starts, `executable` first.
+    std::vector<std::wstring> alternateExecutables;
     std::vector<std::wstring> validationFiles, processNames;
     std::vector<DetectionRule> detection;
     bool allowUnvalidated = false;
@@ -42,6 +45,9 @@ struct Component {
     // Game-folder paths that mean "this is already there" (a mod loader the player installed): when one exists and
     // this mod did not put it there, the component is left alone, and uninstall leaves it too.
     std::vector<std::wstring> skipIfPresent;
+    // Left out too unless this game-folder file holds this text: tells a game's own file from another mod's that took
+    // its name, which a path can't. Decided once, at the first install, as for skipIfPresent.
+    std::wstring onlyIfFile, onlyIfContains;
     bool required = false, selected = true;
 };
 
@@ -51,10 +57,15 @@ struct LaunchSpec {
     std::wstring hint; // shown in the status bar after the game starts ("press F5 in the game")
 };
 
-// A file the game folder must already have (a loader the launcher can't install itself), with
-// the sentence shown when it is missing.
+// Something the game folder must have, or be without, for this mod (path relative to the game folder):
+// - the file or folder is there (a loader the launcher can't install itself);
+// - with `sha256`, the file is one of those exact versions (a mod tied to one build of the game);
+// - with `absent`, it is NOT there (another mod that can't share the folder).
+// A failed one keeps Install off and shows `message`; with `warn` it only shows it. `url`: an https page that helps.
 struct Requirement {
-    std::wstring path, message;  // path relative to the game folder
+    std::wstring path, message, url;
+    std::vector<std::wstring> sha256;
+    bool absent = false, warn = false;
 };
 
 // Where the mod's files go. Paths may use ${GAME_DIR}, ${INSTALL_DIR}, ${STATE_DIR}.

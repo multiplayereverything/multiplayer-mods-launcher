@@ -21,7 +21,7 @@ std::string libraryJson(const Config& cfg, const Library& lib, const UserData& u
 struct ModReport {
     std::string id;
     bool gameFound = false, installed = false, running = false, known = false, published = false, stale = false;
-    std::wstring gameDir, gameSource, installedVersion, problem, missing, newest, minVersion, notice, error;
+    std::wstring gameDir, gameSource, installedVersion, problem, missing, missingUrl, warning, warningUrl, newest, minVersion, notice, error;
 };
 std::string modsJson(const std::vector<ModReport>& mods);
 

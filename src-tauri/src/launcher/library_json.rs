@@ -338,6 +338,9 @@ pub fn build(cfg: &Config, lib: &Library, user: &UserData, site: &[SiteGame]) ->
         // The player picked for this game, empty = automatic.
         o.insert("player".into(), json!(user.find(&g.id).map(|s| s.player.as_str()).unwrap_or("")));
         o.insert("categories".into(), strings(&g.categories));
+        if g.connection != Default::default() {
+            o.insert("connection".into(), json!({ "ports": strings(&g.connection.ports), "vpn": g.connection.vpn, "note": g.connection.note }));
+        }
         if let Some(m) = &g.mod_spec {
             o.insert(
                 "mod".into(),

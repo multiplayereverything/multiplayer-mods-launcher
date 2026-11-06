@@ -5,6 +5,7 @@
 #include "core/config.h"
 #include "core/mod/engine.h"
 #include "core/mod/manager.h"
+#include "core/mod/package.h"
 #include "core/mod/resources.h"
 #include "core/mod/state.h"
 #include "core/win.h"
@@ -363,6 +364,236 @@ TEST(a_loader_that_is_already_there_is_neither_installed_over_nor_removed) {
     REQUIRE(g.uninstall().result == Outcome::Result::Success);
     CHECK(!exists(g.game + L"\\Loader\\cache\\made.bin"));
     CHECK(readText(g.game + L"\\Data\\original.dat") == "ORIGINAL");
+}
+
+namespace {
+
+// A mod that wraps one of the game's own libraries, the way an ASI loader does: Audio.dll is copied to Audio_real.dll
+// and the mod's wrapper takes its name, unless the file there isn't the game's own.
+Config wrapperConfig(const std::string& requires_ = "[]", const std::string& launch = R"("uri": "steam://rungameid/1")") {
+    LoadResult r = loadConfig(R"({
+      "paths": {"games": "${LAUNCHER_DIR}\\games", "players": "${LAUNCHER_DIR}\\players", "data": "${LAUNCHER_DIR}\\data", "flashpoint": []},
+      "players": [ {"id": "ruffle", "paths": ["r.exe"]} ],
+      "games": [ { "id": "wrap", "name": "Wrap",
+        "mod": { "id": "wrap",
+          "game": {"name": "Wrap Game", "executable": "game.exe", "alternateExecutables": ["game-alt.exe"],
+                   "validationFiles": ["${GAME_EXE}", "Audio.dll"], "detection": [{"type": "path", "path": "C:\\nowhere"}]},
+          "install": {"targetDir": "${GAME_DIR}", "stateDir": "${GAME_DIR}\\wrap-state", "lockedFileRetries": 1, "requires": )" + requires_ + R"(},
+          "components": [
+            {"id": "keep", "name": "Original", "sourceGame": ["Audio_real.dll", "Audio.dll"], "targetName": "Audio_real.dll", "target": "${GAME_DIR}",
+             "required": true, "skipIfPresent": ["Audio_real.dll"], "onlyIfFile": {"path": "Audio.dll", "contains": "the-real-audio"}},
+            {"id": "wrapper", "name": "Wrapper", "source": "loader/Audio.dll", "target": "${GAME_DIR}",
+             "required": true, "skipIfPresent": ["Audio_real.dll"], "onlyIfFile": {"path": "Audio.dll", "contains": "the-real-audio"}},
+            {"id": "plugin", "name": "Plugin", "source": "plugin.asi", "target": "${GAME_DIR}", "required": true}
+          ],
+          "launch": {)" + launch + R"(},
+          "package": {"url": "https://example.invalid/package.zip", "version": "1"}
+        } } ]
+    })", L"C:\\x");
+    if (!r.ok()) throw std::runtime_error(narrow(formatIssues(r.issues)));
+    return r.config;
+}
+
+Outcome wrapperRun(const Config& c, const std::wstring& game, const std::wstring& pkg, const std::string& version) {
+    Spec s = *c.games[0].mod;
+    s.text = &c.text;
+    s.mod.version = widen(version);
+    CancelToken t;
+    return install(s, s.baseVars(), Operation::Install, game, pkg, [](const Progress&) {}, t);
+}
+
+Outcome wrapperRemove(const Config& c, const std::wstring& game) {
+    Spec s = *c.games[0].mod;
+    s.text = &c.text;
+    CancelToken t;
+    return uninstall(s, s.baseVars(), game, [](const Progress&) {}, t);
+}
+
+}  // namespace
+
+TEST(a_wrapper_keeps_the_games_own_file_through_install_update_and_uninstall) {
+    Config c = wrapperConfig();
+    TempDir root("wrapper");
+    std::wstring game = root / L"Game", pkg = root / L"Pkg";
+    const std::string real = "header the-real-audio footer";
+    writeText(game + L"\\game.exe", "game");
+    writeText(game + L"\\Audio.dll", real);
+    writeText(pkg + L"\\loader\\Audio.dll", "WRAPPER v1");
+    writeText(pkg + L"\\plugin.asi", "plugin v1");
+
+    REQUIRE(wrapperRun(c, game, pkg, "1").result == Outcome::Result::Success);
+    CHECK(readText(game + L"\\Audio.dll") == "WRAPPER v1");
+    CHECK(readText(game + L"\\Audio_real.dll") == real);
+    CHECK(readText(game + L"\\plugin.asi") == "plugin v1");
+
+    // An update: the wrapper no longer holds the text and Audio_real.dll is there, but both are ours, so both stay in,
+    // and the original isn't overwritten with the wrapper.
+    writeText(pkg + L"\\loader\\Audio.dll", "WRAPPER v2");
+    REQUIRE(wrapperRun(c, game, pkg, "2").result == Outcome::Result::Success);
+    CHECK(readText(game + L"\\Audio.dll") == "WRAPPER v2");
+    CHECK(readText(game + L"\\Audio_real.dll") == real);
+
+    REQUIRE(wrapperRemove(c, game).result == Outcome::Result::Success);
+    CHECK(readText(game + L"\\Audio.dll") == real);
+    CHECK(!exists(game + L"\\Audio_real.dll") && !exists(game + L"\\plugin.asi") && !exists(game + L"\\wrap-state"));
+}
+
+TEST(a_wrapper_leaves_another_mods_loader_alone) {
+    Config c = wrapperConfig();
+    // The name is taken by someone else's loader: no text. Its file isn't the game's own, so it must not become the "original".
+    TempDir root("wrapper-other");
+    std::wstring game = root / L"Game", pkg = root / L"Pkg";
+    writeText(game + L"\\game.exe", "game");
+    writeText(game + L"\\Audio.dll", "SOMEONE ELSES LOADER");
+    writeText(pkg + L"\\loader\\Audio.dll", "WRAPPER");
+    writeText(pkg + L"\\plugin.asi", "plugin");
+    REQUIRE(wrapperRun(c, game, pkg, "1").result == Outcome::Result::Success);
+    CHECK(readText(game + L"\\Audio.dll") == "SOMEONE ELSES LOADER");
+    CHECK(!exists(game + L"\\Audio_real.dll"));
+    CHECK(exists(game + L"\\plugin.asi"));  // the mod itself still goes in
+    REQUIRE(wrapperRemove(c, game).result == Outcome::Result::Success);
+    CHECK(readText(game + L"\\Audio.dll") == "SOMEONE ELSES LOADER");
+    CHECK(!exists(game + L"\\plugin.asi"));
+
+    // The same when a loader moved the original aside already.
+    TempDir root2("wrapper-moved");
+    game = root2 / L"Game";
+    pkg = root2 / L"Pkg";
+    writeText(game + L"\\game.exe", "game");
+    writeText(game + L"\\Audio.dll", "header the-real-audio footer");
+    writeText(game + L"\\Audio_real.dll", "MOVED ASIDE");
+    writeText(pkg + L"\\loader\\Audio.dll", "WRAPPER");
+    writeText(pkg + L"\\plugin.asi", "plugin");
+    REQUIRE(wrapperRun(c, game, pkg, "1").result == Outcome::Result::Success);
+    CHECK(readText(game + L"\\Audio_real.dll") == "MOVED ASIDE");
+    CHECK(readText(game + L"\\Audio.dll") == "header the-real-audio footer");
+}
+
+TEST(requirements_say_what_a_folder_needs_or_must_be_without) {
+    TempDir root("requirements");
+    std::wstring game = root / L"Game";
+    writeText(game + L"\\game.exe", "exact build");
+    writeText(game + L"\\Audio.dll", "x");
+    std::string right = narrow(widen(fs::sha256File(game + L"\\game.exe")));
+    std::string wrong(64, 'a');
+    auto status = [&](const std::string& requires_) {
+        Config c = wrapperConfig(requires_);
+        Spec s = *c.games[0].mod;
+        s.text = &c.text;
+        return inspect(s, s.baseVars(), game);
+    };
+    // Nothing failed.
+    Status ok = status(R"([{"path": "game.exe", "sha256": [")" + right + R"("]}, {"path": "OtherMod.dll", "absent": true, "message": "no"}])");
+    CHECK(ok.game.found() && ok.missing.empty() && ok.warning.empty());
+    // Another build of the game stops the install, with the message and the page that helps.
+    Status build = status(R"([{"path": "game.exe", "sha256": [")" + wrong + R"("], "message": "Needs 1.0", "url": "https://example.com/help"}])");
+    CHECK(build.missing == L"Needs 1.0" && build.missingUrl == L"https://example.com/help" && build.warning.empty());
+    // Another mod that can't share the folder.
+    writeText(game + L"\\OtherMod.dll", "x");
+    Status clash = status(R"([{"path": "OtherMod.dll", "absent": true, "message": "Remove the other mod"}])");
+    CHECK(clash.missing == L"Remove the other mod");
+    // A warning stops nothing: run() reads missingRequirement, which skips it.
+    Status warned = status(R"([{"path": "OtherMod.dll", "absent": true, "warn": true, "message": "They may clash", "url": "https://example.com/w"}])");
+    CHECK(warned.missing.empty() && warned.warning == L"They may clash" && warned.warningUrl == L"https://example.com/w");
+    Config c = wrapperConfig(R"([{"path": "OtherMod.dll", "absent": true, "warn": true, "message": "They may clash"}])");
+    Spec s = *c.games[0].mod;
+    CHECK(missingRequirement(s, s.baseVars(), game).empty());
+}
+
+TEST(a_game_is_found_under_another_name_of_its_program) {
+    Config c = wrapperConfig();
+    Spec s = *c.games[0].mod;
+    s.text = &c.text;
+    TempDir root("alt-exe");
+    std::wstring game = root / L"Game";
+    writeText(game + L"\\Audio.dll", "x");
+    CHECK(!looksLikeGameDir(s, s.baseVars(), game));
+    writeText(game + L"\\game-alt.exe", "game");
+    CHECK(looksLikeGameDir(s, s.baseVars(), game));
+    CHECK(gameExecutable(s, game) == L"game-alt.exe");
+    writeText(game + L"\\game.exe", "game");
+    CHECK(gameExecutable(s, game) == L"game.exe");  // the usual name first
+}
+
+namespace {
+
+// A real zip, stored without compression: name -> content. Enough for tar.exe to read.
+std::vector<uint8_t> makeZip(const std::vector<std::pair<std::string, std::string>>& entries) {
+    auto crc32 = [](const std::string& s) {
+        uint32_t c = 0xFFFFFFFFu;
+        for (unsigned char b : s) {
+            c ^= b;
+            for (int k = 0; k < 8; ++k) c = (c >> 1) ^ (0xEDB88320u & (0u - (c & 1)));
+        }
+        return ~c;
+    };
+    std::vector<uint8_t> out, dir;
+    auto put = [](std::vector<uint8_t>& v, uint32_t x, int n) {
+        for (int i = 0; i < n; ++i) v.push_back(static_cast<uint8_t>(x >> (8 * i)));
+    };
+    for (const auto& [name, data] : entries) {
+        uint32_t at = static_cast<uint32_t>(out.size()), crc = crc32(data), size = static_cast<uint32_t>(data.size());
+        for (auto* v : {&out, &dir}) {
+            put(*v, v == &out ? 0x04034b50u : 0x02014b50u, 4);
+            if (v == &dir) put(*v, 20, 2);
+            put(*v, 20, 2);
+            put(*v, 0x800, 2);  // the name is UTF-8
+            put(*v, 0, 2);
+            put(*v, 0, 2);
+            put(*v, 0x21, 2);
+            put(*v, crc, 4);
+            put(*v, size, 4);
+            put(*v, size, 4);
+            put(*v, static_cast<uint32_t>(name.size()), 2);
+            put(*v, 0, 2);
+            if (v == &dir) {
+                put(*v, 0, 2);
+                put(*v, 0, 2);
+                put(*v, 0, 2);
+                put(*v, 0, 4);
+                put(*v, at, 4);
+            }
+            v->insert(v->end(), name.begin(), name.end());
+            if (v == &out) v->insert(v->end(), data.begin(), data.end());
+        }
+    }
+    uint32_t dirAt = static_cast<uint32_t>(out.size()), dirSize = static_cast<uint32_t>(dir.size());
+    out.insert(out.end(), dir.begin(), dir.end());
+    put(out, 0x06054b50u, 4);
+    put(out, 0, 2);
+    put(out, 0, 2);
+    put(out, static_cast<uint32_t>(entries.size()), 2);
+    put(out, static_cast<uint32_t>(entries.size()), 2);
+    put(out, dirSize, 4);
+    put(out, dirAt, 4);
+    put(out, 0, 2);
+    return out;
+}
+
+void writeBytes(const std::wstring& path, const std::vector<uint8_t>& bytes) {
+    writeText(path, std::string(bytes.begin(), bytes.end()));
+}
+
+}  // namespace
+
+TEST(a_package_with_a_file_name_in_another_language_still_unpacks) {
+    TempDir root("zip-names");
+    std::wstring zip = root / L"p.zip", dest = root / L"out", why;
+    // "Инструкция.txt", as a mod's own guide is called.
+    writeBytes(zip, makeZip({{"plugin.asi", "the plugin"}, {"coop/a.txt", "a"},
+                             {"\xD0\x98\xD0\xBD\xD1\x81\xD1\x82\xD1\x80\xD1\x83\xD0\xBA\xD1\x86\xD0\xB8\xD1\x8F.txt", "guide"}}));
+    REQUIRE(unpackZip(zip, dest, why));
+    CHECK(readText(dest + L"\\plugin.asi") == "the plugin");
+    CHECK(readText(dest + L"\\coop\\a.txt") == "a");
+
+    // A zip that is really damaged is still a failure, whatever its names.
+    std::vector<uint8_t> bad = makeZip({{"plugin.asi", "the plugin"}, {"\xD0\x98.txt", "guide"}});
+    bad.resize(bad.size() - 30);  // cut short: no directory to go by
+    writeBytes(zip, bad);
+    CHECK(!unpackZip(zip, dest, why));
+    // So is an all-ASCII zip tar refuses: no name explains it.
+    writeText(zip, "not a zip at all");
+    CHECK(!unpackZip(zip, dest, why));
 }
 
 TEST(uninstall_cleanup_patterns_are_validated) {

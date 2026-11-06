@@ -1,5 +1,6 @@
 #include "core/mod/package.h"
 
+#include <algorithm>
 #include <filesystem>
 #include <cwctype>
 #include <vector>
@@ -131,6 +132,48 @@ bool findGithubAsset(const std::wstring& repo, const std::wstring& tag, const st
     return false;
 }
 
+namespace {
+
+uint32_t zipU16(const uint8_t* p) { return p[0] | (p[1] << 8); }
+uint32_t zipU32(const uint8_t* p) { return p[0] | (p[1] << 8) | (p[2] << 16) | (static_cast<uint32_t>(p[3]) << 24); }
+
+// Windows' tar.exe skips a zip entry whose name isn't plain ASCII ("Archive entry has empty or unreadable filename")
+// and then exits with an error. A readme in the author's language shouldn't refuse the whole mod, so that one failure is
+// let through: every other entry the zip's directory lists is there at its size, and some entry really had such a name.
+// A recipe that names a skipped file still fails, with "payload missing". Only a zip whose SHA-256 was checked gets here.
+bool onlyUnreadableNamesSkipped(const std::wstring& archive, const std::wstring& destDir) {
+    std::vector<uint8_t> z;
+    if (!fs::readFile(archive, z) || z.size() < 22) return false;
+    size_t eocd = z.size() - 22;
+    while (zipU32(&z[eocd]) != 0x06054b50) {
+        if (eocd == 0 || z.size() - eocd > 22 + 65535) return false;
+        --eocd;
+    }
+    uint32_t count = zipU16(&z[eocd + 10]), at = zipU32(&z[eocd + 16]);
+    if (count == 0xFFFF || at == 0xFFFFFFFF) return false;  // Zip64: not read here
+    bool skippedOne = false;
+    for (uint32_t i = 0; i < count; ++i) {
+        if (static_cast<uint64_t>(at) + 46 > z.size() || zipU32(&z[at]) != 0x02014b50) return false;
+        uint32_t size = zipU32(&z[at + 24]), nameLen = zipU16(&z[at + 28]), extra = zipU16(&z[at + 30]), comment = zipU16(&z[at + 32]);
+        if (static_cast<uint64_t>(at) + 46 + nameLen > z.size()) return false;
+        std::string name(reinterpret_cast<const char*>(&z[at + 46]), nameLen);
+        at += 46 + nameLen + extra + comment;
+        if (std::any_of(name.begin(), name.end(), [](char c) { return static_cast<unsigned char>(c) >= 0x80; })) {
+            skippedOne = true;
+            continue;
+        }
+        std::wstring path = fs::normalize(fs::join(destDir, replaceAll(widen(name), L"/", L"\\")));
+        if (!name.empty() && name.back() == '/') {
+            if (!fs::isDir(path)) return false;
+        } else if (fs::fileSize(path).value_or(UINT64_MAX) != size) {
+            return false;
+        }
+    }
+    return skippedOne;
+}
+
+}  // namespace
+
 bool unpackZip(const std::wstring& archive, const std::wstring& destDir, std::wstring& error) {
     removeTree(destDir);
     if (!fs::ensureDir(destDir, nullptr, nullptr)) {
@@ -151,6 +194,10 @@ bool unpackZip(const std::wstring& archive, const std::wstring& destDir, std::ws
     DWORD code = 1;
     GetExitCodeProcess(tar.process, &code);
     CloseHandle(tar.process);
+    if (code != 0 && onlyUnreadableNamesSkipped(archive, destDir)) {
+        logger().warn(L"Left out of the package: a file whose name Windows' tar can't read");
+        code = 0;
+    }
     if (code != 0) {
         error = L"Unpacking the package failed";
         removeTree(destDir);

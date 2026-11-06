@@ -848,6 +848,46 @@ TEST(community_record_may_bring_its_loader_skip_it_and_start_a_program) {
     CHECK(refused(R"("uninstallCleanupWith": "loader")", R"("uninstallCleanupWith": "nope")", L"uninstallCleanupWith"));
 }
 
+TEST(community_record_may_wrap_a_game_file_and_state_what_the_folder_needs) {
+    // A loader that wraps one of the game's own files, told apart from another mod's by what the file holds; a game with
+    // two names for its program; what must be there or must not be; how players connect.
+    Config cfg = shippedConfig();
+    GameSpec g;
+    std::wstring why;
+    std::string r = communityRecord("");
+    swapIn(r, R"("components": [)", R"("components": [{ "id": "keep", "name": "Original", "sourceGame": ["real.dll", "lib.dll"], "targetName": "real.dll",
+        "target": "${GAME_DIR}", "required": true, "onlyIfFile": { "path": "lib.dll", "contains": "the-real-lib" } },)");
+    swapIn(r, R"("targetDir")", R"("requires": [{ "path": "game.exe", "sha256": [")" + std::string(64, 'a') +
+        R"("], "message": "Needs 1.0", "url": "https://example.com/help", "warn": true }, { "path": "Other.dll", "absent": true, "message": "No" }], "targetDir")");
+    swapIn(r, R"("validationFiles")", R"("alternateExecutables": ["other.exe"], "validationFiles")");
+    swapIn(r, R"("uri": "steam://rungameid/123456")", R"("executable": "${GAME_DIR}\\${GAME_EXE}")");
+    swapIn(r, R"("author")", R"("connection": { "ports": ["7788/UDP"], "vpn": "sometimes", "note": "x" }, "author")");
+    if (!readCommunityMod(r, cfg, false, g, why)) fprintf(stderr, "%ls\n%s\n", why.c_str(), r.c_str());
+    REQUIRE(g.mod != nullptr);
+    CHECK(g.mod->components[0].sourceGame.size() == 2 && g.mod->components[0].onlyIfContains == L"the-real-lib");
+    CHECK(g.mod->install.requires_[0].warn && g.mod->install.requires_[0].url == L"https://example.com/help" && g.mod->install.requires_[1].absent);
+    CHECK(g.mod->game.alternateExecutables == std::vector<std::wstring>{L"other.exe"});
+    CHECK(g.mod->launch.executable == L"${GAME_DIR}\\${GAME_EXE}");
+
+    auto refused = [&](const std::string& from, const std::string& to, const wchar_t* want) {
+        std::string x = r;
+        swapIn(x, from, to);
+        GameSpec h;
+        bool ok = !readCommunityMod(x, cfg, false, h, why) && why.find(want) != std::wstring::npos;
+        if (!ok) fprintf(stderr, "wanted %ls, got %ls\n", want, why.c_str());
+        return ok;
+    };
+    CHECK(refused(R"(["real.dll", "lib.dll"])", R"(["..\\..\\Windows\\x.dll"])", L"sourceGame"));
+    CHECK(refused(R"(["real.dll", "lib.dll"])", R"(["C:\\Windows\\x.dll"])", L"sourceGame"));
+    CHECK(refused(R"("targetName": "real.dll",)", "", L"sourceGame needs a targetName"));
+    CHECK(refused(R"("path": "lib.dll")", R"("path": "..\\lib.dll")", L"onlyIfFile"));
+    CHECK(refused(R"("contains": "the-real-lib")", R"("contains": "")", L"onlyIfFile"));
+    CHECK(refused(R"("contains": "the-real-lib")", R"("contains": "x", "run": "y")", L"onlyIfFile.run"));
+    CHECK(refused(R"("warn": true)", R"("warn": true, "exec": "x")", L"exec"));
+    CHECK(refused(R"(["other.exe"])", R"(["..\\other.exe"])", L"alternateExecutables"));
+    CHECK(refused(R"("executable": "${GAME_DIR}\\${GAME_EXE}")", R"("executable": "${GAME_DIR}\\${env:COMSPEC}.exe")", L"launch.executable must be"));
+}
+
 TEST(community_record_for_a_newer_launcher_is_left_out) {
     // The engine leaves it out with a reason (the app shows a card asking for an update), and reads nothing else of it.
     Config cfg = shippedConfig();

@@ -881,6 +881,7 @@ mod::Spec readMod(const Value& v, const GameSpec& game, const std::wstring& wher
         gs.str("name", m.game.name);
         gs.str("executable", m.game.executable);
         gs.str("steamAppId", m.game.steamAppId);
+        gs.strList("alternateExecutables", m.game.alternateExecutables);
         gs.strList("validationFiles", m.game.validationFiles);
         gs.strList("processNames", m.game.processNames);
         gs.boolean("allowUnvalidated", m.game.allowUnvalidated);
@@ -918,6 +919,10 @@ mod::Spec readMod(const Value& v, const GameSpec& game, const std::wstring& wher
                 Section rs(&rq->at(i), is.child("requires") + L"[" + std::to_wstring(i) + L"]", issues);
                 rs.str("path", r.path);
                 rs.str("message", r.message);
+                rs.str("url", r.url);
+                rs.strList("sha256", r.sha256);
+                rs.boolean("absent", r.absent);
+                rs.boolean("warn", r.warn);
                 m.install.requires_.push_back(std::move(r));
             }
         is.boolean("backupOverwritten", m.install.backupOverwritten);
@@ -936,6 +941,11 @@ mod::Spec readMod(const Value& v, const GameSpec& game, const std::wstring& wher
             cs.str("targetName", c.targetName);
             cs.strList("sourceGame", c.sourceGame);
             cs.strList("skipIfPresent", c.skipIfPresent);
+            if (auto only = cs.get("onlyIfFile", Type::Object)) {
+                Section os(only, cs.child("onlyIfFile"), issues);
+                os.str("path", c.onlyIfFile);
+                os.str("contains", c.onlyIfContains);
+            }
             cs.boolean("required", c.required);
             cs.boolean("selected", c.selected);
             if (c.name.empty()) c.name = widen(c.id);
@@ -1374,6 +1384,9 @@ void validateConfig(const Config& cfg, std::vector<ConfigIssue>& issues) {
                 for (const auto& sg : c.sourceGame)
                     if (mod::normRel(sg).empty() || sg.find(L"..") != std::wstring::npos)
                         err(mw + L".components." + widen(c.id) + L".sourceGame", L"paths inside the game folder");
+                if (c.onlyIfFile.empty() != c.onlyIfContains.empty() ||
+                    (!c.onlyIfFile.empty() && (mod::normRel(c.onlyIfFile).empty() || c.onlyIfFile.find(L'$') != std::wstring::npos)))
+                    err(mw + L".components." + widen(c.id) + L".onlyIfFile", L"a \"path\" inside the game folder and the text it \"contains\"");
                 checkVars(c.source, mw + L".components", issues);
                 checkVars(c.target, mw + L".components", issues);
             }
@@ -1400,7 +1413,17 @@ void validateConfig(const Config& cfg, std::vector<ConfigIssue>& issues) {
                 if (rp.empty() || rp.find(L'$') != std::wstring::npos || mod::normRel(rp).empty())
                     err(mw + L".install.requires[" + std::to_wstring(k) + L"].path",
                         L"a path inside the game folder, without ${GAME_DIR} (BepInEx\\core)");
+                const mod::Requirement& rq = m.install.requires_[k];
+                std::wstring rw = mw + L".install.requires[" + std::to_wstring(k) + L"]";
+                if (!rq.url.empty() && !startsWithI(rq.url, L"https://")) err(rw + L".url", L"must be an https:// address");
+                if (rq.absent && !rq.sha256.empty()) err(rw, L"\"absent\" and \"sha256\" can't go together");
+                for (const auto& h : rq.sha256)
+                    if (h.size() != 64 || !std::all_of(h.begin(), h.end(), [](wchar_t ch) { return (ch >= L'0' && ch <= L'9') || (ch >= L'a' && ch <= L'f'); }))
+                        err(rw + L".sha256", L"64 lower-case hex digits each");
             }
+            for (const auto& name : m.game.alternateExecutables)
+                if (name.empty() || name.find_first_of(L"/\\:$") != std::wstring::npos)
+                    err(mw + L".game.alternateExecutables", L"file names");
             for (size_t k = 0; k < m.install.uninstallCleanup.size(); ++k) {
                 const std::wstring& pat = m.install.uninstallCleanup[k];
                 std::wstring prefix = pat.substr(0, pat.find_first_of(L"*?"));
@@ -1600,8 +1623,14 @@ bool checkCommunityShape(const Value& r, const std::wstring& id, const std::wstr
 
     const Value* g = m->find("game");
     if (!g || !g->isObject()) return refuse(error, L"no mod.game");
-    if (!onlyKeys(*g, {"name", "executable", "steamAppId", "validationFiles", "processNames", "detection"}, L"mod.game", error))
+    if (!onlyKeys(*g, {"name", "executable", "alternateExecutables", "steamAppId", "validationFiles", "processNames", "detection"}, L"mod.game", error))
         return false;
+    if (const Value* alt = g->find("alternateExecutables")) {
+        bool ok = alt->isArray() && alt->size() > 0 && alt->size() <= 5;
+        for (size_t i = 0; ok && i < alt->size(); ++i)
+            ok = alt->at(i).isString() && !alt->at(i).str().empty() && widen(alt->at(i).str()).find_first_of(L"/\\:$") == std::wstring::npos;
+        if (!ok) return refuse(error, L"mod.game.alternateExecutables: one to five file names");
+    }
     if (strOf(*g, "name").empty()) return refuse(error, L"mod.game.name is missing");
     if (strOf(*g, "executable").find_first_of(L"/\\:$") != std::wstring::npos) return refuse(error, L"mod.game.executable must be a file name");
     if (!allDigits(strOf(*g, "steamAppId"))) return refuse(error, L"mod.game.steamAppId must be digits");
@@ -1644,7 +1673,7 @@ bool checkCommunityShape(const Value& r, const std::wstring& id, const std::wstr
         if (const Value* req = in->find("requires"); req && req->isArray())
             for (size_t i = 0; i < req->size(); ++i) {
                 if (!req->at(i).isObject()) return refuse(error, L"mod.install.requires: objects with path and message");
-                if (!onlyKeys(req->at(i), {"path", "message"}, L"mod.install.requires", error)) return false;
+                if (!onlyKeys(req->at(i), {"path", "message", "url", "sha256", "absent", "warn"}, L"mod.install.requires", error)) return false;
             }
     }
 
@@ -1654,14 +1683,30 @@ bool checkCommunityShape(const Value& r, const std::wstring& id, const std::wstr
         const Value& c = cs->at(i);
         std::wstring where = L"mod.components[" + std::to_wstring(i) + L"]";
         if (!c.isObject()) return refuse(error, where + L": must be an object");
-        if (!onlyKeys(c, {"id", "name", "source", "target", "targetName", "required", "skipIfPresent"}, where, error)) return false;
+        if (!onlyKeys(c, {"id", "name", "source", "sourceGame", "target", "targetName", "required", "skipIfPresent", "onlyIfFile"}, where, error)) return false;
         // Left out when the game already has one of these (a loader another mod installed): paths in the game folder.
         if (const Value* sk = c.find("skipIfPresent")) {
             bool ok = sk->isArray() && sk->size() > 0 && sk->size() <= 10;
             for (size_t k = 0; ok && k < sk->size(); ++k) ok = sk->at(k).isString() && insidePackage(widen(sk->at(k).str()));
             if (!ok) return refuse(error, where + L".skipIfPresent: one to ten paths inside the game folder, such as BepInEx/core");
         }
-        if (!insidePackage(strOf(c, "source"))) return refuse(error, where + L".source: a path inside the package");
+        // A copy of a file the game already has, under a name of its own, for a loader that wraps it: it reads and writes
+        // only inside the game folder, and the copy goes on uninstall.
+        if (const Value* sg = c.find("sourceGame")) {
+            bool ok = sg->isArray() && sg->size() > 0 && sg->size() <= 5;
+            for (size_t k = 0; ok && k < sg->size(); ++k) ok = sg->at(k).isString() && insidePackage(widen(sg->at(k).str()));
+            if (!ok) return refuse(error, where + L".sourceGame: one to five paths inside the game folder");
+            if (strOf(c, "targetName").empty()) return refuse(error, where + L".sourceGame needs a targetName");
+        } else if (!insidePackage(strOf(c, "source"))) {
+            return refuse(error, where + L".source: a path inside the package");
+        }
+        if (const Value* only = c.find("onlyIfFile")) {
+            if (!only->isObject()) return refuse(error, where + L".onlyIfFile: an object with path and contains");
+            if (!onlyKeys(*only, {"path", "contains"}, where + L".onlyIfFile", error)) return false;
+            std::wstring text = strOf(*only, "contains");
+            if (!insidePackage(strOf(*only, "path")) || text.empty() || text.size() > 200)
+                return refuse(error, where + L".onlyIfFile: a path inside the game folder and up to 200 characters of text");
+        }
         std::wstring target = strOf(c, "target");
         if (!target.empty() && !insideGame(target)) return refuse(error, where + L".target must be inside ${GAME_DIR}");
     }
@@ -1674,8 +1719,9 @@ bool checkCommunityShape(const Value& r, const std::wstring& id, const std::wstr
     if (uri.empty() == exe.empty())
         return refuse(error, L"mod.launch: either uri (steam://rungameid/<app id>) or executable (${GAME_DIR}\\<program>.exe)");
     if (!exe.empty()) {
-        bool ok = startsWithI(exe, L"${GAME_DIR}\\") && exe.find(L"..") == std::wstring::npos &&
-                  exe.find_first_of(L"$:/", 12) == std::wstring::npos && exe.size() > 16 && iequals(exe.substr(exe.size() - 4), L".exe");
+        bool ok = iequals(exe, L"${GAME_DIR}\\${GAME_EXE}") ||  // the game itself, under whichever name this folder has
+                  (startsWithI(exe, L"${GAME_DIR}\\") && exe.find(L"..") == std::wstring::npos &&
+                   exe.find_first_of(L"$:/", 12) == std::wstring::npos && exe.size() > 16 && iequals(exe.substr(exe.size() - 4), L".exe"));
         return ok ? true : refuse(error, L"mod.launch.executable must be ${GAME_DIR}\\<program>.exe, inside the game folder");
     }
     std::wstring tail = startsWithI(uri, L"steam://rungameid/") ? uri.substr(18) : L"";
@@ -1737,7 +1783,7 @@ bool readCommunityMod(std::string_view text, const Config& cfg, bool localReleas
     if (!repoName(repo)) return refuse(error, L"repo must be \"owner/name\"");
     if (tooNew(r, error)) return false;
     if (!onlyKeys(r, {"id", "repo", "kind", "platform", "tag", "version", "asset", "url", "sha256", "manifest_sha256", "author", "authorUrl",
-                      "approved_at", "approved_by", "minLauncher", "mod", "description", "players", "maxPlayers", "color", "colorEnd", "guide"},
+                      "approved_at", "approved_by", "minLauncher", "mod", "description", "players", "maxPlayers", "color", "colorEnd", "guide", "connection"},
                   L"record", error))
         return false;
     if (!plainSegment(tag) || !plainSegment(asset)) return refuse(error, L"tag and asset must be plain names");
@@ -1838,7 +1884,7 @@ bool readTeamMod(std::string_view text, const Config& cfg, bool localRelease, Ga
     if (r.find("flash") && !r.find("mod")) return refuse(error, L"");
     // The record's own keys; the rest is a launcher.json games[] entry: the card and the mod, no buttons of its own.
     if (!onlyKeys(r, {"id", "repo", "platform", "author", "minLauncher", "approved_at", "approved_by", "name", "description", "players", "maxPlayers", "color",
-                      "colorEnd", "guide", "categories", "site", "online", "image", "imageFocus", "mod", "actions", "settings"},
+                      "colorEnd", "guide", "connection", "categories", "site", "online", "image", "imageFocus", "mod", "actions", "settings"},
                   L"team record", error))
         return false;
     std::string sid = narrow(id);

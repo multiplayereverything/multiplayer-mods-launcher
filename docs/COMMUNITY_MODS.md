@@ -75,25 +75,40 @@ A community record:
 
 - `url` must be exactly `https://github.com/<repo>/releases/download/<tag>/<asset>`.
 - `mod` is a launcher.json `mod` recipe limited to what can't reach outside the game folder:
-  - `game`: `name`, `executable` (a file name), `steamAppId` (digits), `validationFiles`, `processNames`, and
-    `detection` with only `steam` and `path` rules; a `steam` rule may have `subPath`, a folder inside the game's
-    Steam folder (`Atlas\Binaries\Win64`), never `..`, a drive or a variable;
+  - `game`: `name`, `executable` (a file name), `alternateExecutables` (one to five other names the game's program has
+    in some builds; `${GAME_EXE}` is whichever the folder has), `steamAppId` (digits), `validationFiles`,
+    `processNames`, and `detection` with only `steam` and `path` rules; a `steam` rule may have `subPath`, a folder inside
+    the game's Steam folder (`Atlas\Binaries\Win64`), never `..`, a drive or a variable;
   - `install`: `targetDir` inside `${GAME_DIR}`, `stateDir` inside `${GAME_DIR}` or `${INSTALL_DIR}` (where the install
-    record is kept; the default is `${INSTALL_DIR}\.installer`), `preserve`, `requires` (each `path` relative to the game folder, like `BepInEx\core`, without `${GAME_DIR}`), `uninstallCleanup`;
+    record is kept; the default is `${INSTALL_DIR}\.installer`), `preserve`, `requires` (below), `uninstallCleanup`;
+  - each of `requires` has a `path` relative to the game folder, like `BepInEx\core`, without `${GAME_DIR}`, and says
+    what the folder must have or be without. The file or folder is there; with `sha256` (a list of 64 hex digit hashes),
+    the file is one of those exact versions; with `"absent": true`, it is **not** there (another mod that can't share the
+    folder, found whether it came through the launcher or by hand). One that fails keeps Install off and shows `message`;
+    with `"warn": true` it only shows it. `url`: an https page that helps, shown as a button;
   - `install` may also have `uninstallCleanupWith`: the `id` of one of the components (the loader). Then
     `uninstallCleanup` is deleted only when that component is uninstalled too;
   - `components`: `id`, `name`, `source` (inside the package), `target` inside `${GAME_DIR}` or `${INSTALL_DIR}`,
     `targetName`, `required`, and `skipIfPresent`: one to ten paths in the game folder (`BepInEx/core`); the component
     is left out when the game has one already (a loader another mod installed);
+  - a component may have `sourceGame` instead of `source`: one to five paths in the game folder, and the first that exists
+    is copied to `targetName` (required). For a loader that wraps one of the game's own files and needs the original
+    beside it. List it before the component that takes the file's name; the replaced file is backed up and comes back on
+    uninstall by itself;
+  - a component may have `onlyIfFile`: `{ "path", "contains" }`, a game-folder file and up to 200 characters it must hold.
+    Otherwise the component is left out. It tells a game's own library from another mod's loader that took its name,
+    which `skipIfPresent` can't. Like `skipIfPresent`, it is decided at the first install, so an update keeps what is ours;
   - `launch`: `uri` (`steam://rungameid/<app id>` or `${STEAM_APP_ID}`) or `executable`
-    (`${GAME_DIR}\<program>.exe`, a program in the game's folder, no `..`, `$`, `:` or `/` after it), one of the two,
-    and `hint`;
+    (`${GAME_DIR}\<program>.exe`, a program in the game's folder, no `..`, `$`, `:` or `/` after it, or exactly
+    `${GAME_DIR}\${GAME_EXE}`, the game itself), one of the two, and `hint`;
   - `package`: only `extras`, one to three loader downloads from the mod's own releases, each
     `{ "dir", "tag", "asset", "url", "sha256" }`: `dir` the folder name the loader unpacks into inside the package
     (`loader`, so components use `loader/BepInEx/core`), `url` exactly
     `https://github.com/<repo>/releases/download/<tag>/<asset>`, `sha256` pinned at approval like the mod's own.
 - Any other key, anywhere, refuses the whole record, so a record can never do more than it shows: no `package.github`
-  or other download, no `allowedRoots`, no `sourceGame`, no registry or Epic detection.
+  or other download, no `allowedRoots`, no registry or Epic detection, and nothing that runs a mod's own installer.
+- A record that uses `sourceGame`, `onlyIfFile`, `alternateExecutables`, `connection`, `${GAME_EXE}` in `launch`, or
+  anything but `path` and `message` in `requires` says `"minLauncher": "1.0.47"`.
 - `minLauncher` (any record): the oldest launcher that understands it, such as `"1.0.42"`. An older launcher shows a
   card named after the game that says to update, with nothing to press, and reads nothing else of the record.
 - After those rules the mod gets every check a launcher.json mod gets. An id launcher.json already has is refused.
@@ -103,6 +118,8 @@ A community record:
 The website's form writes only the record above. A record the team writes by hand (a mod moved out of launcher.json)
 may also carry what launcher.json gives a card, and may be a card that only links to the mod's page:
 
+- `connection`: how players reach each other, shown on the game's page. `ports` (up to 6, such as `"7788/UDP"`), `vpn`
+  (`"no"`, `"sometimes"` or `"yes"`) and `note` (at most 300 characters). A team record may have it too.
 - `description` and `players` (text, at most 600 characters), `maxPlayers`, `color` and `colorEnd` (`#RRGGBB`), and
   `guide` with `needs`, `steps` and `tips` (up to 12 texts each), `keys` (`{ "key", "does" }`) and `links`
   (`{ "label", "url" }`, https only, at most 3). The launcher puts its credit tip first and the repository's link last,
