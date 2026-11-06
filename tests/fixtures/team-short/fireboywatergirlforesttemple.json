@@ -2,7 +2,7 @@
   "id": "fireboywatergirlforesttemple",
   "repo": "multiplayereverything/flash-games",
   "minLauncher": "1.0.43",
-  "approved_at": "2026-11-04",
+  "approved_at": "2026-11-06",
   "approved_by": "Multiplayer Everything Team",
   "name": "Fireboy & Watergirl: The Forest Temple",
   "players": "2 players (online co-op)",
@@ -48,5 +48,6 @@
       "label": "Play on one keyboard",
       "description": "Both players on this PC"
     }
-  }
+  },
+  "site": "fireboywatergirl"
 }
