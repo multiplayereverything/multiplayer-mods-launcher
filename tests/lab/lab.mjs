@@ -8,6 +8,7 @@
 // or %LOCALAPPDATA%\fl-lab\edgedriver-<version>\msedgedriver.exe), and the C++ launcher's Debug build (FL_LAUNCHER_EXE,
 // default old\build\Debug), whose launcher_tests.exe is the fake player.
 import { execFileSync, spawn, spawnSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -306,6 +307,21 @@ const scenarios = {
     await wd.exec("window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F5' }))")
     await check('a newer build in the catalog shows as an update', (await waitFor(async () => (await pill()).includes('Update available'), 10000)) === true, await pill())
     await check('the update can be downloaded', (await wd.count(panel('Download the update'))) === 1)
+    // The real way round: the file is back to what the catalog says, a new build is published, and the launcher finds it itself.
+    writeFileSync(join(work, 'data', 'catalog.json'), readFileSync(join(work, 'www', 'catalog.json')))
+    await wd.exec("window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F5' }))")
+    await check('the saved catalog matches the file: no update', (await waitFor(async () => (await pill()).includes('Ready'), 10000)) === true, await pill())
+    const newBuild = 'pretend game file, a newer build'
+    writeFileSync(join(work, 'www', 'games', 'dlgame', 'dl.swf'), newBuild)
+    cat.files[0].size = newBuild.length
+    cat.files[0].sha256 = createHash('sha256').update(newBuild).digest('hex')
+    writeFileSync(join(work, 'www', 'catalog.json'), JSON.stringify(cat))
+    await wd.exec("window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F5', ctrlKey: true }))")
+    await check('a build published since is found and offered', (await waitFor(async () => (await pill()).includes('Update available'), 15000)) === true, await pill())
+    await wd.click(panel('Download the update'))
+    await check('Download the update brings the new build', (await waitFor(async () => readFileSync(file, 'utf8') === newBuild, 15000)) === true)
+    await check('the update stops being offered after the download', (await waitFor(async () => (await pill()).includes('Ready'), 10000)) === true, await pill())
+    await check('the update button is gone', (await wd.count(panel('Download the update'))) === 0)
   },
 
   async locate() {

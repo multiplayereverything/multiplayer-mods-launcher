@@ -356,8 +356,86 @@ fn game_files_come_from_the_catalog_checked_and_renamed_into_place() {
     assert!(!paths::exists(&paths::join(&games, "dl.swf.part")));
 }
 
+#[test]
+fn the_saved_catalog_follows_the_published_one_so_a_new_build_is_offered() {
+    let dir = TempDir::new("catalog-refresh");
+    let data = dir.join("data");
+    let games = dir.join("games");
+    let saved = paths::join(&data, "catalog.json");
+    let web = Server::new();
+    let url = web.url("/catalog.json");
+    let catalog = |file: &[u8]| format!(r#"{{ "files": [ {{ "name": "a.swf", "game": "ga", "path": "a.swf", "sha256": "{}" }} ] }}"#, sha(file));
+    std::fs::create_dir_all(&games).unwrap();
+    std::fs::write(paths::join(&games, "a.swf"), b"old build").unwrap();
+    let offered = || {
+        let text = paths::read_file(&saved).unwrap();
+        outdated_game_files(&parse_catalog(&text, &url).unwrap(), &games).len()
+    };
+
+    // No copy yet, even with the data folder missing: it is fetched and kept.
+    web.set("/catalog.json", catalog(b"old build").as_bytes());
+    assert_eq!(refresh_catalog_within(&url, &data, 3600), Ok(true));
+    assert_eq!(offered(), 0);
+
+    // A new build is published: not asked for while the saved copy is under its age limit, then it is offered.
+    web.set("/catalog.json", catalog(b"new build").as_bytes());
+    let hits = web.hits("/catalog.json");
+    assert_eq!(refresh_catalog_within(&url, &data, 3600), Ok(false));
+    assert_eq!(web.hits("/catalog.json"), hits);
+    assert_eq!(offered(), 0);
+    assert_eq!(refresh_catalog_within(&url, &data, 0), Ok(true));
+    assert_eq!(offered(), 1);
+
+    // Asked again with nothing new: no reason to read the library again.
+    assert_eq!(refresh_catalog_within(&url, &data, 0), Ok(false));
+
+    // A catalog that doesn't parse, or none at all, never replaces the copy that works.
+    web.set("/catalog.json", b"{ nope");
+    assert!(refresh_catalog_within(&url, &data, 0).is_err());
+    assert_eq!(offered(), 1);
+    assert!(!paths::exists(&format!("{saved}.part")));
+}
+
 /// The commands read launcher.json from FL_LAUNCHER_CONFIG, which is the whole process's: one test at a time.
 static CONFIG_ENV: Mutex<()> = Mutex::new(());
+
+#[test]
+fn downloading_a_game_saves_the_catalog_it_used_so_the_update_stops_being_offered() {
+    let _one = CONFIG_ENV.lock().unwrap();
+    let dir = TempDir::new("catalog-download-saves");
+    let web = Server::new();
+    let new_build = b"new build";
+    web.set("/a.swf", new_build);
+    let catalog = format!(r#"{{ "files": [ {{ "name": "a.swf", "game": "ga", "path": "a.swf", "sha256": "{}" }} ] }}"#, sha(new_build));
+    web.set("/catalog.json", catalog.as_bytes());
+    let url = web.url("/catalog.json");
+    let cfg = dir.join("launcher.json");
+    std::fs::write(
+        &cfg,
+        format!(
+            r#"{{ "paths": {{"games": "${{LAUNCHER_DIR}}\\games", "players": "${{LAUNCHER_DIR}}\\players", "data": "${{LAUNCHER_DIR}}\\data", "flashpoint": []}},
+                 "downloads": {{ "catalog": "{url}" }},
+                 "players": [{{ "id": "plain", "name": "Plain", "paths": ["x.exe"] }}],
+                 "games": [{{ "id": "ga", "name": "A", "actions": [{{ "id": "p", "swf": "a.swf" }}] }}] }}"#
+        ),
+    )
+    .unwrap();
+    let (data, games) = (dir.join("data"), dir.join("games"));
+    std::fs::create_dir_all(&data).unwrap();
+    std::fs::create_dir_all(&games).unwrap();
+    // The player has the old build, and a saved list from when that was the newest.
+    std::fs::write(paths::join(&games, "a.swf"), b"old build").unwrap();
+    std::fs::write(paths::join(&data, "catalog.json"), format!(r#"{{ "files": [ {{ "name": "a.swf", "game": "ga", "path": "a.swf", "sha256": "{}" }} ] }}"#, sha(b"old build"))).unwrap();
+
+    unsafe { std::env::set_var("FL_LAUNCHER_CONFIG", &cfg) };
+    let (code, msg) = download_game_command("ga", &mut |_| {});
+    unsafe { std::env::remove_var("FL_LAUNCHER_CONFIG") };
+    assert_eq!((code, msg.as_str()), (0, ""));
+
+    assert_eq!(paths::sha256_file(&paths::join(&games, "a.swf")), sha(new_build));
+    let text = paths::read_file(&paths::join(&data, "catalog.json")).unwrap();
+    assert!(outdated_game_files(&parse_catalog(&text, &url).unwrap(), &games).is_empty());
+}
 
 #[test]
 fn unknown_ids_exit_3_as_the_cpp_launcher_did() {

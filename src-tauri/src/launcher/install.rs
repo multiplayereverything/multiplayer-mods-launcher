@@ -368,6 +368,36 @@ pub fn fetch_catalog(url: &str, cancel: Option<&AtomicBool>) -> Result<(Vec<Cata
     Ok((files, raw))
 }
 
+/// The data folder's catalog.json, what the cards compare game files with and take a game's settings from. Written beside
+/// its place first, so a cut-off write never leaves a catalog that doesn't parse.
+fn save_catalog(data_dir: &str, raw: &[u8]) -> bool {
+    let path = paths::join(data_dir, "catalog.json");
+    let part = format!("{path}.part");
+    paths::ensure_dir(data_dir);
+    if paths::write_file(&part, raw) && paths::move_file(&part, &path, true).is_ok() {
+        return true;
+    }
+    paths::delete_file(&part);
+    false
+}
+
+/// Brings catalog.json up to date, unless the saved copy is under `max_age` seconds old; 0 always asks. True when a catalog
+/// that differs from the saved one came. A failed fetch keeps the saved copy and says why.
+pub fn refresh_catalog_within(url: &str, data_dir: &str, max_age: i64) -> Result<bool, String> {
+    let path = paths::join(data_dir, "catalog.json");
+    let age = std::fs::metadata(&path).and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok());
+    if age.is_some_and(|a| (a.as_secs() as i64) < max_age) {
+        return Ok(false);
+    }
+    let (_, raw) = fetch_catalog(url, None)?;
+    let changed = paths::read_file(&path).is_none_or(|saved| saved != raw);
+    // Written even when it's the same: the file's date is how old the copy counts as.
+    if !save_catalog(data_dir, &raw) {
+        return Err(format!("Cannot write {path}"));
+    }
+    Ok(changed)
+}
+
 /// Downloads `files` into `dir`, each checked against its SHA-256 and written under a temporary name first. Files
 /// already there with the right checksum are kept.
 pub fn download_game_files(files: &[CatalogFile], dir: &str, progress: Progress, cancel: Option<&AtomicBool>) -> InstallResult {
@@ -577,7 +607,13 @@ pub fn download_game_command(id: &str, out: &mut dyn FnMut(&str)) -> (i32, Strin
             }
         } else {
             let files = match fetch_catalog(&cfg.downloads.catalog, None) {
-                Ok((f, _)) => f,
+                Ok((f, raw)) => {
+                    // The file is about to be this build, so the saved list has to say so too, or the card offers it again.
+                    if !save_catalog(&lib.data_dir(), &raw) {
+                        log::warn("The game catalog could not be saved");
+                    }
+                    f
+                }
                 Err(e) => return fail(1, format!("Cannot read the game catalog: {e}")),
             };
             wanted.extend(files.into_iter().filter(|f| id == "all" || f.game == id).map(|f| (games.clone(), f)));

@@ -10,7 +10,9 @@ use super::community;
 use super::catalog::{GameOptions, cached_catalog_settings, coop_save_game, installed_player_version, outdated_game_files, parse_catalog};
 use super::config::{ActionSpec, Config, ConfigIssue, GameSpec, format_issues, load_config, load_config_file};
 use super::embedded::{LAUNCHER_VERSION, read_embedded};
+use super::install::refresh_catalog_within;
 use super::library::Library;
+use super::log;
 use super::paths;
 use super::settings::{UserData, load_user_data};
 use super::site::{SiteGame, fetch_site_covers, find_site, load_site_cache, mark_community, merge_projects, merge_site, parse_site, projects_url, refresh_site_cache_within};
@@ -125,8 +127,8 @@ pub fn library_json() -> Result<Value, String> {
 }
 
 /// What the launcher reads from the internet about its games, brought up to date: mods-info's records and releases (its
-/// zip, at most every 15 minutes), and, at most once an hour, the website's games.json with any new covers it points at. True when the library should be read
-/// again. The C++ window fetched games.json on its own thread at start.
+/// zip, at most every 15 minutes), and, at most once an hour, the website's games.json with any new covers it points at
+/// and the game catalog. True when the library should be read again. The C++ window fetched games.json on its own thread at start.
 /// `force` (Ctrl+F5) asks again even when the saved copies are under an hour old.
 pub fn refresh_online_lists(force: bool) -> Result<bool, String> {
     let max_age = if force { 0 } else { community::MAX_AGE_SECONDS };
@@ -137,8 +139,15 @@ pub fn refresh_online_lists(force: bool) -> Result<bool, String> {
         super::mods_zip::refresh(&cfg.downloads.mods_info_zip, &community::mods_info_base(&cfg), &data_dir_of(&cfg), force)
     };
     let site = refresh_site(&cfg, max_age);
+    // Which game files have a newer build. A failure here says nothing about the lists, and the saved copy still works.
+    let catalog = !cfg.downloads.catalog.is_empty()
+        && refresh_catalog_within(&cfg.downloads.catalog, &data_dir_of(&cfg), max_age).unwrap_or_else(|e| {
+            log::warn(&format!("Game catalog not refreshed: {e}"));
+            false
+        });
     match (community, site) {
-        (Ok(a), Ok(b)) => Ok(a || b),
+        (Ok(a), Ok(b)) => Ok(a || b || catalog),
+        _ if catalog => Ok(true),
         (Ok(true), _) | (_, Ok(true)) => Ok(true),
         (Err(e), _) | (_, Err(e)) => Err(e),
     }

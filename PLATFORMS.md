@@ -32,6 +32,7 @@ Newest first. One line per update: version, what changed, and whether each platf
 
 | Date | Version | Change | Windows | Linux |
 |---|---|---|---|---|
+| 2026-11-06 | 1.0.47 | The app saves the game catalog (at most hourly, and on a download), so a new build of a Flash game file is offered and its host settings show | yes, not released | shared Rust, comes with the Linux build |
 | 2026-11-06 | 1.0.47 | Developer records: `sourceGame`, `onlyIfFile`, `alternateExecutables`, `requires` with `sha256`, `absent`, `warn`, `url`; `connection` on the game's page; a zip with a non-ASCII file name unpacks (Windows `tar` skips it, Linux doesn't need this) | yes, not released | port with the Linux build |
 | 2026-11-05 | 1.0.46 | mods-info as one zip (`downloads.modsInfoZip`, a new crate, `zip`), and `releases.json` instead of GitHub's API for our mods; refreshed on window focus. Reads WinHTTP on Windows | yes | port with the Linux build |
 | 2026-11-05 | 1.0.46 | The launcher reads only mods-info `records/`: no fallback to the deleted `team/` and `community/` | yes | port with the Linux build |
