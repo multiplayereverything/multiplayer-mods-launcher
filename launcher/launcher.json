@@ -197,9 +197,9 @@
         // the one of the release zip; GitHub publishes the same value. To move to a new release, read the new code,
         // then change version, url and sha256 together.
         "package": {
-          "version": "0.7.3.1",
-          "url": "https://github.com/WoodyWizard/SporeCoop/releases/download/v0.7.3.1/SporeCoop-0.7.3.1.zip",
-          "sha256": "ab6723032da26adaa30b74900b8c16b467bc2b529db593bda90b19fc81198685"
+          "version": "0.7.11.1",
+          "url": "https://github.com/WoodyWizard/SporeCoop/releases/download/v0.7.11.1/SporeCoop-0.7.11.1.zip",
+          "sha256": "70d4fe5a624ab242d34884f7d6731cf25677195fe24b6f97f1b96663aa67ad27"
         }
       }
     }
