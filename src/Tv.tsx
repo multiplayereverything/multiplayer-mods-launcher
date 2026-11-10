@@ -4,7 +4,7 @@
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
 import { Cover } from './Cover'
 import type { Game, Library, ModInfo, Rooms } from './api'
-import { agoText, lastPlayed, leadAction, roomAbout, stateLine } from './model'
+import { agoText, cardLine, hasUpdate, lastPlayed, leadAction, roomAbout, stateLine } from './model'
 import { Glyph, Pips, Slots } from './ui'
 import { useDecode } from './useDecode'
 
@@ -36,7 +36,8 @@ export function PadKey({ k, pad }: { k: string; pad: boolean }) {
 // install). A mouse is pointing, not committing: a click on Home's row picks the game for the top (a double-click
 // plays it), a click in the grid opens its page.
 function TvTile({ game, c, onFocus }: { game: Game; c: TvCommon; onFocus?: () => void }) {
-  const line = stateLine(game, c.lib, c.mods, c.playingIds.has(game.id))
+  const full = stateLine(game, c.lib, c.mods, c.playingIds.has(game.id))
+  const line = cardLine(game, c.lib, c.mods, c.playingIds.has(game.id))
   const ready = leadAction(game)?.state === 'ready'
   const commit = () => (ready ? c.onPlay(game) : c.onOpen(game))
   const rooms = c.allRooms?.[game.id]?.rooms.length ?? 0
@@ -46,12 +47,13 @@ function TvTile({ game, c, onFocus }: { game: Game; c: TvCommon; onFocus?: () =>
       // detail is 0 for Enter, Space and the controller's A (a click() with no mouse).
       onClick={(e) => (e.detail === 0 ? commit() : onFocus ? undefined : c.onOpen(game))}
       onDoubleClick={() => onFocus && commit()}
-      aria-label={`${game.name}, ${line.text}${rooms ? `, ${rooms} open` : ''}`}>
+      aria-label={`${game.name}, ${full.text}${rooms ? `, ${rooms} open` : ''}`}>
       <span className="art">
         <Cover game={game} className="fill" />
         <span className="badges">
           {game.onlineId && <span className="badge">{t('badge.online', 'Online')}</span>}
           {game.mod && <span className="badge">{t('badge.pc', 'PC')}</span>}
+          {hasUpdate(game, c.lib, c.mods) && <span className="badge update">{t('badge.update', 'Update')}</span>}
         </span>
         {c.favs.has(game.id) && <span className="badge star">{'★'}</span>}
       </span>

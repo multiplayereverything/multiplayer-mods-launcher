@@ -103,6 +103,9 @@ const nav = (label) => `//nav[contains(@class,'navs')]//button[.//span[contains(
 const card = (name) => `//button[contains(@class,'card-c')][.//span[contains(@class,'name') and normalize-space(.)=${q(name)}]]`
 // A panel button by its label (its first line), whatever glyph comes before it.
 const panel = (label) => `//aside[contains(@class,'dpanel')]//button[.//span[normalize-space(.)=${q(label)}]]`
+// The panel's "..." button: what isn't the main way to play is folded under it, and it stays open on this page.
+const openMore = () => wd.exec("const b = document.querySelector('.dpanel .pdots'); if (b && b.getAttribute('aria-expanded') !== 'true') b.click(); return !!b")
+const readyList = () => wd.exec("return document.querySelector('.dpanel .pready')?.innerText ?? ''")
 const inDialog = (label) => `//div[@role='dialog']${button(label)}`
 const pill = () => wd.exec("return document.querySelector('.spill')?.textContent ?? ''")
 const toast = () => wd.exec("return [...document.querySelectorAll('.isl.note')].map(e => e.textContent).join(' ')")
@@ -116,6 +119,7 @@ async function openGame(name) {
 }
 async function launch(label) {
   clearArgs()
+  await openMore()
   await wd.click(panel(label))
   return launchedWith()
 }
@@ -211,7 +215,7 @@ const scenarios = {
     await wd.type("//input[@id='join-code']", 'qw3rt')
     a = await launchedWith()
     await check('Join with a code sends it in capitals', a.includes('--coop-join-relay') && a.includes('QW3RT'), a.join(' '))
-    await wd.click("//button[contains(normalize-space(.),'Other ways to connect')]")
+    await openMore()
     a = await launch('Host with your IP (2 players)')
     await check('Host with your IP hosts directly', a.join(' ').includes('--coop-host 7790'), a.join(' '))
     await wd.click(panel('Join by IP'))
@@ -225,6 +229,7 @@ const scenarios = {
     a = await launchedWith()
     await check('Join by IP adds the usual port to a bare IP', a.join(' ').includes('--coop-join 192.168.1.21:7790'), a.join(' '))
     await check('Play solo is hidden while offline play is off', (await wd.count(panel('Play solo'))) === 0)
+    await openMore()
     await wd.click(panel('Favorite'))
     await check('Favorite is saved', (await waitFor(() => settings().games?.coop?.favorite === true)) === true)
     await wd.click(panel('Guide'))
@@ -292,7 +297,7 @@ const scenarios = {
 
   async download() {
     await openGame('Download Test')
-    await check('a missing file says so', (await waitFor(async () => (await pill()).includes('missing'))) === true, await pill())
+    await check('a missing file is left to the launcher, and the list says so', (await waitFor(async () => (await pill()).includes('Almost ready') && (await readyList()).includes('Not downloaded yet'))) === true, `${await pill()} ${await readyList()}`)
     // Play on a game whose file is missing offers the download first.
     await wd.click(panel('Play'))
     await check('Play on a missing game offers the download', !!(await wd.find("//div[@role='dialog']//h2[starts-with(normalize-space(.),'Download')]", 4000).catch(() => null)))
@@ -307,6 +312,11 @@ const scenarios = {
     await wd.exec("window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F5' }))")
     await check('a newer build in the catalog shows as an update', (await waitFor(async () => (await pill()).includes('Update available'), 10000)) === true, await pill())
     await check('the update can be downloaded', (await wd.count(panel('Download the update'))) === 1)
+    await check('the update is the red button, ahead of playing', await wd.exec("return !!document.querySelector('.dpanel .pbtn.primary')?.textContent.includes('Download the update')"))
+    await wd.click(nav('All games'))
+    await check('the card shows the update', (await waitFor(async () => (await wd.count(`${card('Download Test')}//span[contains(@class,'update')]`)) === 1, 8000)) === true)
+    await wd.click(card('Download Test'))
+    await wd.find(`//h1[@aria-label=${q('Download Test')}]`)
     // The real way round: the file is back to what the catalog says, a new build is published, and the launcher finds it itself.
     writeFileSync(join(work, 'data', 'catalog.json'), readFileSync(join(work, 'www', 'catalog.json')))
     await wd.exec("window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F5' }))")
@@ -328,6 +338,7 @@ const scenarios = {
     await openGame('Locate Test')
     const copy = join(work, 'elsewhere', 'my copy.swf')
     await labPick(copy)
+    await openMore()
     await wd.click(panel('Locate the game file'))
     await check('Locate makes the game ready', (await waitFor(async () => (await pill()).includes('Ready'), 10000)) === true, await pill())
     await labPick(undefined)
@@ -346,14 +357,14 @@ const scenarios = {
     const ready = await waitFor(async () => wd.exec("return [...document.querySelectorAll('.dpanel .pbtn')].some(b => b.textContent.includes('Install') && !b.disabled)"), 15000)
     await check('Choose the game folder finds the game', ready === true)
     await wd.click(panel('Install Fake Game'))
-    await check('Install finishes', !!(await waitFor(async () => (await wd.count(panel('Repair'))) === 1, 30000)))
+    await check('Install finishes', !!(await waitFor(async () => (await openMore(), await wd.count(panel('Repair'))) === 1, 30000)))
     const dat = join(box.gameDir, 'Data', 'original.dat')
     await check('Install puts the mod\'s files in the game folder', readFileSync(dat, 'utf8') === 'MODDED 1.0.0' && existsSync(join(box.gameDir, 'Mods', 'mod-test', 'Mod.dll')))
     await check('the mod shows as installed', (await waitFor(async () => (await pill()).includes('Installed'), 10000)) === true, await pill())
     rmSync(join(box.gameDir, 'Mods', 'mod-test', 'Mod.dll'))
     await wd.click(panel('Repair'))
     await check('Repair puts back a deleted file', (await waitFor(() => existsSync(join(box.gameDir, 'Mods', 'mod-test', 'Mod.dll')), 30000)) === true)
-    await waitFor(async () => (await wd.count(panel('Uninstall'))) === 1, 30000)
+    await waitFor(async () => (await openMore(), await wd.count(panel('Uninstall'))) === 1, 30000)
     await wd.click(panel('Uninstall'))
     await wd.click(inDialog('Uninstall'))
     await check('Uninstall finishes', !!(await waitFor(async () => wd.exec("return [...document.querySelectorAll('.dpanel .pbtn')].some(b => b.textContent.includes('Install'))"), 30000)))
@@ -433,9 +444,10 @@ const scenarios = {
 
   async options() {
     await openGame('Co-op Test')
+    await openMore()
     await check('a co-op game offers its co-op save', (await wd.count("//select[@id='coop-save']")) === 1)
     await wd.exec("const s = document.getElementById('coop-save'); s.value = '2'; s.dispatchEvent(new Event('change', { bubbles: true }))")
-    await check('a new co-op game warns that it replaces the progress', (await wd.exec("return document.querySelector('.psel small')?.textContent ?? ''")).includes('replaces'))
+    await check('a new co-op game warns that it replaces the progress', (await wd.exec("return document.querySelector('.dpanel .pnote.tone-warn')?.textContent ?? ''")).includes('replaces'))
     await wd.click("//div[contains(@class,'pcheck')][.//span[normalize-space(.)='Friendly fire']]//button[@role='switch']")
     await check('a game setting is saved', (await waitFor(() => settings().games?.coop?.settings?.ff === '1')) === true)
     await wd.exec("const s = document.getElementById('set-speed'); s.value = 'fast'; s.dispatchEvent(new Event('change', { bubbles: true }))")
@@ -451,6 +463,7 @@ const scenarios = {
     await wd.type("//input[@id='join-code']", 'zzzzz\uE007')
     a = (await launchedWith()).join(' ')
     await check('joining passes only the settings for everyone', a.includes('--fast') && !a.includes('--friendly-fire') && !a.includes('--coop-save'), a)
+    await openMore()
     await check('Quick play finds the busiest open room', !!(await waitFor(async () => (await wd.exec("return [...document.querySelectorAll('.dpanel .pbtn')].map(b => b.textContent).join('|')")).includes('Join the busiest open room'), 8000)))
     a = (await launch('Quick play')).join(' ')
     await check('Quick play joins that room', a.includes('--coop-join-relay') && a.includes('ABCDE'), a)
@@ -458,6 +471,7 @@ const scenarios = {
 
   async players() {
     await openGame('Relay Test')
+    await openMore()
     await check('the player choice shows when two players are found', (await wd.count("//select[@id='game-player']")) === 1)
     await wd.exec("const s = document.getElementById('game-player'); s.value = 'second'; s.dispatchEvent(new Event('change', { bubbles: true }))")
     await check('the chosen player is saved', (await waitFor(() => settings().games?.relaygame?.player === 'second')) === true)
@@ -506,7 +520,7 @@ const scenarios = {
     await check('Install puts the pinned release in the game folder', (await waitFor(() => existsSync(dll), 30000)) === true)
     await check('a folder inside the zip is copied with its own subfolders', (await waitFor(() => existsSync(join(box.labGame, 'BepInEx', 'plugins', 'LabCoop', 'lang', 'en.txt')), 15000)) === true && !existsSync(join(box.labGame, 'BepInEx', 'plugins', 'LabCoop', 'LabCoop')))
     await check('the community mod shows as installed', (await waitFor(async () => (await pill()).includes('Installed'), 15000)) === true, await pill())
-    await waitFor(async () => (await wd.count(panel('Uninstall'))) === 1, 30000)
+    await waitFor(async () => (await openMore(), await wd.count(panel('Uninstall'))) === 1, 30000)
     await wd.click(panel('Uninstall'))
     await wd.click(inDialog('Uninstall'))
     await waitFor(async () => wd.exec("return [...document.querySelectorAll('.dpanel .pbtn')].some(b => b.textContent.includes('Install'))"), 30000)
@@ -522,7 +536,7 @@ const scenarios = {
       await wd.click(panel('Install Lab Solo'))
       const soloDll = join(box.labSolo, 'Mods', 'LabSolo.dll')
       await check('a single-file mod is copied as it was released', (await waitFor(() => existsSync(soloDll) && readFileSync(soloDll, 'utf8') === 'lab solo 0.3.0', 30000)) === true)
-      await waitFor(async () => (await wd.count(panel('Uninstall'))) === 1, 30000)
+      await waitFor(async () => (await openMore(), await wd.count(panel('Uninstall'))) === 1, 30000)
       await wd.click(panel('Uninstall'))
       await wd.click(inDialog('Uninstall'))
       await waitFor(async () => wd.exec("return [...document.querySelectorAll('.dpanel .pbtn')].some(b => b.textContent.includes('Install'))"), 30000)
@@ -603,7 +617,7 @@ const scenarios = {
     const started = await waitFor(() => /Starting: "[^"]*\\LabTeam\\LabTeam\.exe" --from-team-record {2}\(in [^)]*\\LabTeam\)/.test(logged()), 15000)
     await check('its Launch starts what the record says', started === true, logged().split(/\r?\n/).slice(-4).join(' // '))
     await waitFor(async () => !(await wd.exec("return document.querySelector('.island')?.textContent ?? ''")).includes('Playing'), FAKE_MS + 8000)
-    await waitFor(async () => (await wd.count(panel('Uninstall'))) === 1, 30000)
+    await waitFor(async () => (await openMore(), await wd.count(panel('Uninstall'))) === 1, 30000)
     await wd.click(panel('Uninstall'))
     await wd.click(inDialog('Uninstall'))
     await waitFor(async () => wd.exec("return [...document.querySelectorAll('.dpanel .pbtn')].some(b => b.textContent.includes('Install'))"), 30000)
@@ -642,13 +656,13 @@ const scenarios = {
     const guide = await wd.exec("return document.querySelector('.gp')?.innerText ?? ''")
     await check('its guide credits the developer and links the repository', guide.includes('Made by someone, not by Multiplayer Everything') && guide.includes('lab-devflash by someone on GitHub'), guide.slice(0, 400))
     await wd.click("//div[@role='tablist']//button[normalize-space(.)='Overview']")
-    await check('a missing file says so', (await waitFor(async () => (await pill()).includes('missing'))) === true, await pill())
+    await check('a missing file is left to the launcher, and the list says so', (await waitFor(async () => (await pill()).includes('Almost ready') && (await readyList()).includes('Not downloaded yet'))) === true, `${await pill()} ${await readyList()}`)
     await wd.click(panel('Download game files'))
     await check('Download fetches the pinned files', (await waitFor(async () => (await pill()).includes('Ready'), 20000)) === true, await pill())
     const dir = join(work, 'games', 'community', 'lab-devflash')
     await check("into the game's own folder in the games folder", existsSync(join(dir, 'LabDevFlash.swf')) && readFileSync(join(dir, 'LabDevFlash.swf'), 'utf8') === 'dev flash game 1.0' &&
       existsSync(join(dir, 'lab-devflash.keys')))
-    await wd.click("//button[contains(normalize-space(.),'Other ways to connect')]")
+    await openMore()
     const played = await launch('Host with your IP (2 players)')
     const k = played.indexOf('--coop-keys')
     await check("the launcher's own Host with your IP starts the pinned file with its key map", played.some((x) => x.endsWith('LabDevFlash.swf')) && k >= 0 &&
@@ -660,9 +674,9 @@ const scenarios = {
     await wd.exec("return window.__TAURI_INTERNALS__.invoke('set_game_player', { game: 'lab-newflash', player: 'rt' })")
     await openGame('Lab New Flash')
     await wd.click(panel('Download game files'))
-    const needs = await waitFor(async () => (await pill()).includes('Needs Updater Test 99.0 or newer'), 20000)
-    await check('a game for a newer player says which release it needs', needs === true, await pill())
-    await wd.click("//button[contains(normalize-space(.),'Other ways to connect')]")
+    const needs = await waitFor(async () => (await readyList()).includes('Needs 99.0 or newer'), 20000)
+    await check('a game for a newer player says which release it needs', needs === true, await readyList())
+    await openMore()
     await wd.click(panel('Host with your IP (2 players)'))
     const dialog = await wd.find("//div[@role='dialog']//h2[normalize-space(.)='Update Updater Test?']", 4000).catch(() => null)
     await check('and Play offers the update instead of starting', !!dialog)
@@ -896,6 +910,7 @@ const scenarios = {
 
   async lobbyquick() {
     await openGame('Lobby Test')
+    await openMore()
     await wd.click(panel('Quick play'))
     // The sandbox's central server lists rooms but doesn't speak the lobby, so joining ends at "Can't connect":
     // what counts is that Quick play went straight for the busiest room without the setup form's buttons.

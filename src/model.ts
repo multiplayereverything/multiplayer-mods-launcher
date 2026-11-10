@@ -108,9 +108,92 @@ export const playersShort = (g: Game) => g.players.replace(/ \(.*\)$/, '')
 
 export const platformBadge =(g: Game) => (g.mod ? 'PC' : g.categories.includes('flash') ? 'Flash' : '')
 
-// What the card's last line says and in which color, as the C++ card's stateText.
+// A missing game file or Flash player that the launcher fetches itself when the player presses Play: not a problem to
+// show in amber on every card. A player that can't be installed for them still is.
+export function sortsItself(g: Game, lib: Library): boolean {
+  if (g.mod || g.comingSoon) return false
+  const states = g.actions.filter((a) => a.state).map((a) => a.state)
+  if (states.length === 0 || states.includes('ready') || states.includes('noRuntime')) return false
+  return !states.includes('noPlayer') || !!lib.players?.some((p) => p.installable)
+}
+
+// A mod that simply isn't installed yet is the normal state before pressing Install.
+const notInstalledYet = (g: Game, mods: Record<string, ModInfo> | null) => {
+  const m = g.mod ? mods?.[g.id] : undefined
+  return !!m && m.gameFound && !m.problem && !m.missing && !m.installed
+}
+
+// The state in words and its color, as the C++ card's stateText. Amber is kept for what the player has to fix.
 export function stateLine(game: Game, lib: Library, mods: Record<string, ModInfo> | null, playing: boolean): { text: string; tone: string } {
   const st = statusOf(game, lib, mods, playing)
-  const tone = st.kind === 'ready' || st.kind === 'installed' ? 'ok' : st.kind === 'playing' ? 'online' : st.kind === 'soon' || st.kind === 'checking' ? 'muted' : 'warn'
+  const quiet = st.kind === 'missing' && (sortsItself(game, lib) || notInstalledYet(game, mods))
+  const tone = st.kind === 'ready' || st.kind === 'installed' || st.kind === 'update' ? 'ok' : st.kind === 'playing' ? 'online' : st.kind === 'soon' || st.kind === 'checking' || quiet ? 'muted' : 'warn'
   return { text: st.text, tone }
+}
+
+// A card's last line: empty when there's nothing the player needs to know yet.
+export function cardLine(game: Game, lib: Library, mods: Record<string, ModInfo> | null, playing: boolean): { text: string; tone: string } {
+  const line = stateLine(game, lib, mods, playing)
+  return !playing && sortsItself(game, lib) ? { text: '', tone: 'muted' } : line
+}
+
+// The pill on a game's page; the list under it says what is left.
+export function panelLine(game: Game, lib: Library, mods: Record<string, ModInfo> | null, playing: boolean): { text: string; tone: string } {
+  const line = stateLine(game, lib, mods, playing)
+  return !playing && sortsItself(game, lib) ? { text: lib.text['status.almostReady'] ?? 'Almost ready', tone: 'muted' } : line
+}
+
+export const hasUpdate = (game: Game, lib: Library, mods: Record<string, ModInfo> | null) => statusOf(game, lib, mods, false).kind === 'update'
+
+export interface ReadyStep { label: string; note: string; state: 'ok' | 'todo' | 'stop' }
+
+// The game page's "what does this need" list: one line for each thing, with what the launcher will do about it.
+export function readySteps(g: Game, lib: Library, mods: Record<string, ModInfo> | null): ReadyStep[] {
+  const t = (k: string, fallback: string, vars: Record<string, string> = {}) =>
+    Object.entries(vars).reduce((x, [key, v]) => x.replace('${' + key + '}', v), lib.text[k] ?? fallback)
+  if (g.comingSoon) return []
+  if (g.mod) {
+    const m = mods?.[g.id]
+    if (!m) return []
+    const name = g.mod.gameName || g.name
+    const steps: ReadyStep[] = [{
+      label: t('ready.copy', 'Your copy of ${GAME}', { GAME: name }),
+      note: m.gameFound ? t('ready.found', 'Found on this PC') : t('ready.notFound', 'Not found: choose its folder'),
+      state: m.gameFound ? 'ok' : 'stop',
+    }]
+    if (m.gameFound && !m.installed && (m.missing || m.problem)) steps.push({ label: t('ready.needs', 'What the mod needs'), note: m.missing || m.problem, state: 'stop' })
+    if (m.installed) {
+      const update = m.published && newer(m.newest, m.installedVersion)
+      steps.push({
+        label: g.mod.modName || g.name,
+        note: update ? t('ready.modUpdate', 'Version ${VERSION} is out', { VERSION: m.newest }) : t('ready.version', 'Version ${VERSION}', { VERSION: m.installedVersion }),
+        state: update ? 'todo' : 'ok',
+      })
+    } else if (m.gameFound) {
+      steps.push({ label: g.mod.modName || g.name, note: t('ready.notInstalled', 'Not installed yet'), state: 'todo' })
+    }
+    return steps
+  }
+  const a = fileAction(g)
+  if (!a?.state) return []
+  if (a.state === 'noRuntime') return [{ label: t('ready.runtime', 'Server program'), note: t('ready.runtimeMissing', 'Missing from this PC'), state: 'stop' }]
+  const playerName = a.player ?? lib.players?.find((p) => p.installable)?.name ?? t('ready.player', 'Flash player')
+  // With the file missing the action still names the player it would use, found or not: ask the list.
+  const named = lib.players?.find((p) => p.id === a.playerId)
+  const noPlayer = a.state === 'noPlayer' || (a.state === 'noFile' && !(named ? named.found : lib.players?.some((p) => p.found)))
+  const installable = !!lib.players?.some((p) => p.installable)
+  return [
+    {
+      label: t('ready.file', 'Game file'),
+      note: a.state === 'noFile' ? t('ready.fileMissing', 'Not downloaded yet') : g.outdated ? t('ready.fileNewer', 'A newer build can be downloaded') : t('ready.fileOk', 'On this PC'),
+      state: a.state === 'noFile' || g.outdated ? 'todo' : 'ok',
+    },
+    {
+      label: playerName,
+      note: a.state === 'oldPlayer' ? t('ready.playerOld', 'Needs ${VERSION} or newer: updates when you play', { VERSION: a.needs ?? '' })
+        : noPlayer ? (installable ? t('ready.playerInstalls', 'Installs when you play') : t('ready.playerMissing', 'Not found on this PC'))
+        : t('ready.playerOk', 'Installed'),
+      state: a.state === 'oldPlayer' || (noPlayer && installable) ? 'todo' : noPlayer ? 'stop' : 'ok',
+    },
+  ]
 }

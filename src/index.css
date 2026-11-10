@@ -34,6 +34,7 @@
   --grade-c: #f2b544;
   --grade-d: #ff8a5c;
   --grade-x: #9aa1ac;
+  --on-ok: #15171c;
   --on-grade: #15171c;
   --ease: cubic-bezier(.2, .8, .2, 1);
   --side-w: 264px;
@@ -103,6 +104,7 @@ input:focus-visible, select:focus-visible { outline: 0; }
   --side-ink: #f2f4f7;
   --side-muted: #a3abba;
   --side-sel: #2b3248;
+  --on-ok: #ffffff;
   --on-grade: #15171c;
   color: var(--ink);
   background: var(--bg);

@@ -2,7 +2,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { Cover } from './Cover'
 import type { Game, Library, ModInfo } from './api'
-import { leadAction, stateLine } from './model'
+import { cardLine, hasUpdate, leadAction, stateLine } from './model'
 
 export function Pips({ n, colors }: { n: number; colors: string[] }) {
   return (
@@ -41,23 +41,26 @@ export function GradeChip({ grade, size = 22 }: { grade: string; size?: number }
 // A card as the C++ library draws one: the art across the top with its badges, then the name in the condensed
 // display font, the player pips and count, and the state. The selected card has a white outline.
 export function Tile({ game, lib, mods, playing, favorite, selected, rooms = 0, onOpen, onPlay }: TileProps & { selected?: boolean; rooms?: number; onPlay?: () => void }) {
-  const line = stateLine(game, lib, mods, playing)
+  const full = stateLine(game, lib, mods, playing)
+  const line = cardLine(game, lib, mods, playing)
   const lead = leadAction(game)
   const t = (k: string, f: string) => lib.text[k] ?? f
   const notOnServer = game.site?.status === 'not-on-server'
   return (
     <div className="tile">
-      <button className={`card-c ${selected ? 'picked' : ''}`} onClick={onOpen} aria-label={`${game.name}, ${game.players}, ${line.text}`}
+      <button className={`card-c ${selected ? 'picked' : ''}`} onClick={onOpen} aria-label={`${game.name}, ${game.players}, ${full.text}`}
         style={{ ['--gc' as string]: game.color || '#323743' }}>
         <span className="art">
           <Cover game={game} className="fill" />
           <span className="badges">
             {game.onlineId && <span className="badge">{t('badge.online', 'Online')}</span>}
             {game.mod && <span className="badge">{t('badge.pc', 'PC')}</span>}
+            {hasUpdate(game, lib, mods) && <span className="badge update">{t('badge.update', 'Update')}</span>}
           </span>
           <span className="badges right">
             {favorite && <span className="badge star">{'★'}</span>}
-            {game.site?.quality && <GradeChip grade={game.site.quality} />}
+            {/* X is "none yet", so a grey X on a card tells nobody much: it stays on the game's page. */}
+            {game.site?.quality && game.site.quality !== 'X' && <GradeChip grade={game.site.quality} />}
           </span>
         </span>
         <span className="info">

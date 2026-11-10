@@ -4,7 +4,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import type { Action, Game, Library, ModInfo } from '../src/api.ts'
 import {
-  fileAction, hostChoices, isCoop, joinByAddress, joinByCode, leadAction, looksLikeAddress, mainActions, moreActions, newer, playersShort, statusOf,
+  cardLine, fileAction, hasUpdate, hostChoices, isCoop, joinByAddress, joinByCode, leadAction, looksLikeAddress, mainActions, moreActions, newer, panelLine, playersShort, readySteps, statusOf, stateLine,
 } from '../src/model.ts'
 
 const action = (a: Partial<Action> & { id: string }): Action => ({
@@ -95,4 +95,51 @@ test('the state line for PC mods', () => {
 
 test('the player count loses its note where space is short', () => {
   assert.equal(playersShort(coop), '1-4 players')
+})
+
+const withInstaller = { text: {}, user: { games: {} }, players: [{ id: 'r', name: 'Ruffle Together', found: false, installable: true }] } as unknown as Library
+const noInstaller = { text: {}, user: { games: {} }, players: [] } as unknown as Library
+const noFile = game({ actions: [action({ id: 'play', state: 'noFile', player: 'Ruffle Together' })] })
+const noPlayer = game({ actions: [action({ id: 'play', state: 'noPlayer' })] })
+
+test('a card stays quiet about what the launcher fetches by itself', () => {
+  assert.equal(cardLine(noFile, withInstaller, null, false).text, '')
+  assert.equal(cardLine(noPlayer, withInstaller, null, false).text, '')
+  assert.equal(panelLine(noFile, withInstaller, null, false).text, 'Almost ready')
+  assert.equal(stateLine(noFile, withInstaller, null, false).text, 'Game file missing')
+})
+
+test('a card still warns when the player has to fix it', () => {
+  assert.deepEqual(cardLine(noPlayer, noInstaller, null, false), { text: 'No Flash player found', tone: 'warn' })
+  const runtime = game({ actions: [action({ id: 'play', state: 'noRuntime' })] })
+  assert.equal(cardLine(runtime, withInstaller, null, false).tone, 'warn')
+})
+
+test('an update is good news and marks the card', () => {
+  const g = game({ outdated: true, actions: [action({ id: 'play' })] })
+  assert.equal(stateLine(g, lib, null, false).tone, 'ok')
+  assert.equal(hasUpdate(g, lib, null), true)
+  assert.equal(hasUpdate(game({ actions: [action({ id: 'play' })] }), lib, null), false)
+})
+
+test('the list says what a Flash game still needs', () => {
+  assert.deepEqual(readySteps(noFile, withInstaller, null).map((s) => [s.note, s.state]), [['Not downloaded yet', 'todo'], ['Installs when you play', 'todo']])
+  const found = { ...withInstaller, players: [{ id: 'r', name: 'Ruffle Together', found: true, installable: true }] } as unknown as Library
+  assert.deepEqual(readySteps(noFile, found, null).map((s) => s.note), ['Not downloaded yet', 'Installed'])
+  assert.deepEqual(readySteps(noPlayer, withInstaller, null).map((s) => [s.note, s.state]), [['On this PC', 'ok'], ['Installs when you play', 'todo']])
+  assert.equal(readySteps(noPlayer, noInstaller, null)[1].state, 'stop')
+  assert.deepEqual(readySteps(game({ comingSoon: true, actions: [action({ id: 'play' })] }), lib, null), [])
+})
+
+test('the list says what a PC mod still needs', () => {
+  const g = game({ mod: { modName: 'M', publisher: '', website: '', gameName: 'Fake Game', pinnedVersion: '' }, actions: [] })
+  const m = (x: Partial<ModInfo>): Record<string, ModInfo> => ({
+    g: { id: 'g', gameFound: true, gameDir: '', installed: false, installedVersion: '', running: false, problem: '', missing: '', known: true, published: true, newest: '1.0.0', notice: '', error: '', ...x },
+  })
+  assert.deepEqual(readySteps(g, lib, null), [])
+  assert.deepEqual(readySteps(g, lib, m({})).map((s) => s.state), ['ok', 'todo'])
+  assert.deepEqual(readySteps(g, lib, m({ gameFound: false })).map((s) => s.state), ['stop'])
+  assert.deepEqual(readySteps(g, lib, m({ missing: 'BepInEx first' })).map((s) => s.note), ['Found on this PC', 'BepInEx first', 'Not installed yet'])
+  assert.deepEqual(readySteps(g, lib, m({ installed: true, installedVersion: '0.9.0' })).map((s) => s.state), ['ok', 'todo'])
+  assert.equal(stateLine(g, lib, m({}), false).tone, 'muted')
 })

@@ -5,7 +5,7 @@ import type { Action, Game, Library, ModInfo, RelayStatus, Room } from './api'
 import { copyText, loadRooms, open, setGamePlayer, setGameSetting } from './api'
 import {
   agoText, fileAction, hostChoices, isCoop, joinByAddress, joinByCode, lastPlayed, looksLikeAddress, mainActions, moreActions, newer,
-  roomAbout, stateLine,
+  panelLine, readySteps, roomAbout,
 } from './model'
 import { HowItRuns } from './Reports'
 import { Glyph, PanelButton, SiteBlock, Slots, Switch } from './ui'
@@ -213,7 +213,8 @@ export function GamePage({
   const backBtn = useRef<HTMLButtonElement>(null)
   const title = useDecode(game.name)
   const mod = mods?.[game.id]
-  const line = stateLine(game, lib, mods, playing)
+  const line = panelLine(game, lib, mods, playing)
+  const steps = readySteps(game, lib, mods)
   const cats = lib.categories.filter((c) => game.categories.includes(c.id)).map((c) => c.name)
   const colors = lib.branding.playerColors
   const coop = isCoop(game) && !game.lobby
@@ -222,7 +223,9 @@ export function GamePage({
   const busy = modLine !== undefined
   const fileAct = fileAction(game)
   const fileMissing = !game.mod && !game.comingSoon && fileAct?.state === 'noFile'
-  const playerMissing = !game.mod && game.actions.some((a) => a.state === 'noPlayer') && !game.actions.some((a) => a.state === 'ready')
+  const fileUpdate = game.outdated && !fileMissing
+  // Getting the game comes before playing it, so that button takes the one red spot.
+  const stepFirst = fileMissing || fileUpdate
   const modName = game.mod?.gameName || game.name
   const u = lib.user.games[game.id]
   const saveArg = (a: Action) => (a.coopHost && saveChoice > 0 && game.coopSave?.supported ? (saveChoice === 1 ? 'solo' : 'new') : undefined)
@@ -252,6 +255,15 @@ export function GamePage({
     const host = game.actions.find((a) => a.id === game.joinAction) ?? byCode
     if (host) run(host)
   }
+  const shownMain = !game.comingSoon && !game.mod ? main.filter((a) => !(game.lobby && a.id === game.joinAction)) : []
+  // Host and Play online already lead a co-op or lobby game; for the others the first action is the main button.
+  const firstMain = coop || game.lobby ? undefined : shownMain[0]
+  const otherMain = coop || game.lobby ? shownMain : shownMain.slice(1)
+  const mainButton = (a: Action, primary: boolean) => (
+    <PanelButton key={a.id} primary={primary} icon={a.icon} label={a.label}
+      sub={a.state !== 'ready' ? (a.state === 'noFile' ? 'Game file missing' : a.state === 'noPlayer' ? 'No Flash player found' : a.state === 'oldPlayer' ? `Needs ${a.player ?? 'Ruffle Together'} ${a.needs ?? ''} or newer` : 'Server program missing') : a.description || (a.player ?? '')}
+      warn={a.state !== 'ready'} onClick={() => run(a)} />
+  )
   const foundPlayers = lib.players.filter((p) => p.found)
   const autoPlayer = foundPlayers[0]?.name
   const settingValue = (id: string, value: string) => setValues[id] ?? value
@@ -268,6 +280,7 @@ export function GamePage({
 
   // The C++ panel's buttons for a PC mod: find the game, install, update, launch, repair, uninstall.
   let modButtons: ReactNode = null
+  let modMore: ReactNode = null
   if (game.mod && !game.comingSoon) {
     if (!mod) modButtons = <PanelButton label="Checking..." sub="Asking mods-info for the newest version" disabled />
     else if (busy) modButtons = <PanelButton primary label="Working..." sub={modLine || 'Starting'} disabled />
@@ -300,6 +313,10 @@ export function GamePage({
         <>
           {update && <PanelButton primary icon="E777" label={`Update to ${mod.newest}`} sub={`You have ${mod.installedVersion}`} onClick={() => actions.modOp(game, 'install')} />}
           {launchAct && <PanelButton primary={!update} icon="E768" label="Launch game" sub={`${game.mod.modName || game.name} ${mod.installedVersion} is installed`} onClick={() => run(launchAct)} />}
+        </>
+      )
+      modMore = (
+        <>
           <PanelButton icon="E90F" label="Repair" sub="Put back missing or damaged files" onClick={() => actions.modOp(game, 'repair')} />
           <PanelButton icon="E74D" label="Uninstall" sub="Restore the files the mod replaced" onClick={() => setDialog('uninstall')} />
         </>
@@ -419,65 +436,33 @@ export function GamePage({
           <Slots n={game.maxPlayers || 2} colors={colors} names={hosting ? ['You', ...guests] : undefined} />
           <span className={`spill tone-${line.tone}`}><i />{line.text}</span>
           <SiteBlock game={game} lib={lib} />
-          {playerMissing && <p className="pnote">Ruffle Together isn't installed yet. The launcher installs it on its first start.</p>}
+          {steps.length > 0 && (
+            <ul className="pready">
+              {steps.map((s) => (
+                <li key={s.label} className={s.state}>
+                  {s.state === 'todo' ? <i className="ring" aria-hidden="true" /> : <Glyph code={s.state === 'ok' ? 'E73E' : 'E7BA'} />}
+                  <span><b>{s.label}</b><small>{s.note}</small></span>
+                </li>
+              ))}
+            </ul>
+          )}
           {hosting && <HostingCard status={hosting.relay} session={hosting.session} onStop={actions.stopHosting} colors={colors} />}
           <div className="pacts">
             {game.comingSoon && <p className="pnote">Not playable yet: this mod is still being built.</p>}
-            {fileMissing && fileAct && (
-              <>
-                <PanelButton primary icon="E896" label={downloading ? 'Downloading...' : 'Download game files'} disabled={downloading}
-                  sub="From the game catalog, checked by SHA-256" onClick={() => actions.download(game)} />
-                <PanelButton icon="E8E5" label="Locate the game file" sub="A copy you already have" onClick={() => actions.locate(game, fileAct)} />
-              </>
+            {fileMissing && (
+              <PanelButton primary icon="E896" label={downloading ? 'Downloading...' : 'Download game files'} disabled={downloading}
+                sub="From the game catalog, checked by SHA-256" onClick={() => actions.download(game)} />
             )}
-            {game.outdated && !fileMissing && (
-              <PanelButton icon="E896" label={downloading ? 'Downloading...' : 'Download the update'} disabled={downloading}
+            {fileUpdate && (
+              <PanelButton primary icon="E896" label={downloading ? 'Downloading...' : 'Download the update'} disabled={downloading}
                 sub="A newer build of the game file, checked by SHA-256" onClick={() => actions.download(game)} />
             )}
             {!game.comingSoon && game.lobby && (
-              <PanelButton primary={!fileMissing} icon="E774" label="Play online" sub="Host a room or join one" onClick={() => actions.openLobby(game)} />
+              <PanelButton primary={!stepFirst} icon="E774" label="Play online" sub="Host a room or join one" onClick={() => actions.openLobby(game)} />
             )}
-            {!game.comingSoon && coop && game.coopSave && (
-              <div className="psel">
-                <label htmlFor="coop-save">{t('coopSave.label', 'Co-op save')}</label>
-                <select id="coop-save" className="sel" disabled={!game.coopSave.supported} value={saveChoice} onChange={(e) => setSaveChoice(Number(e.target.value))}>
-                  <option value={0}>{t('coopSave.continue', 'Continue co-op')}</option>
-                  <option value={1}>{t('coopSave.solo', 'Start from my solo save')}</option>
-                  <option value={2}>{t('coopSave.new', 'New game')}</option>
-                </select>
-                <small className={saveChoice > 0 ? 'tone-warn' : ''}>
-                  {!game.coopSave.supported ? t('coopSave.needs', 'Needs Ruffle Together ${VERSION} or newer.', { VERSION: game.coopSave.since })
-                    : saveChoice > 0 ? t('coopSave.replaces', 'This replaces your co-op progress for ${GAME} the first time the game saves.', { GAME: game.name })
-                    : game.coopSave.progress ? t('coopSave.progress', 'Co-op progress saved.') : ''}
-                </small>
-              </div>
-            )}
-            {!game.comingSoon && coop && (
-              <>
-                <PanelButton primary={!fileMissing} icon="E774" label="Host a game" onClick={() => setDialog('host')} />
-                <PanelButton icon="E774" label="Join a game" onClick={() => setDialog('join')} />
-              </>
-            )}
-            {online && (coop || game.lobby || !!joinByCode(game)) && (
-              <PanelButton icon="E945" label={t('button.quickPlay', 'Quick play')}
-                sub={rooms === null ? 'Looking for open rooms...' : busiest ? t('button.quickJoin', 'Join the busiest open room') : t('button.quickHost', 'No rooms open: host one')}
-                onClick={quickPlay} />
-            )}
-            {!game.comingSoon && !game.mod && main.filter((a) => !(game.lobby && a.id === game.joinAction)).map((a, i) => (
-              <PanelButton key={a.id} primary={!coop && !game.lobby && i === 0 && a.state === 'ready'} icon={a.icon} label={a.label}
-                sub={a.state !== 'ready' ? (a.state === 'noFile' ? 'Game file missing' : a.state === 'noPlayer' ? 'No Flash player found' : a.state === 'oldPlayer' ? `Needs ${a.player ?? 'Ruffle Together'} ${a.needs ?? ''} or newer` : 'Server program missing') : a.description || (a.player ?? '')}
-                warn={a.state !== 'ready'} onClick={() => run(a)} />
-            ))}
-            {!game.comingSoon && more.length > 0 && (
-              <>
-                <button className="pmore" aria-expanded={showMore} onClick={() => setShowMore(!showMore)}>
-                  <Glyph code={showMore ? 'E70E' : 'E70D'} />{showMore ? 'Fewer ways to connect' : 'Other ways to connect'}
-                </button>
-                {showMore && more.map((a) => (
-                  <PanelButton key={a.id} icon={a.icon} label={a.label} sub={a.description} onClick={() => (a.asksAddress ? setDialog('join') : run(a))} />
-                ))}
-              </>
-            )}
+            {!game.comingSoon && coop && <PanelButton primary={!stepFirst} icon="E774" label="Host a game" onClick={() => setDialog('host')} />}
+            {saveChoice > 0 && <p className="pnote tone-warn">{t('coopSave.replaces', 'This replaces your co-op progress for ${GAME} the first time the game saves.', { GAME: game.name })}</p>}
+            {firstMain && mainButton(firstMain, !stepFirst && firstMain.state === 'ready')}
             {modButtons}
             {game.actions.filter((a) => a.link).map((a) => (
               <button className="pbtn two link" key={a.id} onClick={() => open(a.link)}>
@@ -485,40 +470,81 @@ export function GamePage({
                 {a.description && <span className="sub">{a.description}</span>}
               </button>
             ))}
-            {!game.comingSoon && !game.mod && game.settings.length > 0 && (
-              <div className="psets">
-                {game.settings.map((st) => st.type === 'checkbox' ? (
-                  <div key={st.id} className={`pcheck ${st.enabled ? '' : 'off'}`}
-                    title={st.enabled ? undefined : t('coopSave.needs', 'Needs Ruffle Together ${VERSION} or newer.', { VERSION: st.since })}>
-                    <Switch on={settingValue(st.id, st.value) === '1'} label={st.label} onChange={(v) => st.enabled && changeSetting(st.id, v ? '1' : '0')} />
-                    <span>{st.label}</span>
+            <div className="pline">
+              {!game.comingSoon && coop && <PanelButton icon="E774" label="Join a game" onClick={() => setDialog('join')} />}
+              <button className="pdots" aria-expanded={showMore} aria-label={t('button.moreOptions', 'More')} title={t('button.moreOptions', 'More')} onClick={() => setShowMore(!showMore)}>
+                <Glyph code="E712" />{!(coop && !game.comingSoon) && <span>{t('button.moreOptions', 'More')}</span>}
+              </button>
+            </div>
+            {showMore && (
+              <div className="pacts">
+                {fileMissing && fileAct && <PanelButton icon="E8E5" label="Locate the game file" sub="A copy you already have" onClick={() => actions.locate(game, fileAct)} />}
+                {online && (coop || game.lobby || !!joinByCode(game)) && (
+                  <PanelButton icon="E945" label={t('button.quickPlay', 'Quick play')}
+                    sub={rooms === null ? 'Looking for open rooms...' : busiest ? t('button.quickJoin', 'Join the busiest open room') : t('button.quickHost', 'No rooms open: host one')}
+                    onClick={quickPlay} />
+                )}
+                {otherMain.map((a) => mainButton(a, false))}
+                {!game.comingSoon && coop && game.coopSave && (
+                  <div className="psel">
+                    <label htmlFor="coop-save">{t('coopSave.label', 'Co-op save')}</label>
+                    <select id="coop-save" className="sel" disabled={!game.coopSave.supported} value={saveChoice} onChange={(e) => setSaveChoice(Number(e.target.value))}>
+                      <option value={0}>{t('coopSave.continue', 'Continue co-op')}</option>
+                      <option value={1}>{t('coopSave.solo', 'Start from my solo save')}</option>
+                      <option value={2}>{t('coopSave.new', 'New game')}</option>
+                    </select>
+                    {(!game.coopSave.supported || (saveChoice === 0 && game.coopSave.progress)) && (
+                      <small>
+                        {!game.coopSave.supported ? t('coopSave.needs', 'Needs Ruffle Together ${VERSION} or newer.', { VERSION: game.coopSave.since }) : t('coopSave.progress', 'Co-op progress saved.')}
+                      </small>
+                    )}
                   </div>
-                ) : (
-                  <div key={st.id} className="psel">
-                    <label htmlFor={`set-${st.id}`}>{st.label}</label>
-                    <select id={`set-${st.id}`} className="sel" disabled={!st.enabled} value={settingValue(st.id, st.value)} onChange={(e) => changeSetting(st.id, e.target.value)}>
-                      {st.choices.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+                )}
+                {!game.comingSoon && more.length > 0 && (
+                  <>
+                    <div className="opt-h">{t('button.otherWays', 'Other ways to connect')}</div>
+                    {more.map((a) => (
+                      <PanelButton key={a.id} icon={a.icon} label={a.label} sub={a.description} onClick={() => (a.asksAddress ? setDialog('join') : run(a))} />
+                    ))}
+                  </>
+                )}
+                {modMore}
+                {!game.comingSoon && !game.mod && game.settings.length > 0 && (
+                  <div className="psets">
+                    {game.settings.map((st) => st.type === 'checkbox' ? (
+                      <div key={st.id} className={`pcheck ${st.enabled ? '' : 'off'}`}
+                        title={st.enabled ? undefined : t('coopSave.needs', 'Needs Ruffle Together ${VERSION} or newer.', { VERSION: st.since })}>
+                        <Switch on={settingValue(st.id, st.value) === '1'} label={st.label} onChange={(v) => st.enabled && changeSetting(st.id, v ? '1' : '0')} />
+                        <span>{st.label}</span>
+                      </div>
+                    ) : (
+                      <div key={st.id} className="psel">
+                        <label htmlFor={`set-${st.id}`}>{st.label}</label>
+                        <select id={`set-${st.id}`} className="sel" disabled={!st.enabled} value={settingValue(st.id, st.value)} onChange={(e) => changeSetting(st.id, e.target.value)}>
+                          {st.choices.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+                        </select>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {!game.comingSoon && !game.mod && foundPlayers.length > 1 && (
+                  <div className="psel">
+                    <label htmlFor="game-player">{t('detail.player', 'Player')}</label>
+                    <select id="game-player" className="sel" value={game.player} onChange={(e) => setGamePlayer(game.id, e.target.value).then(actions.refresh)}>
+                      <option value="">{autoPlayer ? t('detail.playerAuto', 'Automatic (${PLAYER})', { PLAYER: autoPlayer }) : t('detail.playerAutoNone', 'Automatic')}</option>
+                      {foundPlayers.map((pl) => <option key={pl.id} value={pl.id}>{pl.name}</option>)}
                     </select>
                   </div>
-                ))}
+                )}
+                <div className="prow">
+                  <button className={`pbtn ${favorite ? 'faved' : ''}`} aria-pressed={favorite} onClick={onFavorite}>
+                    <span className="top"><Glyph code={favorite ? 'E735' : 'E734'} /><span>Favorite</span></span>
+                  </button>
+                  {hasGuide && <button className="pbtn" onClick={() => setTab('guide')}><span className="top"><span>Guide</span></span></button>}
+                  <button className="pbtn" disabled={!folder} onClick={() => open(folder)}><span className="top"><span>Folder</span></span></button>
+                </div>
               </div>
             )}
-            {!game.comingSoon && !game.mod && foundPlayers.length > 1 && (
-              <div className="psel">
-                <label htmlFor="game-player">{t('detail.player', 'Player')}</label>
-                <select id="game-player" className="sel" value={game.player} onChange={(e) => setGamePlayer(game.id, e.target.value).then(actions.refresh)}>
-                  <option value="">{autoPlayer ? t('detail.playerAuto', 'Automatic (${PLAYER})', { PLAYER: autoPlayer }) : t('detail.playerAutoNone', 'Automatic')}</option>
-                  {foundPlayers.map((pl) => <option key={pl.id} value={pl.id}>{pl.name}</option>)}
-                </select>
-              </div>
-            )}
-            <div className="prow">
-              <button className={`pbtn ${favorite ? 'faved' : ''}`} aria-pressed={favorite} onClick={onFavorite}>
-                <span className="top"><Glyph code={favorite ? 'E735' : 'E734'} /><span>Favorite</span></span>
-              </button>
-              {hasGuide && <button className="pbtn" onClick={() => setTab('guide')}><span className="top"><span>Guide</span></span></button>}
-              <button className="pbtn" disabled={!folder} onClick={() => open(folder)}><span className="top"><span>Folder</span></span></button>
-            </div>
           </div>
         </aside>
       </div>

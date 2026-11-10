@@ -34,6 +34,7 @@ its ideas, not its code: nothing here is copied from it, so our license is unaff
 - The game page's wide art header, which fades into a blurred copy of itself, with four stat boxes.
 - Messages, running games and mod jobs float in an "island" above the status bar.
 - The window draws its own title bar.
+- The game page's one main button with the rest under a More button, the list of what a game still needs, and the Update badge on cards (2026-11-10).
 
 ## Data
 
