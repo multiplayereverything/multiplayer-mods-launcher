@@ -143,7 +143,10 @@ export function panelLine(game: Game, lib: Library, mods: Record<string, ModInfo
   return !playing && sortsItself(game, lib) ? { text: lib.text['status.almostReady'] ?? 'Almost ready', tone: 'muted' } : line
 }
 
-export const hasUpdate = (game: Game, lib: Library, mods: Record<string, ModInfo> | null) => statusOf(game, lib, mods, false).kind === 'update'
+// A newer build of a Flash game's file is news even before its player is installed (the state line then speaks of
+// the player); a mod's newer release only once it is installed.
+export const hasUpdate = (game: Game, lib: Library, mods: Record<string, ModInfo> | null) =>
+  game.mod ? statusOf(game, lib, mods, false).kind === 'update' : !game.comingSoon && game.outdated
 
 export interface ReadyStep { label: string; note: string; state: 'ok' | 'todo' | 'stop' }
 

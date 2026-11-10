@@ -120,6 +120,8 @@ test('an update is good news and marks the card', () => {
   assert.equal(stateLine(g, lib, null, false).tone, 'ok')
   assert.equal(hasUpdate(g, lib, null), true)
   assert.equal(hasUpdate(game({ actions: [action({ id: 'play' })] }), lib, null), false)
+  // Seen on a real PC: a Flash game with a newer build and no player installed yet still shows the badge.
+  assert.equal(hasUpdate(game({ outdated: true, actions: [action({ id: 'play', state: 'noPlayer' })] }), withInstaller, null), true)
 })
 
 test('the list says what a Flash game still needs', () => {
