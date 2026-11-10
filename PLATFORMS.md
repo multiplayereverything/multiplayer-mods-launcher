@@ -32,6 +32,7 @@ Newest first. One line per update: version, what changed, and whether each platf
 
 | Date | Version | Change | Windows | Linux |
 |---|---|---|---|---|
+| 2026-11-10 | 1.0.47 | Spore is link-only: Windows Defender flags both its releases, so the launcher no longer installs it | yes, not released | launcher.json, comes with the Linux build |
 | 2026-11-10 | 1.0.47 | Game page and cards: one red button with a More button, a list of what the game still needs, an Update badge on cards, no amber for what the launcher fetches itself, no X grade on cards | yes, not released | shared React, comes with the Linux build |
 | 2026-11-06 | 1.0.47 | The app saves the game catalog (at most hourly, and on a download), so a new build of a Flash game file is offered and its host settings show | yes, not released | shared Rust, comes with the Linux build |
 | 2026-11-06 | 1.0.47 | Developer records: `sourceGame`, `onlyIfFile`, `alternateExecutables`, `requires` with `sha256`, `absent`, `warn`, `url`; `connection` on the game's page; a zip with a non-ASCII file name unpacks (Windows `tar` skips it, Linux doesn't need this) | yes, not released | port with the Linux build |

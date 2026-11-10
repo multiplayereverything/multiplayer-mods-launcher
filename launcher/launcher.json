@@ -118,8 +118,8 @@
           "Everyone you play with needs the same version of the mod."
         ],
         "steps": [
-          "Press Install. The launcher finds the game's SporebinEP1 folder and puts the mod in it. The game's own steam_api.dll is kept as steam_api_orig.dll.",
-          "Press Launch.",
+          "Open SporeCoop on GitHub and download its newest release. The launcher doesn't install this mod for now.",
+          "Install it as its own instructions say, into the game's SporebinEP1 folder, then start Spore.",
           "In the main menu pick Co-op. Host a game, or join a friend on your network or by their address.",
           "Playing over the internet: use a virtual LAN such as Tailscale, ZeroTier or Radmin VPN (easiest), or forward UDP port 47810 to the host."
         ],
@@ -130,8 +130,8 @@
           }
         ],
         "tips": [
-          "Made by WoodyWizard, not by Multiplayer Everything. We install the exact version we looked at and update it only after we have looked at the new one. Report problems to its author.",
-          "Some antivirus programs warn about the replaced steam_api.dll. That file is the mod's loader; its source is in the mod's repository.",
+          "Made by WoodyWizard, not by Multiplayer Everything. Report problems to its author.",
+          "Windows Defender currently flags the mod's download, whose loader takes the place of the game's steam_api.dll. We can't confirm that is a false alarm, so the launcher only links to it.",
           "Type /bug and what you see in the co-op chat when something goes wrong, then send the logs of every player."
         ],
         "links": [
@@ -144,64 +144,15 @@
       "actions": [
         {
           "id": "page",
-          "label": "SporeCoop on GitHub",
+          "label": "Get SporeCoop on GitHub",
           "icon": "E774",
-          "description": "By WoodyWizard: github.com/WoodyWizard/SporeCoop",
-          "link": "https://github.com/WoodyWizard/SporeCoop"
+          "description": "By WoodyWizard: download and install it yourself",
+          "link": "https://github.com/WoodyWizard/SporeCoop/releases"
         }
       ],
       "color": "#3E9C7A",
       "colorEnd": "#0C2A22",
-      "description": "Co-op for Spore with Galactic Adventures (GOG and Steam) by WoodyWizard: two to four friends evolve in one world through every stage, from the cell to space. Made by WoodyWizard, not by us. Everyone needs the same version.",
-      "mod": {
-        "id": "spore-coop",
-        "publisher": "WoodyWizard",
-        "website": "https://github.com/WoodyWizard/SporeCoop",
-        "game": {
-          "name": "Spore",
-          "executable": "SporeApp.exe",
-          "steamAppId": "17390",
-          "validationFiles": ["${GAME_EXE}", "steam_api.dll"],
-          "processNames": ["SporeApp.exe"],
-          "detection": [
-            { "type": "steam", "appId": "17390", "installDir": "Spore", "subPath": "SporebinEP1" },
-            { "type": "path", "path": "${folder:ProgramFilesX86}\\Steam\\steamapps\\common\\Spore\\SporebinEP1" },
-            { "type": "path", "path": "C:\\GOG Games\\Spore\\SporebinEP1" },
-            { "type": "path", "path": "C:\\GOG Games\\SPORE\\SporebinEP1" },
-            { "type": "path", "path": "${folder:ProgramFilesX86}\\GOG Galaxy\\Games\\Spore\\SporebinEP1" }
-          ]
-        },
-        "install": {
-          "targetDir": "${GAME_DIR}\\mods",
-          "stateDir": "${INSTALL_DIR}\\.installer",
-          // The mod's package also goes to the Data folder beside SporebinEP1.
-          "allowedRoots": ["${GAME_DIR}\\..\\Data"],
-          // The player's name and settings stay when the mod updates (the mod's own install.bat copies an .ini only when missing).
-          "preserve": ["coop.ini", "sporekit.ini"],
-          "uninstallCleanup": ["mods/logs/**"]
-        },
-        // What the mod's own install.bat does, without a script: keep the game's steam_api.dll as steam_api_orig.dll (the
-        // first of the two that exists, so an update doesn't copy the loader over the copy), then put the loader in its
-        // place. Uninstall puts the game's own steam_api.dll back from the backup the install made.
-        "components": [
-          { "id": "original-steam-api", "name": "The game's steam_api.dll, kept", "sourceGame": ["steam_api_orig.dll", "steam_api.dll"], "targetName": "steam_api_orig.dll", "target": "${GAME_DIR}", "required": true },
-          { "id": "loader", "name": "Mod loader", "source": "SporeCoop/steam_api.sporekit.dll", "targetName": "steam_api.dll", "target": "${GAME_DIR}", "required": true },
-          { "id": "sporekit", "name": "SporeKit", "source": "SporeCoop/sporekit.dll", "target": "${GAME_DIR}", "required": true },
-          { "id": "package", "name": "Co-op package", "source": "SporeCoop/SporeCoop.package", "target": "${GAME_DIR}\\..\\Data", "required": true },
-          { "id": "mod", "name": "Co-op mod", "source": "SporeCoop/mods", "required": true }
-        ],
-        "launch": {
-          "hint": "In the main menu pick Co-op to host a game or join a friend. In the game F9 opens the co-op window."
-        },
-        // A community mod: this exact release and these exact bytes, until we have looked at a newer one. The checksum is
-        // the one of the release zip; GitHub publishes the same value. To move to a new release, read the new code,
-        // then change version, url and sha256 together.
-        "package": {
-          "version": "0.7.11.1",
-          "url": "https://github.com/WoodyWizard/SporeCoop/releases/download/v0.7.11.1/SporeCoop-0.7.11.1.zip",
-          "sha256": "70d4fe5a624ab242d34884f7d6731cf25677195fe24b6f97f1b96663aa67ad27"
-        }
-      }
+      "description": "Co-op for Spore with Galactic Adventures (GOG and Steam) by WoodyWizard: two to four friends evolve in one world through every stage, from the cell to space. Made by WoodyWizard, not by us. Everyone needs the same version."
     }
   ]
 }
