@@ -120,7 +120,8 @@ void Library::refresh() {
     for (const auto& p : cfg_.players) {
         PlayerStatus st;
         st.spec = &p;
-        st.exe = findFirst(p.paths, vars_);
+        // A "window" player is the Tauri launcher's own window: always there, and never started from here.
+        st.exe = p.kind == "window" ? std::wstring(kInWindow) : findFirst(p.paths, vars_);
         logger().info(p.name + L": " + (st.found() ? st.exe : L"not found"));
         players_.push_back(std::move(st));
     }
@@ -134,14 +135,14 @@ const PlayerStatus* Library::player(const std::string& id) const {
 
 std::vector<const PlayerSpec*> Library::allowedPlayers(const ActionSpec& a, const std::string& preferred) const {
     std::vector<const PlayerSpec*> out;
-    // Flash files go to Flash players, HTML5 pages to browsers.
-    const char* kind = a.isWeb() ? "browser" : "flash";
+    // Flash files go to Flash players, HTML5 pages to browsers (or the launcher's own window).
+    auto fits = [&](const PlayerSpec& p) { return a.isWeb() ? p.isWeb() : p.kind == "flash"; };
     if (a.players.empty()) {
         for (const auto& p : cfg_.players)
-            if (p.kind == kind) out.push_back(&p);
+            if (fits(p)) out.push_back(&p);
     } else {
         for (const auto& id : a.players)
-            if (auto p = cfg_.findPlayer(id); p && p->kind == kind) out.push_back(p);
+            if (auto p = cfg_.findPlayer(id); p && fits(*p)) out.push_back(p);
     }
     auto it = std::find_if(out.begin(), out.end(), [&](const PlayerSpec* p) { return p->id == preferred; });
     if (it != out.end()) std::rotate(out.begin(), it, it + 1);  // the user's choice goes first
@@ -255,7 +256,11 @@ ResolvedAction Library::resolveWeb(ResolvedAction r, const ActionSpec& a, Vars v
         return r;
     }
     if (a.server.enabled()) {
-        r.serverExe = findFirst(a.server.exe, v);
+        // The runtime's own copies (the one the launcher installs first), then the action's.
+        std::vector<std::wstring> candidates;
+        if (auto rt = cfg_.findRuntime(a.server.runtime)) candidates = rt->paths;
+        candidates.insert(candidates.end(), a.server.exe.begin(), a.server.exe.end());
+        r.serverExe = findFirst(candidates, v);
         if (r.serverExe.empty()) {
             r.state = ActionState::NoRuntime;
             return r;

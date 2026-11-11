@@ -11,6 +11,9 @@
 
 namespace fl {
 
+// The "exe" of a kind "window" player: the Tauri launcher's own window. This launcher never starts it.
+inline constexpr wchar_t kInWindow[] = L"launcher-window";
+
 struct PlayerStatus {
     const PlayerSpec* spec = nullptr;
     std::wstring exe;  // empty when not found

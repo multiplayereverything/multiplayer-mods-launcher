@@ -438,6 +438,67 @@ TEST(config_rejects_html5_action_with_flash_player) {
     CHECK(!r.ok());
 }
 
+// The Tauri launcher's own window as a player, and a runtime (Node.js) for a game's server. This launcher reads
+// them like the Rust one does and refuses to start a window player itself.
+static std::string withRuntimes(std::string cfg, const std::string& runtimes) {
+    size_t at = cfg.find("\"categories\":");
+    return cfg.insert(at, "\"runtimes\": " + runtimes + ", ");
+}
+static const char* kWindowPlayers = R"([{ "id": "ruffle", "paths": ["${PLAYERS_DIR}\\ruffle.exe"] },
+    { "id": "window", "kind": "window", "name": "Launcher window" },
+    { "id": "edge", "kind": "browser", "paths": ["${PLAYERS_DIR}\\edge.exe"], "args": ["--app=${URL}"] }])";
+static const char* kNode = R"([{ "id": "node", "name": "Node.js", "paths": ["${PLAYERS_DIR}\\node\\node.exe"],
+    "install": { "url": "https://nodejs.org/dist/v22.0.0/node-win-x64.zip", "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+                 "dir": "${PLAYERS_DIR}\\node", "exe": "node.exe" } }])";
+
+TEST(html5_action_opens_in_the_launcher_window_with_its_runtime) {
+    TempDir dir("lib-window");
+    writeText(dir / L"mod\\server\\server.js", "x");
+    LoadResult r = loadConfig(withRuntimes(minimalConfig(R"J([{ "id": "pb2", "actions": [
+        { "id": "host", "file": "${LAUNCHER_DIR}\\mod\\server\\server.js", "window": { "width": 800, "height": 600 },
+          "server": { "runtime": "node", "args": ["server\\server.js", "2053"], "cwd": "${FILE_DIR}\\..", "url": "http://localhost:2053/",
+                      "lines": { "code": "room code ([A-Z0-9]{5})", "error": "Could not join room .*" } } },
+        { "id": "join", "file": "${LAUNCHER_DIR}\\mod\\server\\server.js",
+          "server": { "runtime": "node", "args": ["server\\join.js", "${CODE}", "2054"], "cwd": "${FILE_DIR}\\..", "url": "http://localhost:2054/",
+                      "lines": { "ready": "Joined room" } } } ] }])J", kWindowPlayers), kNode),
+                              dir.path());
+    if (!r.issues.empty()) fprintf(stderr, "%ls\n", formatIssues(r.issues).c_str());
+    REQUIRE(r.ok() && r.issues.empty());  // no unknown keys either
+    const auto& g = r.config.games[0];
+    CHECK(g.actions[0].windowWidth == 800 && g.actions[0].windowHeight == 600);
+    CHECK(g.actions[0].server.linesCode == L"room code ([A-Z0-9]{5})");
+    CHECK(!g.actions[0].server.joinsByCode() && g.actions[1].server.joinsByCode());
+    Library lib(r.config, baseVars(dir));
+    UserData user;
+    ResolvedAction r0 = lib.resolve(g, g.actions[0], user);
+    CHECK(r0.state == ActionState::NoRuntime);
+    CHECK(r0.player && r0.player->id == "window");
+    writeText(dir / L"players\\node\\node.exe", "x");
+    ResolvedAction r1 = lib.resolve(g, g.actions[0], user);
+    REQUIRE(r1.state == ActionState::Ready);
+    CHECK(r1.playerExe == kInWindow);
+    CHECK(fs::normalize(r1.serverExe) == fs::normalize(dir / L"players\\node\\node.exe"));
+}
+
+TEST(config_checks_window_players_runtimes_and_server_lines) {
+    auto bad = [](const std::string& games, const std::string& players, const std::string& runtimes, const std::wstring& where) {
+        LoadResult r = loadConfig(withRuntimes(minimalConfig(games, players), runtimes), L"C:\\x");
+        bool found = hasIssue(r, where, ConfigIssue::Severity::Error);
+        if (!found) fprintf(stderr, "expected an error at %ls: %ls\n", where.c_str(), formatIssues(r.issues).c_str());
+        return found;
+    };
+    auto game = [](const std::string& server) { return R"([{ "id": "g", "actions": [ { "id": "a", "server": )" + server + " } ] }]"; };
+    std::string okServer = R"({ "runtime": "node", "url": "http://localhost:1/" })";
+    CHECK(bad(game(okServer), R"([{ "id": "w", "kind": "window", "paths": ["x.exe"] }])", kNode, L"players[0]"));
+    CHECK(bad(game(R"({ "runtime": "deno", "url": "http://localhost:1/" })"), kWindowPlayers, kNode, L"server.runtime"));
+    CHECK(bad(game(R"J({ "runtime": "node", "url": "http://localhost:1/", "lines": { "code": "room code [A-Z]+" } })J"), kWindowPlayers, kNode,
+              L"lines.code"));
+    CHECK(bad(game(R"J({ "runtime": "node", "url": "http://localhost:1/", "lines": { "ready": "(" } })J"), kWindowPlayers, kNode, L"server.lines"));
+    CHECK(bad(game(okServer), kWindowPlayers,
+              R"([{ "id": "node", "paths": ["node.exe"], "install": { "url": "https://x.example/n.zip", "dir": "d", "exe": "node.exe" } }])",
+              L"install.sha256"));
+}
+
 static std::string httpGet(int port, const std::string& path, const std::string& extra = "") {
     WSADATA wsa;
     WSAStartup(MAKEWORD(2, 2), &wsa);

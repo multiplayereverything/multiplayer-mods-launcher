@@ -40,6 +40,7 @@ Any path or argument can use these:
 | `discord` | | `{ "clientId": "<application id>" }`: Discord shows "Playing <game>" and the room code. Empty or missing: off. |
 | `updates` | | `{ "github": "owner/repo", "asset": "MultiplayerEverythingLauncher.exe" }`: the launcher installs newer releases of itself (checked against GitHub's SHA-256; a release without one is refused). Missing: no updates. With `"app"` (the app's installer in the same releases, a file-name pattern) and `"appExe"` (where it installs) the C++ window hands over: started on its own it installs the app once, then only opens it. Give both or neither. |
 | `players` | required | Flash players, tried in this order |
+| `runtimes` | `[]` | Programs a game's server runs on, such as Node.js; see [runtimes[]](#runtimes) |
 | `categories` | `[]` | Sidebar entries: `{ "id", "name", "icon", "group" }`; `icon` is a Segoe Fluent Icons code, e.g. `"E774"` (globe). Entries with the same `group` sit together and a line separates groups (the shipped config has *PC mods* and *Flash mods* in one, the kinds of game in another). |
 | `games` | required | The library |
 | `text` | | Overrides for any UI string (run `--validate` to catch unknown keys) |
@@ -119,7 +120,7 @@ name until the check passes. The launcher keeps the last catalog it read in
 | `paths` | Candidates, first existing wins. Absolute paths may use `*` in the file name (the highest version wins); a bare name like `ruffle.exe` is searched on PATH. |
 | `args` | Arguments before the game's own. `${SWF}` is added at the end unless an argument mentions it. |
 | `flashvarArg` | How the player passes a value into the game, e.g. `"-P${KEY}=${VALUE}"` for Ruffle. Players without it can't receive room codes. |
-| `kind` | `"flash"` (default) or `"browser"` (Edge, Chrome: HTML5 games, `${URL}` in `args`) |
+| `kind` | `"flash"` (default), `"browser"` (Edge, Chrome: HTML5 games, `${URL}` in `args`) or `"window"` (the launcher's own window: HTML5 games open inside the launcher; no `paths`, always there, and the C++ launcher refuses to start it) |
 | `tv` | Optional: what a game started from TV mode (`--launch --tv`, the Tauri window's full-screen controller view) adds: `args` at the end of the command line and `env`, variables set for the player only, e.g. `{ "args": ["--fullscreen"], "env": { "RUFFLE_TOGETHER_TV": "1" } }`. Put anything an older player would refuse in `env`: unknown variables are ignored, unknown options stop it. |
 
 ### players[].install
@@ -139,6 +140,18 @@ with Windows' own `tar.exe`, so `.zip` files work.
 
 GitHub releases publish a SHA-256 for each file; the download is refused when it
 doesn't match.
+
+## runtimes[]
+
+A program an HTML5 game's server runs on. An action names it with `server.runtime`; its `paths` are tried before
+the server's own `exe`, and its `name` is what a missing program is called (*Node.js not found*).
+
+| Key | |
+|---|---|
+| `id` | Letters, digits, `-`, `_`, `.` |
+| `name`, `website` | Shown when it's missing |
+| `paths` | Candidates, like a player's. Put the copy the launcher installs first. |
+| `install` | Like `players[].install`, with `dir` and `exe` required. A fixed `url` must come with its `sha256`: the program runs a game's server. |
 
 ## games[]
 
@@ -187,6 +200,17 @@ hidden first, such as a co-op server: `name`, `website`, `exe`, `args`, `cwd`,
 `url` it answers on, and `share`/`lan` patterns for the links to show friends), or
 `joinLink: true` (open the http(s) link on the clipboard). See
 `docs/html5-example.jsonc`.
+
+More `server` keys:
+
+- `runtime`: a [runtimes[]](#runtimes) id. Its copies are tried before `exe`.
+- `lines`: patterns for what the server prints.
+  - `code`: the host's room code, in the first `( )`.
+  - `ready`: the game can open now. Without it, `url` is polled.
+  - `error`: the reason a join failed.
+- `${CODE}` in `args` makes the action join by room code (the code box fills it in). Leave `joinArgs` out then.
+
+An action can also ask for a size in the launcher's own window: `"window": { "width": 800, "height": 600 }`.
 
 Example, a new local multiplayer game:
 

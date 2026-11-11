@@ -154,7 +154,7 @@ pub fn with_default_port(address: &str, port: i32) -> String {
 
 pub fn state_reason(cfg: &Config, a: &ActionSpec, state: ActionState) -> String {
     match state {
-        ActionState::NoRuntime => cfg.t("status.noRuntime", &[("RUNTIME", &a.server.name)]),
+        ActionState::NoRuntime => cfg.t("status.noRuntime", &[("RUNTIME", &cfg.server_name(&a.server))]),
         ActionState::NoSwf => cfg.t("status.noSwf", &[]),
         ActionState::NoPlayer => cfg.t("status.noPlayer", &[]),
         ActionState::Ready => cfg.t("status.ready", &[]),
@@ -267,6 +267,9 @@ pub fn run(req: &Request, report: &mut dyn FnMut(&str), stop: &Stop) -> (i32, St
         return fail(4, cfg.t("notice.notReady", &[("GAME", &game.name), ("REASON", &reason)]));
     }
     let player_name = r.player.map(|p| p.name.clone()).unwrap_or_default();
+    if r.player.is_some_and(|p| p.kind == "window") {
+        return fail(3, format!("\"{}\" opens in the launcher's own window and needs the launcher window.", action.label));
+    }
     let mut relay = Relay::new();
     if action.relay.enabled {
         if let Err((err, in_use)) = relay.start(action.relay.port) {
@@ -292,8 +295,12 @@ pub fn run(req: &Request, report: &mut dyn FnMut(&str), stop: &Stop) -> (i32, St
             url = format!("http://127.0.0.1:{}/{}", web.port(), paths::file_name(&r.page));
         }
         if action.server.enabled() {
+            // A server that joins a room takes the code itself (PB2's join.js <CODE> <port>).
+            if fill_placeholders(&mut r.server_args, &user.player_name, &join_code, "", "").is_some() {
+                return fail(3, format!("\"{}\" needs a room code and needs the launcher window.", action.label));
+            }
             if let Err(err) = server.start(&r.server_exe, &r.server_args, &r.server_cwd, |line| log::info(&format!("[server] {line}"))) {
-                return fail(1, cfg.t("notice.launchFailed", &[("PLAYER", &action.server.name), ("ERROR", &err)]));
+                return fail(1, cfg.t("notice.launchFailed", &[("PLAYER", &cfg.server_name(&action.server)), ("ERROR", &err)]));
             }
             if !wait_for_server(&url, 30000, || server.running() && !stop.is_set()) {
                 if stop.is_set() {

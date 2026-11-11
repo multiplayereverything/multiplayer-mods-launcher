@@ -19,6 +19,10 @@ impl PlayerStatus {
     }
 }
 
+/// The "exe" of a `kind: "window"` player: the game opens in the launcher's own window, so it is always there and
+/// nothing is started for it.
+pub const IN_WINDOW: &str = "launcher-window";
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ActionState {
     Ready,
@@ -239,7 +243,12 @@ impl<'c> Library<'c> {
             }
         }
         self.vars.set("FLASHPOINT", &flashpoint);
-        self.players = cfg.players.iter().enumerate().map(|(index, p)| PlayerStatus { index, exe: self.find_first(&p.paths, &self.vars) }).collect();
+        self.players = cfg
+            .players
+            .iter()
+            .enumerate()
+            .map(|(index, p)| PlayerStatus { index, exe: if p.kind == "window" { IN_WINDOW.into() } else { self.find_first(&p.paths, &self.vars) } })
+            .collect();
     }
 
     pub fn player(&self, id: &str) -> Option<&PlayerStatus> {
@@ -249,11 +258,11 @@ impl<'c> Library<'c> {
     /// Players this action may use, in the order they would be tried: Flash files go to Flash players, HTML5
     /// pages to browsers, and the user's choice goes first.
     pub fn allowed_players(&self, a: &ActionSpec, preferred: &str) -> Vec<&'c PlayerSpec> {
-        let kind = if a.is_web() { "browser" } else { "flash" };
+        let fits = |p: &&'c PlayerSpec| if a.is_web() { p.is_web() } else { p.kind == "flash" };
         let mut out: Vec<&'c PlayerSpec> = if a.players.is_empty() {
-            self.cfg.players.iter().filter(|p| p.kind == kind).collect()
+            self.cfg.players.iter().filter(fits).collect()
         } else {
-            a.players.iter().filter_map(|id| self.cfg.find_player(id)).filter(|p| p.kind == kind).collect()
+            a.players.iter().filter_map(|id| self.cfg.find_player(id)).filter(fits).collect()
         };
         if let Some(pos) = out.iter().position(|p| p.id == preferred) {
             out[..=pos].rotate_right(1);
@@ -385,7 +394,10 @@ impl<'c> Library<'c> {
             return r;
         }
         if a.server.enabled() {
-            r.server_exe = self.find_first(&a.server.exe, &v);
+            // The runtime's own copies (the one the launcher installs first), then the action's.
+            let mut candidates = self.cfg.find_runtime(&a.server.runtime).map(|rt| rt.paths.clone()).unwrap_or_default();
+            candidates.extend(a.server.exe.iter().cloned());
+            r.server_exe = self.find_first(&candidates, &v);
             if r.server_exe.is_empty() {
                 r.state = ActionState::NoRuntime;
                 return r;

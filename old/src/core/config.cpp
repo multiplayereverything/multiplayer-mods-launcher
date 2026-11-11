@@ -626,6 +626,12 @@ const PlayerSpec* Config::findPlayer(std::string_view id) const {
     return nullptr;
 }
 
+const RuntimeSpec* Config::findRuntime(std::string_view id) const {
+    for (const auto& r : runtimes)
+        if (r.id == id) return &r;
+    return nullptr;
+}
+
 const Category* Config::findCategory(std::string_view id) const {
     for (const auto& c : categories)
         if (c.id == id) return &c;
@@ -824,6 +830,18 @@ ActionSpec readAction(const Value& v, const std::wstring& where, std::vector<Con
         ss.str("url", a.server.url);
         ss.str("share", a.server.share);
         ss.str("lan", a.server.lan);
+        ss.str("runtime", a.server.runtime);
+        if (auto lv = ss.get("lines", Type::Object)) {
+            Section ls(lv, ss.child("lines"), issues);
+            ls.str("code", a.server.linesCode);
+            ls.str("ready", a.server.linesReady);
+            ls.str("error", a.server.linesError);
+        }
+    }
+    if (auto wv = s.get("window", Type::Object)) {
+        Section ws(wv, s.child("window"), issues);
+        ws.integer("width", a.windowWidth, 320, 7680);
+        ws.integer("height", a.windowHeight, 240, 4320);
     }
     s.strList("args", a.args);
     s.strList("joinArgs", a.joinArgs);
@@ -1212,7 +1230,8 @@ LoadResult loadConfig(std::string_view jsonText, const std::wstring& configDir) 
             Section s(&list->at(i), indexPath(L"players", i), issues);
             s.str("id", p.id);
             s.str("kind", p.kind);
-            if (p.kind != "flash" && p.kind != "browser") s.error(L"kind", L"must be \"flash\" or \"browser\"");
+            if (p.kind != "flash" && p.kind != "browser" && p.kind != "window")
+                s.error(L"kind", L"must be \"flash\", \"browser\" or \"window\"");
             s.str("name", p.name);
             s.str("website", p.website);
             s.strList("paths", p.paths);
@@ -1242,6 +1261,28 @@ LoadResult loadConfig(std::string_view jsonText, const std::wstring& configDir) 
             }
             if (p.name.empty()) p.name = widen(p.id);
             c.players.push_back(std::move(p));
+        }
+    }
+    if (auto list = top.get("runtimes", Type::Array)) {
+        for (size_t i = 0; i < list->size(); ++i) {
+            RuntimeSpec rt;
+            Section s(&list->at(i), indexPath(L"runtimes", i), issues);
+            s.str("id", rt.id);
+            s.str("name", rt.name);
+            s.str("website", rt.website);
+            s.strList("paths", rt.paths);
+            if (auto inst = s.get("install", Type::Object)) {
+                Section is(inst, s.child("install"), issues);
+                is.str("github", rt.install.github);
+                is.str("asset", rt.install.asset);
+                is.str("url", rt.install.url);
+                is.str("sha256", rt.install.sha256);
+                is.str("dir", rt.install.dir);
+                is.str("exe", rt.install.exe);
+                is.str("api", rt.install.api);
+            }
+            if (rt.name.empty()) rt.name = widen(rt.id);
+            c.runtimes.push_back(std::move(rt));
         }
     }
     if (auto list = top.get("categories", Type::Array)) {
@@ -1326,7 +1367,12 @@ void validateConfig(const Config& cfg, std::vector<ConfigIssue>& issues) {
         std::wstring where = indexPath(L"players", i);
         if (!validId(p.id)) err(where + L".id", L"must be letters, digits, '-', '_' or '.'");
         else if (!ids.insert(p.id).second) err(where + L".id", L"duplicate player id \"" + widen(p.id) + L"\"");
-        if (p.paths.empty()) err(where + L".paths", L"list at least one place to look for the player");
+        if (p.kind == "window") {
+            if (!p.paths.empty() || p.install.enabled())
+                err(where, L"a \"window\" player is the launcher itself: give it no paths or install");
+        } else if (p.paths.empty()) {
+            err(where + L".paths", L"list at least one place to look for the player");
+        }
         for (const auto& s : p.paths) checkVars(s, where + L".paths", issues);
         for (const auto& s : p.args) checkVars(s, where + L".args", issues);
         const InstallSpec& in = p.install;
@@ -1338,6 +1384,29 @@ void validateConfig(const Config& cfg, std::vector<ConfigIssue>& issues) {
                 err(where + L".install.github", L"must look like \"owner/repo\"");
             if (!in.url.empty() && !startsWithI(in.url, L"https://") && !startsWithI(in.url, L"http://127.0.0.1"))
                 err(where + L".install.url", L"must be an https:// address");
+            if (!in.enabled()) err(where + L".install", L"needs \"github\" or \"url\"");
+            checkVars(in.dir, where + L".install.dir", issues);
+        }
+    }
+    ids.clear();
+    for (size_t i = 0; i < cfg.runtimes.size(); ++i) {
+        const auto& r = cfg.runtimes[i];
+        std::wstring where = indexPath(L"runtimes", i);
+        if (!validId(r.id)) err(where + L".id", L"must be letters, digits, '-', '_' or '.'");
+        else if (!ids.insert(r.id).second) err(where + L".id", L"duplicate runtime id \"" + widen(r.id) + L"\"");
+        if (r.paths.empty()) err(where + L".paths", L"list at least one place to look for the program");
+        for (const auto& s : r.paths) checkVars(s, where + L".paths", issues);
+        const auto& in = r.install;
+        if (in.enabled() || !in.dir.empty()) {
+            if (in.dir.empty() || in.exe.empty())
+                err(where + L".install", L"say which folder it is unpacked into (dir) and the program in it (exe)");
+            if (!in.github.empty() && (in.asset.empty() || in.github.find('/') == std::string::npos))
+                err(where + L".install.github", L"needs \"owner/repo\" and an \"asset\" pattern");
+            if (!in.url.empty() && !startsWithI(in.url, L"https://") && !startsWithI(in.url, L"http://127.0.0.1"))
+                err(where + L".install.url", L"must be an https:// address");
+            // A runtime runs a game's server: a fixed download is only trusted with its hash.
+            if (!in.url.empty() && in.sha256.size() != 64)
+                err(where + L".install.sha256", L"give the download's SHA-256 (64 hex digits)");
             if (!in.enabled()) err(where + L".install", L"needs \"github\" or \"url\"");
             checkVars(in.dir, where + L".install.dir", issues);
         }
@@ -1457,10 +1526,26 @@ void validateConfig(const Config& cfg, std::vector<ConfigIssue>& issues) {
                 if (a.server.enabled() && a.server.url.empty())
                     err(aw + L".server.url", L"give the address the game opens at, e.g. \"http://localhost:2053/\"");
                 for (const auto& pid : a.players)
-                    if (auto p = cfg.findPlayer(pid); p && p->kind != "browser")
+                    if (auto p = cfg.findPlayer(pid); p && !p->isWeb())
                         err(aw + L".players", L"\"" + widen(pid) + L"\" is not a browser; HTML5 games need one");
-                if (!std::any_of(cfg.players.begin(), cfg.players.end(), [](const PlayerSpec& p) { return p.kind == "browser"; }))
-                    err(aw, L"HTML5 games need a player with \"kind\": \"browser\"");
+                if (!std::any_of(cfg.players.begin(), cfg.players.end(), [](const PlayerSpec& p) { return p.isWeb(); }))
+                    err(aw, L"HTML5 games need a player with \"kind\": \"browser\" or \"window\"");
+                if (!a.server.runtime.empty() && !cfg.findRuntime(a.server.runtime))
+                    err(aw + L".server.runtime", L"no runtime with id \"" + widen(a.server.runtime) + L"\"");
+                if (a.server.joinsByCode() && !a.joinArgs.empty())
+                    err(aw + L".joinArgs", L"a server that takes ${CODE} joins by itself: leave joinArgs out");
+                for (const auto& re : {a.server.linesCode, a.server.linesReady, a.server.linesError}) {
+                    try {
+                        if (!re.empty()) std::wregex test(re);
+                    } catch (const std::regex_error&) {
+                        err(aw + L".server.lines", L"not a valid pattern: " + re);
+                    }
+                }
+                try {
+                    if (!a.server.linesCode.empty() && std::wregex(a.server.linesCode).mark_count() < 1)
+                        err(aw + L".server.lines.code", L"put the room code in ( ), e.g. \"room code ([A-Z0-9]{5})\"");
+                } catch (const std::regex_error&) {
+                }
                 for (const auto& re : {a.server.share, a.server.lan}) {
                     try {
                         if (!re.empty()) std::wregex test(re);

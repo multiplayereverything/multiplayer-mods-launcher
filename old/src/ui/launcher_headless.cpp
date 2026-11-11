@@ -68,6 +68,10 @@ int Launcher::launchHeadless(const Config& cfg, Library& lib, UserData& user, co
         message = cfg.t("notice.notReady", {{L"GAME", game.name}, {L"REASON", stateReason(cfg, r)}});
         return 4;
     }
+    if (r.player && r.player->kind == "window") {
+        message = L"\"" + action.label + L"\" opens in the launcher's own window and needs the launcher window.";
+        return 3;
+    }
     Relay relay;
     if (action.relay.enabled) {
         std::wstring err;

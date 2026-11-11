@@ -73,6 +73,10 @@ bool Launcher::runAction(int gi, size_t ai, const std::vector<std::pair<std::wst
         else if (r.state == ActionState::NoPlayer || r.state == ActionState::NoRuntime) SetFocus(getPlayerBtn_);
         return false;
     }
+    if (r.player && r.player->kind == "window") {
+        notice(L"\"" + a.label + L"\" opens in the new launcher's own window.", theme_.c.warning);
+        return false;
+    }
     if (r.web) return runWeb(gi, a, r, flashvars);
     // A player that takes its room and name on the command line (Ruffle Together's --coop-* options).
     {

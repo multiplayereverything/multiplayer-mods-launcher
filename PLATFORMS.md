@@ -32,6 +32,7 @@ Newest first. One line per update: version, what changed, and whether each platf
 
 | Date | Version | Change | Windows | Linux |
 |---|---|---|---|---|
+| 2026-11-11 | next | HTML5 games in the launcher's own window, step 1 (docs/BUILTIN_BROWSER_PLAN.md): config only. Adds players `kind: "window"`, top-level `runtimes[]` (Node.js), `server.runtime`, `server.lines` (code/ready/error), `${CODE}` in server args and an action `window` size. Nothing ships it yet, and a window player is refused until the window exists | yes, not released | shared Rust; the window itself will use WebKitGTK on Linux |
 | 2026-11-10 | 1.0.47 | Spore is link-only: Windows Defender flags both its releases, so the launcher no longer installs it | yes, not released | launcher.json, comes with the Linux build |
 | 2026-11-10 | 1.0.47 | Game page and cards: one red button with a More button, a list of what the game still needs, an Update badge on cards, no amber for what the launcher fetches itself, no X grade on cards | yes, not released | shared React, comes with the Linux build |
 | 2026-11-06 | 1.0.47 | The app saves the game catalog (at most hourly, and on a download), so a new build of a Flash game file is offered and its host settings show | yes, not released | shared Rust, comes with the Linux build |

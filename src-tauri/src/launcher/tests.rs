@@ -442,6 +442,91 @@ fn config_rejects_html5_action_with_flash_player() {
     assert!(!r.ok());
 }
 
+/// A launcher.json with top-level `runtimes` added.
+fn with_runtimes(cfg: String, runtimes: &str) -> String {
+    cfg.replacen("\"categories\":", &format!("\"runtimes\": {runtimes}, \"categories\":"), 1)
+}
+
+const WINDOW_PLAYERS: &str = r#"[{ "id": "ruffle", "paths": ["${PLAYERS_DIR}\\ruffle.exe"] },
+    { "id": "window", "kind": "window", "name": "Launcher window" },
+    { "id": "edge", "kind": "browser", "paths": ["${PLAYERS_DIR}\\edge.exe"], "args": ["--app=${URL}"] }]"#;
+const NODE: &str = r#"[{ "id": "node", "name": "Node.js", "website": "https://nodejs.org/", "paths": ["${PLAYERS_DIR}\\node\\node.exe", "${LAUNCHER_DIR}\\no-node-here.exe"],
+    "install": { "url": "https://nodejs.org/dist/v22.0.0/node-win-x64.zip", "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+                 "dir": "${PLAYERS_DIR}\\node", "exe": "node.exe" } }]"#;
+
+#[test]
+fn html5_action_opens_in_the_launcher_window_with_its_runtime() {
+    let dir = TempDir::new("lib-window");
+    write_text(&dir.join("mod\\server\\server.js"), "x");
+    let r = load(
+        &with_runtimes(
+            minimal_config(
+                r#"[{ "id": "pb2", "actions": [
+            { "id": "host", "file": "${LAUNCHER_DIR}\\mod\\server\\server.js", "window": { "width": 800, "height": 600 },
+              "server": { "runtime": "node", "args": ["server\\server.js", "2053"], "cwd": "${FILE_DIR}\\..", "url": "http://localhost:2053/",
+                          "lines": { "code": "room code ([A-Z0-9]{5})", "error": "Could not join room .*" } } },
+            { "id": "join", "file": "${LAUNCHER_DIR}\\mod\\server\\server.js",
+              "server": { "runtime": "node", "args": ["server\\join.js", "${CODE}", "2054"], "cwd": "${FILE_DIR}\\..", "url": "http://localhost:2054/",
+                          "lines": { "ready": "Joined room", "error": "Could not join room .*" } } } ] }]"#,
+                Some(WINDOW_PLAYERS),
+            ),
+            NODE,
+        ),
+        dir.path(),
+    );
+    assert!(r.ok(), "{}", super::config::format_issues(&r.issues));
+    assert!(r.issues.is_empty(), "{}", super::config::format_issues(&r.issues)); // no unknown keys either
+    let cfg = &r.config;
+    let g = &cfg.games[0];
+    let (host, join) = (&g.actions[0], &g.actions[1]);
+    assert_eq!((host.window.width, host.window.height), (800, 600));
+    assert_eq!(host.server.lines.code, "room code ([A-Z0-9]{5})");
+    assert!(!host.server.joins_by_code() && join.server.joins_by_code());
+    assert_eq!(cfg.server_name(&host.server), "Node.js"); // the runtime names a server that has no name of its own
+    assert_eq!(cfg.find_runtime("node").unwrap().install.exe, "node.exe");
+
+    let lib = Library::new(cfg, base_vars(&dir));
+    let user = UserData::default();
+    // No Node yet: the launcher window is there, the server's program isn't.
+    let r0 = lib.resolve(g, host, &user, false);
+    assert_eq!(r0.state, ActionState::NoRuntime);
+    assert_eq!(r0.player.unwrap().id, "window"); // first in the list, and always found
+    // The runtime's own copy is found.
+    write_text(&dir.join("players\\node\\node.exe"), "x");
+    let r1 = lib.resolve(g, host, &user, false);
+    assert_eq!(r1.state, ActionState::Ready);
+    assert_eq!(r1.player_exe, super::library::IN_WINDOW);
+    assert_eq!(paths::normalize(&r1.server_exe), paths::normalize(&dir.join("players\\node\\node.exe")));
+    // The code stays a placeholder until the game starts with one.
+    assert_eq!(lib.resolve(g, join, &user, true).server_args, vec!["server\\join.js", "${CODE}", "2054"]);
+}
+
+#[test]
+fn config_checks_window_players_runtimes_and_server_lines() {
+    let bad = |games: &str, players: &str, runtimes: &str, place: &str| {
+        let r = load(&with_runtimes(minimal_config(games, Some(players)), runtimes), "C:\\x");
+        assert!(has_issue(&r, place, Severity::Error), "expected an error at {place}: {}", super::config::format_issues(&r.issues));
+    };
+    let game = |server: &str| format!(r#"[{{ "id": "g", "actions": [ {{ "id": "a", "server": {server} }} ] }}]"#);
+    let ok_server = r#"{ "runtime": "node", "url": "http://localhost:1/" }"#;
+    // A window player is the launcher itself.
+    bad(&game(ok_server), r#"[{ "id": "w", "kind": "window", "paths": ["x.exe"] }]"#, NODE, "players[0]");
+    // A runtime that isn't listed.
+    bad(&game(r#"{ "runtime": "deno", "url": "http://localhost:1/" }"#), WINDOW_PLAYERS, NODE, "server.runtime");
+    // The room code pattern needs a group, and every pattern must compile.
+    bad(&game(r#"{ "runtime": "node", "url": "http://localhost:1/", "lines": { "code": "room code [A-Z]+" } }"#), WINDOW_PLAYERS, NODE, "lines.code");
+    bad(&game(r#"{ "runtime": "node", "url": "http://localhost:1/", "lines": { "ready": "(" } }"#), WINDOW_PLAYERS, NODE, "server.lines");
+    // A runtime downloaded from a fixed address needs its hash.
+    bad(&game(ok_server), WINDOW_PLAYERS, r#"[{ "id": "node", "paths": ["node.exe"], "install": { "url": "https://x.example/n.zip", "dir": "d", "exe": "node.exe" } }]"#, "install.sha256");
+    // A window size out of range.
+    bad(r#"[{ "id": "g", "actions": [ { "id": "a", "window": { "width": 10 }, "server": { "runtime": "node", "url": "http://localhost:1/" } } ] }]"#, WINDOW_PLAYERS, NODE, "window.width");
+    // An HTML5 action can't name a Flash player, and a Flash action never gets the window.
+    bad(r#"[{ "id": "g", "actions": [ { "id": "a", "players": ["ruffle"], "server": { "runtime": "node", "url": "http://localhost:1/" } } ] }]"#, WINDOW_PLAYERS, NODE, "players");
+    let r = load(&with_runtimes(minimal_config(r#"[{ "id": "g", "actions": [ { "id": "a", "swf": "g.swf", "players": ["window"] } ] }]"#, Some(WINDOW_PLAYERS)), NODE), "C:\\x");
+    let lib = Library::new(&r.config, Vars::default());
+    assert!(lib.allowed_players(&r.config.games[0].actions[0], "").is_empty());
+}
+
 #[test]
 fn online_first_action_options_parse() {
     let r = load(

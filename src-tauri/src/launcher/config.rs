@@ -169,7 +169,7 @@ impl InstallSpec {
 #[derive(Clone, Debug)]
 pub struct PlayerSpec {
     pub id: String,
-    pub kind: String, // "flash" | "browser"
+    pub kind: String, // "flash" | "browser" | "window" (the launcher's own window: no exe)
     pub name: String,
     pub website: String,
     pub install: InstallSpec,
@@ -180,6 +180,13 @@ pub struct PlayerSpec {
     pub coop_save_since: String,
     pub tv_args: Vec<String>,
     pub tv_env: Vec<(String, String)>,
+}
+
+impl PlayerSpec {
+    /// Plays HTML5 pages: a browser, or the launcher's own window.
+    pub fn is_web(&self) -> bool {
+        self.kind == "browser" || self.kind == "window"
+    }
 }
 
 #[derive(Clone, Debug, Default)]
@@ -196,22 +203,54 @@ pub struct RelaySpec {
     pub port: i32,
 }
 
+/// Patterns matched against each line a game's server prints: `code` (its first group is the room code a host
+/// shows), `ready` (the game can open; else the server's url is polled) and `error` (the reason it failed).
+#[derive(Clone, Debug, Default)]
+pub struct ServerLines {
+    pub code: String,
+    pub ready: String,
+    pub error: String,
+}
+
 #[derive(Clone, Debug)]
 pub struct ServerSpec {
     pub name: String,
     pub website: String,
+    pub runtime: String, // a runtimes[] id: its paths are tried before exe, and it names the program when missing
     pub exe: Vec<String>,
     pub args: Vec<String>,
     pub cwd: String,
     pub url: String,
     pub share: String,
     pub lan: String,
+    pub lines: ServerLines,
 }
 
 impl ServerSpec {
     pub fn enabled(&self) -> bool {
-        !self.exe.is_empty()
+        !self.exe.is_empty() || !self.runtime.is_empty()
     }
+    /// The server's arguments ask for a room code: the action joins by code.
+    pub fn joins_by_code(&self) -> bool {
+        self.args.iter().any(|a| a.contains("${CODE}"))
+    }
+}
+
+/// A program a game's server runs on, such as Node.js: found like a player, installed like one when missing.
+#[derive(Clone, Debug, Default)]
+pub struct RuntimeSpec {
+    pub id: String,
+    pub name: String,
+    pub website: String,
+    pub paths: Vec<String>,
+    pub install: InstallSpec,
+}
+
+/// The size a game asks for when it opens in the launcher's own window (0: the launcher's default).
+#[derive(Clone, Copy, Debug, Default)]
+pub struct GameWindow {
+    pub width: i32,
+    pub height: i32,
 }
 
 #[derive(Clone, Debug)]
@@ -224,6 +263,7 @@ pub struct ActionSpec {
     pub page: Vec<String>,
     pub server: ServerSpec,
     pub join_link: bool,
+    pub window: GameWindow,
     pub args: Vec<String>,
     pub join_args: Vec<String>,
     pub players: Vec<String>,
@@ -250,14 +290,17 @@ impl Default for ActionSpec {
             server: ServerSpec {
                 name: "Server".into(),
                 website: String::new(),
+                runtime: String::new(),
                 exe: Vec::new(),
                 args: Vec::new(),
                 cwd: String::new(),
                 url: String::new(),
                 share: String::new(),
                 lan: String::new(),
+                lines: ServerLines::default(),
             },
             join_link: false,
+            window: GameWindow::default(),
             args: Vec::new(),
             join_args: Vec::new(),
             players: Vec::new(),
@@ -556,6 +599,7 @@ pub struct Config {
     pub discord_client_id: String,
     pub updates: InstallSpec,
     pub players: Vec<PlayerSpec>,
+    pub runtimes: Vec<RuntimeSpec>,
     pub categories: Vec<Category>,
     pub games: Vec<GameSpec>,
     pub text: BTreeMap<String, String>,
@@ -580,6 +624,7 @@ impl Default for Config {
             discord_client_id: String::new(),
             updates: InstallSpec::default(),
             players: Vec::new(),
+            runtimes: Vec::new(),
             categories: Vec::new(),
             games: Vec::new(),
             text: BTreeMap::new(),
@@ -608,6 +653,16 @@ impl Config {
     }
     pub fn find_category(&self, id: &str) -> Option<&Category> {
         self.categories.iter().find(|c| c.id == id)
+    }
+    pub fn find_runtime(&self, id: &str) -> Option<&RuntimeSpec> {
+        self.runtimes.iter().find(|r| r.id == id)
+    }
+    /// What a server's program is called where it's missing or fails: its own name, else its runtime's.
+    pub fn server_name(&self, s: &ServerSpec) -> String {
+        match self.find_runtime(&s.runtime) {
+            Some(r) if s.name == "Server" => r.name.clone(),
+            _ => s.name.clone(),
+        }
     }
 }
 
@@ -962,6 +1017,18 @@ fn read_action(v: &Value, place: &str, issues: &Issues) -> ActionSpec {
         ss.str("url", &mut a.server.url);
         ss.str("share", &mut a.server.share);
         ss.str("lan", &mut a.server.lan);
+        ss.str("runtime", &mut a.server.runtime);
+        if let Some(lv) = ss.get("lines", Type::Object) {
+            let ls = Section::new(Some(lv), ss.child("lines"), issues);
+            ls.str("code", &mut a.server.lines.code);
+            ls.str("ready", &mut a.server.lines.ready);
+            ls.str("error", &mut a.server.lines.error);
+        }
+    }
+    if let Some(wv) = s.get("window", Type::Object) {
+        let ws = Section::new(Some(wv), s.child("window"), issues);
+        ws.integer("width", &mut a.window.width, 320, 7680);
+        ws.integer("height", &mut a.window.height, 240, 4320);
     }
     s.str_list("args", &mut a.args, None);
     s.str_list("joinArgs", &mut a.join_args, None);
@@ -1399,8 +1466,8 @@ pub fn load_config(text: &[u8], config_dir: &str) -> LoadResult {
                 let s = Section::new(Some(item), index_path("players", i), &issues);
                 s.str("id", &mut p.id);
                 s.str("kind", &mut p.kind);
-                if p.kind != "flash" && p.kind != "browser" {
-                    s.error("kind", "must be \"flash\" or \"browser\"");
+                if p.kind != "flash" && p.kind != "browser" && p.kind != "window" {
+                    s.error("kind", "must be \"flash\", \"browser\" or \"window\"");
                 }
                 s.str("name", &mut p.name);
                 s.str("website", &mut p.website);
@@ -1436,6 +1503,31 @@ pub fn load_config(text: &[u8], config_dir: &str) -> LoadResult {
                 }
                 drop(s);
                 c.players.push(p);
+            }
+        }
+        if let Some(list) = top.get("runtimes", Type::Array) {
+            for (i, item) in list.items().iter().enumerate() {
+                let mut rt = RuntimeSpec::default();
+                let s = Section::new(Some(item), index_path("runtimes", i), &issues);
+                s.str("id", &mut rt.id);
+                s.str("name", &mut rt.name);
+                s.str("website", &mut rt.website);
+                s.str_list("paths", &mut rt.paths, None);
+                if let Some(inst) = s.get("install", Type::Object) {
+                    let is = Section::new(Some(inst), s.child("install"), &issues);
+                    is.str("github", &mut rt.install.github);
+                    is.str("asset", &mut rt.install.asset);
+                    is.str("url", &mut rt.install.url);
+                    is.str("sha256", &mut rt.install.sha256);
+                    is.str("dir", &mut rt.install.dir);
+                    is.str("exe", &mut rt.install.exe);
+                    is.str("api", &mut rt.install.api);
+                }
+                if rt.name.is_empty() {
+                    rt.name = rt.id.clone();
+                }
+                drop(s);
+                c.runtimes.push(rt);
             }
         }
         if let Some(list) = top.get("categories", Type::Array) {
@@ -1565,7 +1657,11 @@ pub fn validate_config(cfg: &Config, issues: &mut Vec<ConfigIssue>) {
         } else if !ids.insert(p.id.clone()) {
             err(issues, format!("{w}.id"), format!("duplicate player id \"{}\"", p.id));
         }
-        if p.paths.is_empty() {
+        if p.kind == "window" {
+            if !p.paths.is_empty() || p.install.enabled() {
+                err(issues, w.clone(), "a \"window\" player is the launcher itself: give it no paths or install".into());
+            }
+        } else if p.paths.is_empty() {
             err(issues, format!("{w}.paths"), "list at least one place to look for the player".into());
         }
         for s in &p.paths {
@@ -1587,6 +1683,41 @@ pub fn validate_config(cfg: &Config, issues: &mut Vec<ConfigIssue>) {
             }
             if !inst.url.is_empty() && !is_https_or_local(&inst.url) {
                 err(issues, format!("{w}.install.url"), "must be an https:// address".into());
+            }
+            if !inst.enabled() {
+                err(issues, format!("{w}.install"), "needs \"github\" or \"url\"".into());
+            }
+            check_vars(&inst.dir, &format!("{w}.install.dir"), issues);
+        }
+    }
+    ids.clear();
+    for (i, r) in cfg.runtimes.iter().enumerate() {
+        let w = index_path("runtimes", i);
+        if !valid_id(&r.id) {
+            err(issues, format!("{w}.id"), "must be letters, digits, '-', '_' or '.'".into());
+        } else if !ids.insert(r.id.clone()) {
+            err(issues, format!("{w}.id"), format!("duplicate runtime id \"{}\"", r.id));
+        }
+        if r.paths.is_empty() {
+            err(issues, format!("{w}.paths"), "list at least one place to look for the program".into());
+        }
+        for s in &r.paths {
+            check_vars(s, &format!("{w}.paths"), issues);
+        }
+        let inst = &r.install;
+        if inst.enabled() || !inst.dir.is_empty() {
+            if inst.dir.is_empty() || inst.exe.is_empty() {
+                err(issues, format!("{w}.install"), "say which folder it is unpacked into (dir) and the program in it (exe)".into());
+            }
+            if !inst.github.is_empty() && (inst.asset.is_empty() || !inst.github.contains('/')) {
+                err(issues, format!("{w}.install.github"), "needs \"owner/repo\" and an \"asset\" pattern".into());
+            }
+            if !inst.url.is_empty() && !is_https_or_local(&inst.url) {
+                err(issues, format!("{w}.install.url"), "must be an https:// address".into());
+            }
+            if !inst.url.is_empty() && inst.sha256.len() != 64 {
+                // A runtime runs a game's server: a fixed download is only trusted with its hash.
+                err(issues, format!("{w}.install.sha256"), "give the download's SHA-256 (64 hex digits)".into());
             }
             if !inst.enabled() {
                 err(issues, format!("{w}.install"), "needs \"github\" or \"url\"".into());
@@ -1759,13 +1890,28 @@ pub fn validate_config(cfg: &Config, issues: &mut Vec<ConfigIssue>) {
                 }
                 for pid in &a.players {
                     if let Some(p) = cfg.find_player(pid)
-                        && p.kind != "browser"
+                        && !p.is_web()
                     {
                         err(issues, format!("{aw}.players"), format!("\"{pid}\" is not a browser; HTML5 games need one"));
                     }
                 }
-                if !cfg.players.iter().any(|p| p.kind == "browser") {
-                    err(issues, aw.clone(), "HTML5 games need a player with \"kind\": \"browser\"".into());
+                if !cfg.players.iter().any(|p| p.is_web()) {
+                    err(issues, aw.clone(), "HTML5 games need a player with \"kind\": \"browser\" or \"window\"".into());
+                }
+                if !a.server.runtime.is_empty() && cfg.find_runtime(&a.server.runtime).is_none() {
+                    err(issues, format!("{aw}.server.runtime"), format!("no runtime with id \"{}\"", a.server.runtime));
+                }
+                if a.server.joins_by_code() && !a.join_args.is_empty() {
+                    err(issues, format!("{aw}.joinArgs"), "a server that takes ${CODE} joins by itself: leave joinArgs out".into());
+                }
+                let l = &a.server.lines;
+                for re in [&l.code, &l.ready, &l.error] {
+                    if !re.is_empty() && !pattern_ok(re) {
+                        err(issues, format!("{aw}.server.lines"), format!("not a valid pattern: {re}"));
+                    }
+                }
+                if !l.code.is_empty() && regex::Regex::new(&l.code).is_ok_and(|r| r.captures_len() < 2) {
+                    err(issues, format!("{aw}.server.lines.code"), "put the room code in ( ), e.g. \"room code ([A-Z0-9]{5})\"".into());
                 }
                 for re in [&a.server.share, &a.server.lan] {
                     if !re.is_empty() && !pattern_ok(re) {

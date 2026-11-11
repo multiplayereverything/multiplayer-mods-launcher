@@ -223,7 +223,8 @@ fn coop_flags(a: &ActionSpec, o: &mut Map<String, Value>) {
     }
     o.insert("coopHost".into(), json!(host));
     o.insert("coopJoin".into(), json!(join));
-    o.insert("joinsByCode".into(), json!(!a.join_args.is_empty())); // --join <code> picks its joinArgs
+    // --join <code> picks its joinArgs, or fills the ${CODE} its server takes
+    o.insert("joinsByCode".into(), json!(!a.join_args.is_empty() || a.server.joins_by_code()));
     o.insert("hostPlayers".into(), json!(players));
     o.insert("viaRelay".into(), json!(relay));
     o.insert("asksAddress".into(), json!(address));

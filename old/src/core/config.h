@@ -102,8 +102,10 @@ struct InstallSpec {
 
 struct PlayerSpec {
     std::string id;
-    // "flash" plays .swf files; "browser" (Edge, Chrome) opens HTML5 games at ${URL}.
+    // "flash" plays .swf files; "browser" (Edge, Chrome) opens HTML5 games at ${URL}; "window" is the Tauri
+    // launcher's own window (no paths: always there, and this launcher can't open it).
     std::string kind = "flash";
+    bool isWeb() const { return kind == "browser" || kind == "window"; }
     std::wstring name, website;
     InstallSpec install;
     // Candidates, first match wins: absolute paths (a '*' is allowed in the file
@@ -145,7 +147,23 @@ struct ServerSpec {
     std::wstring cwd;                // default: the folder of the action's file
     std::wstring url;                // the game's address once the server is up
     std::wstring share, lan;         // regexes: links in the output to show friends
-    bool enabled() const { return !exe.empty(); }
+    std::string runtime;             // a runtimes[] id: its paths are tried before exe
+    // Regexes for the lines it prints: the room code a host shows (group 1), "ready to open", and the reason it failed.
+    std::wstring linesCode, linesReady, linesError;
+    bool enabled() const { return !exe.empty() || !runtime.empty(); }
+    bool joinsByCode() const {
+        for (const auto& a : args)
+            if (a.find(L"${CODE}") != std::wstring::npos) return true;
+        return false;
+    }
+};
+
+// A program a game's server runs on (Node.js): found like a player, installed like one when missing.
+struct RuntimeSpec {
+    std::string id;
+    std::wstring name, website;
+    std::vector<std::wstring> paths;
+    InstallSpec install;
 };
 
 struct ActionSpec {
@@ -158,6 +176,7 @@ struct ActionSpec {
     std::vector<std::wstring> page;
     ServerSpec server;
     bool joinLink = false;  // HTML5: open the http(s) link on the clipboard (a friend's game)
+    int windowWidth = 0, windowHeight = 0;  // the size it asks for in the launcher's own window (0: default)
     std::vector<std::wstring> args;     // added after the player's own args
     // Used instead of `args` when a room code comes with the launch (Rooms list, join by code).
     // ${CODE}, ${SERVER} (the central server), ${ADDRESS} (host:port copied to the clipboard) and
@@ -294,6 +313,7 @@ struct Config {
     Discord discord;
     Updates updates;
     std::vector<PlayerSpec> players;
+    std::vector<RuntimeSpec> runtimes;
     std::vector<Category> categories;
     std::vector<GameSpec> games;
     std::map<std::string, std::wstring> text;  // UI strings, defaults + overrides
@@ -306,6 +326,7 @@ struct Config {
     std::wstring modsInfoBase() const;
     const GameSpec* findGame(std::string_view id) const;
     const PlayerSpec* findPlayer(std::string_view id) const;
+    const RuntimeSpec* findRuntime(std::string_view id) const;
     const Category* findCategory(std::string_view id) const;
 };
 
