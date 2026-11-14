@@ -275,6 +275,12 @@ reinstall, first-run prompt, the window's download button). `-Dist` makes
 Ruffle Together is built from Ruffle, which is open source ([ruffle.rs](https://ruffle.rs)). The
 games belong to their owners; this project ships neither the player nor any game.
 
+## License
+
+The launcher's code is under the [MIT License](LICENSE): anyone may use, change and share it, also in their own
+projects, as long as the license notice stays with it. The license covers this repository only, not the games, the
+players or the mods the launcher downloads; each keeps its own owner's terms.
+
 ## Made with
 
 This project was made with the help of these tools:
